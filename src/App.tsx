@@ -406,7 +406,6 @@ function Login({onLogin}:any){
             {loading?"Memuat...":"Masuk →"}
           </Btn>
           <div style={{marginTop:16,padding:"8px 12px",background:"#f8fafc",borderRadius:8,fontSize:11,color:"#94a3b8"}}>
-            💡 Demo: <span style={{fontFamily:"'DM Mono',monospace",color:"#475569"}}>{cfg.password}</span>
           </div>
         </div>
       </div>
