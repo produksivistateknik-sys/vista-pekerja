@@ -590,11 +590,21 @@ function OperatorView({user}:any){
       setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     }
 
-    // simpan catatan ke renhar
+    // simpan catatan ke tabel kendala
+    const prosesLogged=new Set();
     for(const task of todayTasks){
       const proses=task.proses;
-      if(catatan[proses]?.trim()){
-        await supabase.from("renhar").update({catatan:catatan[proses]}).eq("id",task.id);
+      if(catatan[proses]?.trim()&&!prosesLogged.has(proses)){
+        prosesLogged.add(proses);
+        await supabase.from("kendala").insert({
+          divisi:user.divisi,
+          divisi_label:cfg.label,
+          tanggal:viewDate,
+          proses,
+          catatan:catatan[proses].trim(),
+          operator:user.nama,
+          ts:new Date().toISOString(),
+        });
       }
     }
 
@@ -1054,4 +1064,6 @@ export default function App(){
     </div>
   );
 }
+
+
 
