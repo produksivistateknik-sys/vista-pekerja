@@ -521,6 +521,43 @@ function OperatorView({user}:any){
     setLoadingData(false);
   };
 
+  // ── Realtime listener untuk panels (qty update dari Vista Teknik) ──
+  useEffect(()=>{
+    const panelIds=Object.keys(panelsMap).map(Number).filter(Boolean);
+    if(!panelIds.length) return;
+
+    const channel=supabase.channel('realtime-panels-pekerja')
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'panels'},
+        (payload:any)=>{
+          const updated=payload.new;
+          if(!panelIds.includes(updated.id)) return;
+          setPanelsMap(prev=>{
+            const oldPanel=prev[updated.id];
+            if(!oldPanel) return {...prev,[updated.id]:updated};
+            // Recalculate progress jika qty berubah
+            const oldChecklist=oldPanel.checklist||{};
+            const newChecklist={...updated.checklist};
+            Object.keys(newChecklist).forEach(kode=>{
+              const oldQty=oldChecklist[kode]?.qty||1;
+              const newQty=newChecklist[kode]?.qty||1;
+              if(newQty!==oldQty && oldQty>0 && newQty>0){
+                const ratio=oldQty/newQty;
+                const newProgress:any={};
+                Object.keys(newChecklist[kode]?.progress||{}).forEach(pr=>{
+                  const old=newChecklist[kode].progress[pr]||0;
+                  newProgress[pr]=Math.min(100,Math.round(old*ratio));
+                });
+                newChecklist[kode]={...newChecklist[kode],progress:newProgress};
+              }
+            });
+            return{...prev,[updated.id]:{...updated,checklist:newChecklist}};
+          });
+        }
+      )
+      .subscribe();
+    return()=>{supabase.removeChannel(channel);};
+  },[panelsMap]);
+
   const todayTasks=useMemo(()=>renhar,[renhar]);
   const proyekList=[...new Set(todayTasks.map((t:any)=>t.proyek))];
   const panelList=[...new Set(todayTasks.filter((t:any)=>fProyek==="ALL"||t.proyek===fProyek).map((t:any)=>t.panel))];
