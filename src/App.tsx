@@ -679,9 +679,27 @@ function OperatorView({user}:any){
         });
       });
 
-      // simpan ke Supabase
-      await supabase.from("panels").update({checklist:newChecklist}).eq("id",Number(panelId));
-      setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
+      // simpan ke Supabase - termasuk busbar_progress
+      const busbarTasks=relatedTasks.filter((t:any)=>t.proses==="BUSBAR");
+      let busbarProgressUpdate:any=null;
+      if(busbarTasks.length>0){
+        const newBusbarProgress={...(panel.busbar_progress||{})};
+        busbarTasks.forEach((t:any)=>{
+          (t.komponen||[]).forEach((komp:string)=>{
+            // Progress busbar disimpan di checklist dengan key nama komponen
+            const cl=newChecklist[komp]||panel.checklist?.[komp];
+            const pct=cl?.progress?.["BUSBAR"]||getProgressOnDate(cl,"BUSBAR",viewDate)||0;
+            newBusbarProgress[komp]=pct;
+          });
+        });
+        busbarProgressUpdate=newBusbarProgress;
+      }
+      await supabase.from("panels").update({
+        checklist:newChecklist,
+        ...(busbarProgressUpdate?{busbar_progress:busbarProgressUpdate}:{})
+      }).eq("id",Number(panelId));
+      setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist,
+        ...(busbarProgressUpdate?{busbar_progress:busbarProgressUpdate}:{})}}));
     }
 
     // simpan catatan ke tabel kendala
@@ -890,15 +908,18 @@ function OperatorView({user}:any){
           const priColor=PRIORITAS_COLOR[task.prioritas||"Sedang"]||"#64748b";
 
           (task.komponen||[]).forEach((kode:string,ki:number)=>{
+            const isBusbarKomp=proses==="BUSBAR";
             const item=allItems.find((it:any)=>it.kode===kode);
-            if(!item)return;
+            // Untuk BUSBAR, komponen adalah nama langsung (H-BUS, INCOMING, dll)
+            if(!item&&!isBusbarKomp)return;
+            const busbarItem=isBusbarKomp?{kode,nama:kode}:null;
             const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{},qtyProsesByDate:{}};
-            const qtyKomp=cl.qty||0;
-            const qtyProses=cl.qtyProsesByDate?.[proses]?.[viewDate]??cl.qtyProses?.[proses]??0;
-            const pct=getProgressOnDate(cl,proses,viewDate);
-            const wpDef=panelCfg.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
-            rows.push({task,panel,panelId,item,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
-              isFirst:ki===0,rowCount:(task.komponen||[]).length});
+            const qtyKomp=isBusbarKomp?0:cl.qty||0;
+            const qtyProses=isBusbarKomp?0:cl.qtyProsesByDate?.[proses]?.[viewDate]??cl.qtyProses?.[proses]??0;
+            const pct=isBusbarKomp?(cl.progress?.[proses]||0):getProgressOnDate(cl,proses,viewDate);
+            const wpDef=isBusbarKomp?null:panelCfg.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
+            rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
+              isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp});
           });
         });
 
