@@ -720,7 +720,9 @@ function OperatorView({user}:any){
       }
     }
 
-    if(count>0||Object.keys(catatan).some(k=>catatan[k]?.trim())){
+    // Hitung busbar tasks juga
+    const busbarCount=todayTasks.filter((t:any)=>t.proses==="BUSBAR").length;
+    if(count>0||busbarCount>0||Object.keys(catatan).some(k=>catatan[k]?.trim())){
       setLockedCells(newLocked);
       setLockMsg(true);
       setTimeout(()=>setLockMsg(false),2500);
