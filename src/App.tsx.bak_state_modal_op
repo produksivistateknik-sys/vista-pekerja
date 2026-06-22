@@ -488,8 +488,6 @@ function OperatorView({user}:any){
   const [panelsMap,setPanelsMap]=useState<Record<number,any>>({});
   const [loadingData,setLoadingData]=useState(false);
   const [pekerjaList,setPekerjaList]=useState<any[]>([]);
-  const [operatorModal,setOperatorModal]=useState<any>(null);
-  const [tempPekerjaIds,setTempPekerjaIds]=useState<number[]>([]);
 
   const cfg=DIVISI_CONFIG[user.divisi];
   const isQtyBased=QTY_DIVISI.includes(user.divisi);
@@ -1041,8 +1039,7 @@ function OperatorView({user}:any){
                         </td>
                         {/* OPERATOR */}
                         {r.isFirst?(
-                          <td style={{...td,verticalAlign:"middle",cursor:"pointer"}} rowSpan={r.rowCount}
-                            onClick={()=>{setOperatorModal(r.task);setTempPekerjaIds(r.task.pekerja||[]);}}>
+                          <td style={{...td,verticalAlign:"middle"}} rowSpan={r.rowCount}>
                             {(()=>{
                               const workers=(r.task.pekerja||[])
                                 .map((id:number)=>pekerjaList.find((p:any)=>p.id===id))
@@ -1059,7 +1056,7 @@ function OperatorView({user}:any){
                                   ))}
                                 </div>
                               ):(
-                                <span style={{fontSize:10,color:"#94a3b8",fontWeight:600}}>+ Pilih Operator</span>
+                                <span style={{fontSize:10,color:"#cbd5e1",fontStyle:"italic"}}>—</span>
                               );
                             })()}
                           </td>
@@ -1137,37 +1134,6 @@ function OperatorView({user}:any){
           <div style={{fontSize:11,color:"#94a3b8",textAlign:"center",marginTop:8,lineHeight:1.5}}>
             Klik di akhir shift untuk menyimpan progress hari ini sebagai catatan permanen.<br/>
             Bisa diklik lagi jika ada update di shift berikutnya (tersimpan terpisah).
-          </div>
-        </div>
-      )}
-
-      {operatorModal&&(
-        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,
-          display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
-          onClick={()=>setOperatorModal(null)}>
-          <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
-            onClick={(e:any)=>e.stopPropagation()}>
-            <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
-            <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Bisa pilih lebih dari satu orang</div>
-            <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
-              {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
-                const checked=tempPekerjaIds.includes(p.id);
-                return(
-                  <label key={p.id} style={{display:"flex",alignItems:"center",gap:10,border:`1.5px solid ${checked?"#2563eb":"#e2e8f0"}`,
-                    borderRadius:10,padding:"10px 12px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
-                    <input type="checkbox" checked={checked}
-                      onChange={()=>setTempPekerjaIds(prev=>checked?prev.filter(id=>id!==p.id):[...prev,p.id])}/>
-                    <span style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{p.nama}</span>
-                  </label>
-                );
-              })}
-            </div>
-            <div style={{display:"flex",gap:8}}>
-              <button onClick={()=>setOperatorModal(null)}
-                style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
-              <button onClick={async()=>{await updatePekerjaTask(operatorModal.id,tempPekerjaIds);setOperatorModal(null);}}
-                style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>Simpan</button>
-            </div>
           </div>
         </div>
       )}
