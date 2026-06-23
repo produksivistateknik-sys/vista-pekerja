@@ -638,22 +638,6 @@ function OperatorView({user}:any){
     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
   };
 
-  const isWiringProses=(pr:string)=>pr==="WIRING CONTROL"||pr==="WIRING POWER";
-
-  const canEditProgressKomponen=(task:any,kode:string,panelId:number,proses:string):boolean=>{
-    if(!isWiringProses(proses))return true;
-    const ids=(task?.pekerja_per_komponen||{})[kode]||[];
-    if(ids.length===0)return false;
-    return ids.some((pid:number)=>timerPernahMulai[`${panelId}_${kode}_${proses}_${pid}`]);
-  };
-
-  const canLockKomponen=(task:any,kode:string,panelId:number,proses:string):boolean=>{
-    if(!isWiringProses(proses))return true;
-    const ids=(task?.pekerja_per_komponen||{})[kode]||[];
-    if(ids.length===0)return false;
-    return ids.some((pid:number)=>timerSelesaiHariIni[`${panelId}_${kode}_${proses}_${pid}`]);
-  };
-
   const startTimer=async(pekerjaId:number,panelId:number,kode:string,proses:string,tanggal:string)=>{
     const key=`${panelId}_${kode}_${proses}_${pekerjaId}`;
     setTimerLoading(key);
@@ -1203,22 +1187,20 @@ function OperatorView({user}:any){
                           })()}
                         </td>
                         {/* STEP checkmarks */}
-                        {!isQtyBased&&(()=>{
-                          const bisaEdit=canEditProgressKomponen(r.task,r.kode,r.panelId,proses);
-                          return PCT_STEPS.map(s=>{
+                        {!isQtyBased&&PCT_STEPS.map(s=>{
                           const reached=r.pct>=s;
                           const isNext=!done&&s===PCT_STEPS.find(x=>x>r.pct);
                           const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
                           return(
                             <td key={s} style={{...td,textAlign:"center",padding:"4px",
-                              background:reached?pBg(s)+"cc":rBg,opacity:bisaEdit?1:0.4}}>
-                              <button disabled={!bisaEdit}
-                                onClick={()=>{if(bisaEdit)updatePctManual(r.panelId,r.kode,proses,reached?prevStep:s);}}
-                                title={!bisaEdit?"Pilih operator dan klik Mulai dulu":reached?`Batalkan ${s}%`:`Set ${s}%`}
-                                style={{width:22,height:22,borderRadius:5,border:"none",cursor:bisaEdit?"pointer":"not-allowed",
+                              background:reached?pBg(s)+"cc":rBg}}>
+                              <button
+                                onClick={()=>updatePctManual(r.panelId,r.kode,proses,reached?prevStep:s)}
+                                title={reached?`Batalkan ${s}%`:`Set ${s}%`}
+                                style={{width:22,height:22,borderRadius:5,border:"none",cursor:"pointer",
                                   background:reached?pColor(s):isNext?"#eff6ff":"transparent",
                                   display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto",
-                                  outline:isNext&&bisaEdit?`2px solid ${pc}`:"none",transition:"all .12s"}}>
+                                  outline:isNext?`2px solid ${pc}`:"none",transition:"all .12s"}}>
                                 {reached
                                   ?<span style={{color:"#fff",fontSize:12,fontWeight:700}}>✓</span>
                                   :isNext?<span style={{color:pc,fontSize:11,fontWeight:700}}>→</span>
@@ -1227,8 +1209,7 @@ function OperatorView({user}:any){
                               </button>
                             </td>
                           );
-                          });
-                        })()}
+                        })}
                         <td style={{...td,textAlign:"center"}}>
                           {r.pct===100
                             ?<Badge label="TERCAPAI" color="#16a34a" bg="#dcfce7"/>
