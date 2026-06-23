@@ -648,38 +648,7 @@ function OperatorView({user}:any){
     setTimerLoading(null);
     if(!error){
       setTimerAktif(prev=>{const n={...prev};delete n[key];return n;});
-      // Cek apakah progress sudah 100% dan lebih cepat dari rencana - kirim notifikasi
-      await cekDanKirimNotifikasiAvailable(pekerjaId,panelId,kode,proses);
     }
-  };
-
-  const cekDanKirimNotifikasiAvailable=async(pekerjaId:number,panelId:number,kode:string,proses:string)=>{
-    const panel=panelsMap[panelId];
-    if(!panel)return;
-    const pct=panel.checklist?.[kode]?.progress?.[proses]||0;
-    if(pct<100)return;
-    // Ambil rentangTanggal dari raw_schedule untuk cek apakah lebih cepat dari rencana
-    const{data:rawRows}=await supabase.from("raw_schedule").select("schedule").eq("panel_id",panelId).eq("proses",proses);
-    let tanggalRencanaSelesai:string|null=null;
-    for(const row of rawRows||[]){
-      for(const entries of Object.values(row.schedule||{}) as any[]){
-        for(const entry of entries){
-          const rentang=entry.rentangTanggal?.[kode];
-          if(rentang){tanggalRencanaSelesai=rentang.selesai;}
-        }
-      }
-    }
-    if(!tanggalRencanaSelesai)return;
-    const hariIni=new Date().toISOString().slice(0,10);
-    if(hariIni>=tanggalRencanaSelesai)return; // tidak lebih cepat, tidak perlu notifikasi
-    const pekerja=pekerjaList.find((p:any)=>p.id===pekerjaId);
-    const allItems=PANEL_TYPES[panel.tipe]?.wps.flatMap((w:any)=>w.items)||[];
-    const namaKomponen=allItems.find((it:any)=>it.kode===kode)?.nama||kode;
-    await supabase.from("fcs_notifikasi").insert({
-      tipe:"available",pekerja_id:pekerjaId,pekerja_nama:pekerja?.nama||"",
-      panel_id:panelId,panel_nama:panel.nama,kode_komponen:kode,nama_komponen:namaKomponen,proses,
-      tanggal_rencana_selesai:tanggalRencanaSelesai,tanggal_aktual_selesai:hariIni,
-    });
   };
 
   const updatePekerjaPerKomponen=async(taskId:number,kode:string,pekerjaIds:number[])=>{
