@@ -1087,13 +1087,6 @@ function OperatorView({user}:any){
                                   const key=`${r.panelId}_${r.kode}_${proses}_${w.id}`;
                                   const timer=timerAktif[key];
                                   const loading=timerLoading===key;
-                                  let durasiLabel="";
-                                  if(timer){
-                                    const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
-                                    const jam=Math.floor(menitBerjalan/60);
-                                    const menit=Math.round(menitBerjalan%60);
-                                    durasiLabel=jam>0?`${jam}j ${menit}m`:`${menit}m`;
-                                  }
                                   return(
                                     <div key={w.id} style={{display:"flex",alignItems:"center",gap:5,
                                       background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
@@ -1104,7 +1097,7 @@ function OperatorView({user}:any){
                                         onClick={()=>timer?stopTimer(w.id,r.panelId,r.kode,proses):startTimer(w.id,r.panelId,r.kode,proses,viewDate)}
                                         style={{fontSize:8,fontWeight:700,border:"none",borderRadius:10,padding:"2px 6px",cursor:loading?"not-allowed":"pointer",
                                           background:timer?"#fef2f2":"#f0fdf4",color:timer?"#dc2626":"#16a34a"}}>
-                                        {loading?"...":timer?`⏹ ${durasiLabel}`:"▶ Mulai"}
+                                        {loading?"...":timer?"⏹ Selesai":"▶ Mulai"}
                                       </button>
                                     </div>
                                   );

@@ -1088,24 +1088,31 @@ function OperatorView({user}:any){
                                   const timer=timerAktif[key];
                                   const loading=timerLoading===key;
                                   let durasiLabel="";
+                                  let isLama=false;
                                   if(timer){
                                     const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
+                                    isLama=menitBerjalan>600;
                                     const jam=Math.floor(menitBerjalan/60);
                                     const menit=Math.round(menitBerjalan%60);
                                     durasiLabel=jam>0?`${jam}j ${menit}m`:`${menit}m`;
                                   }
                                   return(
-                                    <div key={w.id} style={{display:"flex",alignItems:"center",gap:5,
-                                      background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
-                                      borderRadius:20,padding:"2px 6px 2px 8px",whiteSpace:"nowrap"}}>
-                                      <span style={{fontSize:10}}>{DIVISI_CONFIG[w.divisi]?.icon}</span>
-                                      <span style={{fontSize:10,fontWeight:700,color:DIVISI_CONFIG[w.divisi]?.color||"#64748b"}}>{w.nama}</span>
-                                      <button disabled={loading}
-                                        onClick={()=>timer?stopTimer(w.id,r.panelId,r.kode,proses):startTimer(w.id,r.panelId,r.kode,proses,viewDate)}
-                                        style={{fontSize:8,fontWeight:700,border:"none",borderRadius:10,padding:"2px 6px",cursor:loading?"not-allowed":"pointer",
-                                          background:timer?"#fef2f2":"#f0fdf4",color:timer?"#dc2626":"#16a34a"}}>
-                                        {loading?"...":timer?`⏹ ${durasiLabel}`:"▶ Mulai"}
-                                      </button>
+                                    <div key={w.id} style={{display:"flex",flexDirection:"column",gap:2}}>
+                                      <div style={{display:"flex",alignItems:"center",gap:5,
+                                        background:isLama?"#fef3c7":DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
+                                        borderRadius:20,padding:"2px 6px 2px 8px",whiteSpace:"nowrap"}}>
+                                        <span style={{fontSize:10}}>{isLama?"⚠️":DIVISI_CONFIG[w.divisi]?.icon}</span>
+                                        <span style={{fontSize:10,fontWeight:700,color:DIVISI_CONFIG[w.divisi]?.color||"#64748b"}}>{w.nama}</span>
+                                        <button disabled={loading}
+                                          onClick={()=>timer?stopTimer(w.id,r.panelId,r.kode,proses):startTimer(w.id,r.panelId,r.kode,proses,viewDate)}
+                                          style={{fontSize:8,fontWeight:700,border:"none",borderRadius:10,padding:"2px 6px",cursor:loading?"not-allowed":"pointer",
+                                            background:timer?"#fef2f2":"#f0fdf4",color:timer?"#dc2626":"#16a34a"}}>
+                                          {loading?"...":timer?`⏹ ${durasiLabel}`:"▶ Mulai"}
+                                        </button>
+                                      </div>
+                                      {isLama&&(
+                                        <span style={{fontSize:8,color:"#d97706",fontWeight:600,paddingLeft:8}}>Sudah {durasiLabel}, lupa tutup?</span>
+                                      )}
                                     </div>
                                   );
                                 })}
