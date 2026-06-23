@@ -676,7 +676,6 @@ function OperatorView({user}:any){
     setTimerLoading(null);
     if(!error){
       setTimerAktif(prev=>{const n={...prev};delete n[key];return n;});
-      setTimerSelesaiHariIni(prev=>({...prev,[key]:true}));
       // Cek apakah progress sudah 100% dan lebih cepat dari rencana - kirim notifikasi
       await cekDanKirimNotifikasiAvailable(pekerjaId,panelId,kode,proses);
     }
