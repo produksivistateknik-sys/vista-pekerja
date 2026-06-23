@@ -758,7 +758,6 @@ function OperatorView({user}:any){
             if(task.proses!==pr)return;
             const cellKey=`${kode}_${pr}`;
             if(processed.has(cellKey))return;
-            if(!canLockKomponen(task,kode,Number(panelId),pr))return;
             const pct=getProgressOnDate(cl,pr,viewDate);
             if(pct===0)return;
             const prevHist=cl.history?.[pr]||[];
