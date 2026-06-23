@@ -777,31 +777,6 @@ function OperatorView({user}:any){
       }).eq("id",Number(panelId));
       setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist,
         ...(busbarProgressUpdate?{busbar_progress:busbarProgressUpdate}:{})}}));
-
-      // Bersihkan komponen yang sudah 100% selesai dari SEMUA tanggal di raw_schedule (khusus WIRING CONTROL/POWER)
-      for(const proses of myProses){
-        if(proses!=="WIRING CONTROL"&&proses!=="WIRING POWER")continue;
-        const komponenSelesai=Object.keys(newChecklist).filter(kode=>
-          (newChecklist[kode]?.progress?.[proses]||0)>=100
-        );
-        if(komponenSelesai.length===0)continue;
-        const{data:rawRows}=await supabase.from("raw_schedule").select("id,schedule").eq("panel_id",Number(panelId)).eq("proses",proses);
-        for(const row of rawRows||[]){
-          let berubah=false;
-          const newSchedule:any={};
-          for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
-            const newEntries=entries.map((entry:any)=>{
-              const filteredKomp=(entry.komponen||[]).filter((k:string)=>!komponenSelesai.includes(k));
-              if(filteredKomp.length!==(entry.komponen||[]).length)berubah=true;
-              return{...entry,komponen:filteredKomp};
-            }).filter((entry:any)=>(entry.komponen||[]).length>0);
-            if(newEntries.length>0)newSchedule[tglKey]=newEntries;
-          }
-          if(berubah){
-            await supabase.from("raw_schedule").update({schedule:newSchedule}).eq("id",row.id);
-          }
-        }
-      }
     }
 
     // simpan catatan ke tabel kendala
