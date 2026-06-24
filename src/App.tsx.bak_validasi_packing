@@ -1147,11 +1147,6 @@ function OperatorView({user}:any){
   const isWiringProses=(pr:string)=>pr==="WIRING CONTROL"||pr==="WIRING POWER";
 
   const canEditProgressKomponen=(task:any,kode:string,panelId:number,proses:string):boolean=>{
-    if(proses==="PACKING"){
-      const panel=panelsMap[panelId];
-      const cl=panel?.qc_checklist||{};
-      return QC_ITEMS.every(item=>cl[item.key]?.status==="lolos");
-    }
     if(!isWiringProses(proses))return true;
     const ids=(task?.pekerja_per_komponen||{})[kode]||[];
     if(ids.length===0)return false;
@@ -1749,7 +1744,7 @@ function OperatorView({user}:any){
                               background:reached?pBg(s)+"cc":rBg,opacity:bisaEdit?1:0.4}}>
                               <button disabled={!bisaEdit}
                                 onClick={()=>{if(bisaEdit)updatePctManual(r.panelId,r.kode,proses,reached?prevStep:s);}}
-                                title={!bisaEdit?(proses==="PACKING"?"QC checklist belum lolos semua":"Pilih operator dan klik Mulai dulu"):reached?`Batalkan ${s}%`:`Set ${s}%`}
+                                title={!bisaEdit?"Pilih operator dan klik Mulai dulu":reached?`Batalkan ${s}%`:`Set ${s}%`}
                                 style={{width:22,height:22,borderRadius:5,border:"none",cursor:bisaEdit?"pointer":"not-allowed",
                                   background:reached?pColor(s):isNext?"#eff6ff":"transparent",
                                   display:"flex",alignItems:"center",justifyContent:"center",margin:"0 auto",
