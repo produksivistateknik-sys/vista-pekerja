@@ -506,6 +506,7 @@ function NameplateView({user}:any){
 
   useEffect(()=>{fetchData();},[]);
 
+  const[locked,setLocked]=useState<Record<string,boolean>>({});
   const[lockLoading,setLockLoading]=useState(false);
 
   const updateProgress=(panelId:number,field:"nameplate_progress"|"yellowmark_progress",val:number)=>{
@@ -536,6 +537,7 @@ function NameplateView({user}:any){
       count++;
     }
     setLockLoading(false);
+    setLocked(prev=>({...prev,[TODAY]:true}));
     alert(count>0?`${count} panel berhasil dikunci`:"Tidak ada perubahan untuk dikunci");
     fetchData();
   };

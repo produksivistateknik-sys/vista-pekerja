@@ -506,38 +506,13 @@ function NameplateView({user}:any){
 
   useEffect(()=>{fetchData();},[]);
 
-  const[lockLoading,setLockLoading]=useState(false);
-
-  const updateProgress=(panelId:number,field:"nameplate_progress"|"yellowmark_progress",val:number)=>{
-    setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,[field]:val}:p));
-  };
-
-  const kunciProgress=async(panelList:any[])=>{
-    setLockLoading(true);
-    let count=0;
-    for(const p of panelList){
-      const npHist=p.nameplate_history||[];
-      const ymHist=p.yellowmark_history||[];
-      const npExistIdx=npHist.findIndex((h:any)=>h.tanggal===TODAY);
-      const ymExistIdx=ymHist.findIndex((h:any)=>h.tanggal===TODAY);
-      const npChanged=npExistIdx<0||npHist[npExistIdx].pct!==(p.nameplate_progress||0);
-      const ymChanged=ymExistIdx<0||ymHist[ymExistIdx].pct!==(p.yellowmark_progress||0);
-      if(!npChanged&&!ymChanged)continue;
-      const newNpHist=[...npHist];
-      if(npExistIdx>=0)newNpHist[npExistIdx]={...newNpHist[npExistIdx],pct:p.nameplate_progress||0,ts:new Date().toISOString()};
-      else newNpHist.push({tanggal:TODAY,pct:p.nameplate_progress||0,oleh:user.nama,ts:new Date().toISOString()});
-      const newYmHist=[...ymHist];
-      if(ymExistIdx>=0)newYmHist[ymExistIdx]={...newYmHist[ymExistIdx],pct:p.yellowmark_progress||0,ts:new Date().toISOString()};
-      else newYmHist.push({tanggal:TODAY,pct:p.yellowmark_progress||0,oleh:user.nama,ts:new Date().toISOString()});
-      await supabase.from("panels").update({
-        nameplate_progress:p.nameplate_progress||0,nameplate_updated_by:user.nama,nameplate_updated_at:new Date().toISOString(),nameplate_history:newNpHist,
-        yellowmark_progress:p.yellowmark_progress||0,yellowmark_updated_by:user.nama,yellowmark_updated_at:new Date().toISOString(),yellowmark_history:newYmHist,
-      }).eq("id",p.id);
-      count++;
-    }
-    setLockLoading(false);
-    alert(count>0?`${count} panel berhasil dikunci`:"Tidak ada perubahan untuk dikunci");
-    fetchData();
+  const updateProgress=async(panelId:number,field:"nameplate_progress"|"yellowmark_progress",val:number)=>{
+    const updateByField=field==="nameplate_progress"?"nameplate_updated_by":"yellowmark_updated_by";
+    const updateAtField=field==="nameplate_progress"?"nameplate_updated_at":"yellowmark_updated_at";
+    await supabase.from("panels").update({
+      [field]:val,[updateByField]:user.nama,[updateAtField]:new Date().toISOString()
+    }).eq("id",panelId);
+    setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,[field]:val,[updateByField]:user.nama}:p));
   };
 
   const urutanLevelNp:Record<string,number>={telat:0,mendesak:1,perhatian:2,normal:3};
@@ -616,16 +591,8 @@ function NameplateView({user}:any){
         style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:"#0891b2",fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12,padding:0}}>
         <i className="ti ti-arrow-left" style={{fontSize:16}}/> Kembali ke Daftar Proyek
       </button>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
-        <div>
-          <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:4}}>{selectedProject?.wo?.proyek}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>WO {selectedProject?.wo?.wo}</div>
-        </div>
-        <button onClick={()=>kunciProgress(selectedProject?.panels||[])} disabled={lockLoading}
-          style={{background:lockLoading?"#94a3b8":"#0891b2",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:lockLoading?"not-allowed":"pointer",whiteSpace:"nowrap" as const}}>
-          {lockLoading?"⏳ Mengunci...":"🔒 Kunci Progress"}
-        </button>
-      </div>
+      <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:4}}>{selectedProject?.wo?.proyek}</div>
+      <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>WO {selectedProject?.wo?.wo}</div>
 
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {(selectedProject?.panels||[]).map((p:any)=>{
