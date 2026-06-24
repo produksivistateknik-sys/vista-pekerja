@@ -489,19 +489,6 @@ function OperatorView({user}:any){
   const [loadingData,setLoadingData]=useState(false);
   const [pekerjaList,setPekerjaList]=useState<any[]>([]);
   const [operatorModal,setOperatorModal]=useState<any>(null);
-  const [terakhirKerjaPekerjaId,setTerakhirKerjaPekerjaId]=useState<number|null>(null);
-
-  useEffect(()=>{
-    if(!operatorModal){setTerakhirKerjaPekerjaId(null);return;}
-    const task=renhar.find((r:any)=>r.id===operatorModal.taskId);
-    if(!task){setTerakhirKerjaPekerjaId(null);return;}
-    const panelId=task.panel_id||task.panelId;
-    supabase.from("fcs_timer_kerja").select("pekerja_id,mulai")
-      .eq("panel_id",panelId).eq("kode_komponen",operatorModal.kode).eq("proses",task.proses)
-      .order("mulai",{ascending:false}).limit(1).then(({data})=>{
-        setTerakhirKerjaPekerjaId(data&&data.length>0?data[0].pekerja_id:null);
-      });
-  },[operatorModal]);
   const [timerAktif,setTimerAktif]=useState<Record<string,any>>({});
   const [timerPernahMulai,setTimerPernahMulai]=useState<Record<string,boolean>>({});
   const [timerSelesaiHariIni,setTimerSelesaiHariIni]=useState<Record<string,boolean>>({});
@@ -1315,9 +1302,6 @@ function OperatorView({user}:any){
                     <input type="checkbox" checked={checked}
                       onChange={()=>setTempPekerjaIds(prev=>checked?prev.filter(id=>id!==p.id):[...prev,p.id])}/>
                     <span style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{p.nama}</span>
-                    {terakhirKerjaPekerjaId===p.id&&(
-                      <span title="Terakhir kerja komponen ini" style={{width:8,height:8,borderRadius:99,background:"#eab308",marginLeft:"auto"}}/>
-                    )}
                   </label>
                 );
               })}

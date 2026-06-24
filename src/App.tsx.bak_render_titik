@@ -1315,9 +1315,6 @@ function OperatorView({user}:any){
                     <input type="checkbox" checked={checked}
                       onChange={()=>setTempPekerjaIds(prev=>checked?prev.filter(id=>id!==p.id):[...prev,p.id])}/>
                     <span style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{p.nama}</span>
-                    {terakhirKerjaPekerjaId===p.id&&(
-                      <span title="Terakhir kerja komponen ini" style={{width:8,height:8,borderRadius:99,background:"#eab308",marginLeft:"auto"}}/>
-                    )}
                   </label>
                 );
               })}
