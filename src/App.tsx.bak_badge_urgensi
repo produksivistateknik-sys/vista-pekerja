@@ -1145,28 +1145,7 @@ function OperatorView({user}:any){
                     return(
                       <tr key={`${r.task.id}-${r.kode}`}>
                         <td style={{...td,position:"sticky",left:0,zIndex:1,textAlign:"center",fontFamily:"'DM Mono',monospace",color:"#94a3b8",fontWeight:700}}>{ri+1}</td>
-                        <td style={{...td,position:"sticky",left:40,zIndex:1,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap"}}>
-                          {(()=>{
-                            const urg=getUrgensi(r.task.wo_id||r.task.woId);
-                            const warnaMap:Record<string,{bg:string,color:string}>={
-                              telat:{bg:"#fef2f2",color:"#dc2626"},
-                              mendesak:{bg:"#fff7ed",color:"#ea580c"},
-                              perhatian:{bg:"#fefce8",color:"#ca8a04"},
-                              normal:{bg:"",color:""},
-                            };
-                            const w=warnaMap[urg.level];
-                            return(
-                              <div style={{display:"flex",flexDirection:"column",gap:2}}>
-                                <span>{r.task.proyek}</span>
-                                {urg.label&&urg.level!=="normal"&&(
-                                  <span style={{fontSize:8,fontWeight:700,background:w.bg,color:w.color,borderRadius:4,padding:"1px 5px",width:"fit-content"}}>
-                                    {urg.level==="telat"?"⚠️ ":"⏰ "}{urg.label}
-                                  </span>
-                                )}
-                              </div>
-                            );
-                          })()}
-                        </td>
+                        <td style={{...td,position:"sticky",left:40,zIndex:1,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap"}}>{r.task.proyek}</td>
                         <td style={{...td,position:"sticky",left:140,zIndex:1,fontWeight:600,fontSize:11,color:"#1e293b",whiteSpace:"nowrap"}}>
                           <span style={{fontSize:10,color:"#94a3b8",marginRight:4}}>#{r.panel.no_pnl||r.panel.noPnl}</span>{r.panel.nama}
                           {r.task.carryOver&&r.isFirst&&(
