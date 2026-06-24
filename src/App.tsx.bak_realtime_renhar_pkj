@@ -743,16 +743,6 @@ function OperatorView({user}:any){
       setTimerPernahMulai(mapPernahMulai);
       setTimerSelesaiHariIni(mapSelesaiHariIni);
     });
-
-    const renharChannel=supabase.channel("realtime-renhar-pekerja")
-      .on("postgres_changes",{event:"*",schema:"public",table:"renhar"},(payload:any)=>{
-        const row=payload.new||payload.old;
-        if(row?.tanggal===viewDate&&row?.divisi===user.divisi){
-          loadData();
-        }
-      })
-      .subscribe();
-    return()=>{supabase.removeChannel(renharChannel);};
   },[viewDate,user.divisi]);
 
   const loadData=async()=>{
