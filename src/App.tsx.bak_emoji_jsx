@@ -606,7 +606,7 @@ function NameplateView({user}:any){
 
               <div style={{marginBottom:8}}>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                  <span style={{fontSize:11,fontWeight:600,color:"#0891b2"}}>🏷️ Nameplate</span>
+                  <span style={{fontSize:11,fontWeight:600,color:"#0891b2"}}>\u{1F3F7}\ufe0f Nameplate</span>
                   <span style={{fontSize:11,fontWeight:700,color:npPct>=100?"#16a34a":"#64748b"}}>{npPct}%</span>
                 </div>
                 <div style={{display:"flex",gap:4}}>
@@ -620,7 +620,7 @@ function NameplateView({user}:any){
 
               <div>
                 <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                  <span style={{fontSize:11,fontWeight:600,color:"#ca8a04"}}>🟡 Yellowmark</span>
+                  <span style={{fontSize:11,fontWeight:600,color:"#ca8a04"}}>\u{1F7E1} Yellowmark</span>
                   <span style={{fontSize:11,fontWeight:700,color:ymPct>=100?"#16a34a":"#64748b"}}>{ymPct}%</span>
                 </div>
                 <div style={{display:"flex",gap:4}}>
