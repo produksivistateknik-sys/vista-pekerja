@@ -506,14 +506,7 @@ function NameplateView({user}:any){
     setLoading(false);
   };
 
-  useEffect(()=>{
-    fetchData();
-    const ch=supabase.channel("realtime-panels-nameplate")
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},()=>{fetchData();})
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"panels"},()=>{fetchData();})
-      .subscribe();
-    return()=>{supabase.removeChannel(ch);};
-  },[]);
+  useEffect(()=>{fetchData();},[]);
 
   const[lockLoading,setLockLoading]=useState(false);
 
