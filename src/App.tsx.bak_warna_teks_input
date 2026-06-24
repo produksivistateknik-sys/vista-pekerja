@@ -622,7 +622,7 @@ function QCChecklistTab({user}:any){
         <div style={{position:"relative" as const,marginBottom:14}}>
           <i className="ti ti-search" style={{position:"absolute" as const,left:12,top:11,fontSize:15,color:"#94a3b8"}}/>
           <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="Cari proyek atau WO"
-            style={{width:"100%",height:38,padding:"0 12px 0 34px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#fff",color:"#1e293b",boxSizing:"border-box" as const}}/>
+            style={{width:"100%",height:38,padding:"0 12px 0 34px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#fff",boxSizing:"border-box" as const}}/>
         </div>
         {loading?(
           <div style={{textAlign:"center",padding:32,color:"#94a3b8",fontSize:13}}>Memuat data…</div>
@@ -716,7 +716,7 @@ function QCChecklistTab({user}:any){
                           {pending.status==="gagal"&&(
                             <input placeholder="Catatan kegagalan" autoFocus
                               onChange={(e:any)=>setPendingChecklist(prev=>({...prev,[pendKey]:{...prev[pendKey],catatan:e.target.value}}))}
-                              style={{width:"100%",marginBottom:6,padding:"7px 10px",fontSize:11.5,borderRadius:6,border:"1px solid #fecaca",outline:"none",background:"#fef2f2",color:"#1e293b",boxSizing:"border-box" as const}}/>
+                              style={{width:"100%",marginBottom:6,padding:"7px 10px",fontSize:11.5,borderRadius:6,border:"1px solid #fecaca",outline:"none",background:"#fef2f2",boxSizing:"border-box" as const}}/>
                           )}
                           <div style={{display:"flex",gap:6}}>
                             <button onClick={()=>{
