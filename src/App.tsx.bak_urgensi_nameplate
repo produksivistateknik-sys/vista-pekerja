@@ -477,15 +477,6 @@ function Login({onLogin}:any){
 // ─────────────────────────────────────────────────────────────────────────────
 const PROGRESS_STEPS_NP=[25,50,75,100];
 
-const getUrgensiPanel=(target:string|undefined)=>{
-  if(!target)return{level:"normal",label:"",hari:null};
-  const hari=Math.ceil((new Date(target).getTime()-new Date().getTime())/86400000);
-  if(hari<0)return{level:"telat",label:`Telat ${Math.abs(hari)}hr`,hari};
-  if(hari<=3)return{level:"mendesak",label:`H-${hari}`,hari};
-  if(hari<=7)return{level:"perhatian",label:`H-${hari}`,hari};
-  return{level:"normal",label:`H-${hari}`,hari};
-};
-
 function NameplateView({user}:any){
   const[panelsList,setPanelsList]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
@@ -495,19 +486,14 @@ function NameplateView({user}:any){
     setLoading(true);
     const{data:panels}=await supabase.from("panels").select("*");
     const woIds=[...new Set((panels??[]).map((p:any)=>p.wo_id).filter(Boolean))];
-    const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target").in("id",woIds):{data:[]};
+    const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek").in("id",woIds):{data:[]};
     const woMap:Record<number,any>={};
     (wos??[]).forEach((w:any)=>{woMap[w.id]=w;});
     const merged=(panels??[]).map((p:any)=>({...p,_wo:woMap[p.wo_id]||{}}));
-    const urutanLevelNp:Record<string,number>={telat:0,mendesak:1,perhatian:2,normal:3};
     merged.sort((a:any,b:any)=>{
       const aDone=(a.nameplate_progress||0)>=100&&(a.yellowmark_progress||0)>=100;
       const bDone=(b.nameplate_progress||0)>=100&&(b.yellowmark_progress||0)>=100;
       if(aDone!==bDone)return aDone?1:-1;
-      const uA=getUrgensiPanel(a._wo?.target);const uB=getUrgensiPanel(b._wo?.target);
-      const lvA=urutanLevelNp[uA.level]??3;const lvB=urutanLevelNp[uB.level]??3;
-      if(lvA!==lvB)return lvA-lvB;
-      if(uA.hari!==null&&uB.hari!==null)return uA.hari-uB.hari;
       return 0;
     });
     setPanelsList(merged);
@@ -546,19 +532,8 @@ function NameplateView({user}:any){
             const done=npPct>=100&&ymPct>=100;
             return(
               <div key={p.id} style={{background:"#fff",border:`1px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:10,padding:"12px 14px",opacity:done?0.7:1}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start"}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.nama}</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>{p._wo?.proyek} · WO {p._wo?.wo}</div>
-                  </div>
-                  {(()=>{
-                    const urg=getUrgensiPanel(p._wo?.target);
-                    if(!urg.label||urg.level==="normal")return null;
-                    const warnaMap:Record<string,{bg:string,color:string}>={telat:{bg:"#fef2f2",color:"#dc2626"},mendesak:{bg:"#fff7ed",color:"#ea580c"},perhatian:{bg:"#fefce8",color:"#ca8a04"}};
-                    const w=warnaMap[urg.level];
-                    return(<span style={{fontSize:9,fontWeight:700,background:w.bg,color:w.color,borderRadius:6,padding:"2px 7px",whiteSpace:"nowrap" as const}}>{urg.level==="telat"?"⚠️ ":"⏰ "}{urg.label}</span>);
-                  })()}
-                </div>
+                <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.nama}</div>
+                <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>{p._wo?.proyek} · WO {p._wo?.wo}</div>
 
                 <div style={{marginBottom:8}}>
                   <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
