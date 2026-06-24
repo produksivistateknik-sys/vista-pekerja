@@ -493,6 +493,29 @@ const QC_ITEMS=[
   {key:"test",label:"QC Test",desc:"Tes elektrikal standar"},
 ];
 
+function QCDivisiView({user}:any){
+  const[qcTab,setQcTab]=useState<"checklist"|"packing">("checklist");
+  return(
+    <div style={{display:"flex",flexDirection:"column" as const,height:"100%"}}>
+      <div style={{display:"flex",gap:8,padding:"10px 14px",borderBottom:"1px solid #e2e8f0",background:"#fff"}}>
+        <button onClick={()=>setQcTab("checklist")}
+          style={{flex:1,padding:"8px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,
+            background:qcTab==="checklist"?"#16a34a":"#f1f5f9",color:qcTab==="checklist"?"#fff":"#64748b"}}>
+          ✅ Checklist QC
+        </button>
+        <button onClick={()=>setQcTab("packing")}
+          style={{flex:1,padding:"8px",borderRadius:8,border:"none",cursor:"pointer",fontWeight:700,fontSize:12,
+            background:qcTab==="packing"?"#16a34a":"#f1f5f9",color:qcTab==="packing"?"#fff":"#64748b"}}>
+          📦 Packing
+        </button>
+      </div>
+      <div style={{flex:1,overflowY:"auto" as const}}>
+        {qcTab==="checklist"?<QCChecklistTab user={user}/>:<OperatorView user={user}/>}
+      </div>
+    </div>
+  );
+}
+
 function QCChecklistTab({user}:any){
   const[panelsList,setPanelsList]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
@@ -530,6 +553,7 @@ function QCChecklistTab({user}:any){
     await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
     setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));
 
+    // Kirim notifikasi ke planner kalau item baru ditandai Gagal (bukan sekadar update catatan saat sudah gagal)
     if(status==="gagal"&&itemSebelumnya!=="gagal"){
       const itemLabel=QC_ITEMS.find(it=>it.key===itemKey)?.label||itemKey;
       await supabase.from("fcs_notifikasi").insert({
@@ -565,16 +589,6 @@ function QCChecklistTab({user}:any){
     setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_foto:newFoto}:p));
   };
 
-  const togglePacking=async(panelId:number,currentVal:boolean)=>{
-    const newVal=!currentVal;
-    await supabase.from("panels").update({
-      packing_done:newVal,
-      packing_done_by:newVal?user.nama:null,
-      packing_done_at:newVal?new Date().toISOString():null,
-    }).eq("id",panelId);
-    setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,packing_done:newVal,packing_done_by:newVal?user.nama:null}:p));
-  };
-
   const getQcStatus=(panel:any)=>{
     const cl=panel.qc_checklist||{};
     const statuses=QC_ITEMS.map(it=>cl[it.key]?.status||"belum");
@@ -594,7 +608,7 @@ function QCChecklistTab({user}:any){
     });
     return Object.entries(groups).map(([woId,g])=>{
       const totalPanel=g.panels.length;
-      const selesai=g.panels.filter((p:any)=>p.packing_done).length;
+      const selesai=g.panels.filter((p:any)=>getQcStatus(p)==="lolos").length;
       return{woId:Number(woId),wo:g.wo,panels:g.panels,totalPanel,selesai};
     }).sort((a,b)=>{
       const aDone=a.selesai===a.totalPanel;
@@ -617,40 +631,31 @@ function QCChecklistTab({user}:any){
 
   if(!selectedWoId){
     return(
-      <div style={{padding:"16px",background:"#f8fafc",minHeight:"100%"}}>
-        <div style={{position:"relative" as const,marginBottom:14}}>
-          <i className="ti ti-search" style={{position:"absolute" as const,left:12,top:11,fontSize:15,color:"#94a3b8"}}/>
-          <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="Cari proyek atau WO"
-            style={{width:"100%",height:38,padding:"0 12px 0 34px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#fff",boxSizing:"border-box" as const}}/>
-        </div>
+      <div style={{padding:"12px 14px"}}>
+        <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="🔍 Cari proyek atau WO..."
+          style={{width:"100%",height:36,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,marginBottom:12,outline:"none"}}/>
         {loading?(
-          <div style={{textAlign:"center",padding:32,color:"#94a3b8",fontSize:13}}>Memuat data…</div>
+          <div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Memuat data...</div>
         ):filteredProjects.length===0?(
-          <div style={{textAlign:"center",padding:32,color:"#94a3b8",fontSize:13}}>Tidak ada proyek</div>
+          <div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Tidak ada proyek</div>
         ):(
-          <div style={{display:"flex",flexDirection:"column" as const,gap:1,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden"}}>
-            {filteredProjects.map((g:any,gi:number)=>{
+          <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
+            {filteredProjects.map((g:any)=>{
               const allDone=g.selesai===g.totalPanel;
               const urg=getUrgensiPanel(g.wo?.target);
               const w=warnaUrgMap[urg.level];
               return(
                 <div key={g.woId} onClick={()=>setSelectedWoId(g.woId)}
-                  style={{padding:"13px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",
-                    borderTop:gi>0?"1px solid #f1f5f9":"none",background:"#fff"}}>
-                  <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1}}>
-                    <div style={{width:34,height:34,borderRadius:8,background:allDone?"#f0fdf4":"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <i className={allDone?"ti ti-check":"ti ti-package"} style={{fontSize:16,color:allDone?"#16a34a":"#2563eb"}}/>
-                    </div>
-                    <div style={{minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:13.5,color:"#0f172a",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{g.wo?.proyek}</div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>WO {g.wo?.wo} · {g.selesai}/{g.totalPanel} packing selesai</div>
-                    </div>
+                  style={{background:"#fff",border:`1px solid ${allDone?"#bbf7d0":"#e2e8f0"}`,borderRadius:10,padding:"14px 16px",cursor:"pointer",opacity:allDone?0.7:1,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{g.wo?.proyek}</div>
+                    <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>WO {g.wo?.wo} · {g.selesai}/{g.totalPanel} panel lolos QC</div>
                   </div>
-                  <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
                     {urg.label&&urg.level!=="normal"&&w&&(
-                      <span style={{fontSize:9,fontWeight:600,background:w.bg,color:w.color,borderRadius:5,padding:"3px 7px",whiteSpace:"nowrap" as const}}>{urg.label}</span>
+                      <span style={{fontSize:9,fontWeight:700,background:w.bg,color:w.color,borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap" as const}}>{urg.level==="telat"?"⚠️ ":"⏰ "}{urg.label}</span>
                     )}
-                    <i className="ti ti-chevron-right" style={{fontSize:16,color:"#cbd5e1"}}/>
+                    <i className="ti ti-chevron-right" style={{fontSize:18,color:"#94a3b8"}}/>
                   </div>
                 </div>
               );
@@ -662,107 +667,90 @@ function QCChecklistTab({user}:any){
   }
 
   return(
-    <div style={{padding:"16px",background:"#f8fafc",minHeight:"100%"}}>
+    <div style={{padding:"12px 14px"}}>
       <button onClick={()=>setSelectedWoId(null)}
-        style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"#2563eb",fontWeight:600,fontSize:12.5,cursor:"pointer",marginBottom:14,padding:0}}>
-        <i className="ti ti-chevron-left" style={{fontSize:15}}/> Daftar proyek
+        style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:"#16a34a",fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12,padding:0}}>
+        <i className="ti ti-arrow-left" style={{fontSize:16}}/> Kembali ke Daftar Proyek
       </button>
-      <div style={{fontWeight:700,fontSize:15,color:"#0f172a",marginBottom:2}}>{selectedProject?.wo?.proyek}</div>
-      <div style={{fontSize:11.5,color:"#94a3b8",marginBottom:16}}>WO {selectedProject?.wo?.wo}</div>
+      <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:4}}>{selectedProject?.wo?.proyek}</div>
+      <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>WO {selectedProject?.wo?.wo}</div>
 
       <div style={{display:"flex",flexDirection:"column" as const,gap:12}}>
         {(selectedProject?.panels||[]).map((p:any)=>{
           const cl=p.qc_checklist||{};
           const qcStatus=getQcStatus(p);
-          const qcLolosSemua=qcStatus==="lolos";
           const fotoList=p.qc_foto||[];
-          const statusBadge=qcStatus==="lolos"?{bg:"#f0fdf4",color:"#16a34a",label:"QC Lolos"}:qcStatus==="gagal"?{bg:"#fef2f2",color:"#dc2626",label:"QC Gagal"}:{bg:"#f1f5f9",color:"#64748b",label:"Belum dicek"};
           return(
-            <div key={p.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
-              <div style={{padding:"12px 14px",borderBottom:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                <span style={{fontWeight:600,fontSize:13.5,color:"#0f172a"}}>{p.nama}</span>
-                <span style={{fontSize:10,fontWeight:600,padding:"3px 9px",borderRadius:5,background:statusBadge.bg,color:statusBadge.color}}>
-                  {statusBadge.label}
+            <div key={p.id} style={{background:"#fff",border:`1px solid ${qcStatus==="lolos"?"#bbf7d0":qcStatus==="gagal"?"#fecaca":"#e2e8f0"}`,borderRadius:10,padding:"14px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+                <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.nama}</div>
+                <span style={{fontSize:9,fontWeight:700,padding:"3px 8px",borderRadius:6,
+                  background:qcStatus==="lolos"?"#f0fdf4":qcStatus==="gagal"?"#fef2f2":"#f1f5f9",
+                  color:qcStatus==="lolos"?"#16a34a":qcStatus==="gagal"?"#dc2626":"#94a3b8"}}>
+                  {qcStatus==="lolos"?"✅ LOLOS":qcStatus==="gagal"?"❌ GAGAL":"⏳ BELUM"}
                 </span>
               </div>
 
-              <div>
-                {QC_ITEMS.map((item)=>{
+              <div style={{display:"flex",flexDirection:"column" as const,gap:10,marginBottom:16}}>
+                {QC_ITEMS.map((item,itemIdx)=>{
                   const itemData=cl[item.key]||{status:"belum",catatan:""};
+                  const itemIcons=["ti-clipboard-check","ti-list-check","ti-bolt","ti-bulb"];
                   return(
-                    <div key={item.key} style={{padding:"10px 14px",borderBottom:"1px solid #f8fafc"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
-                        <span style={{fontSize:12.5,color:"#334155",flex:1}}>{item.label}</span>
-                        <div style={{display:"flex",border:"1px solid #e2e8f0",borderRadius:7,overflow:"hidden",flexShrink:0}}>
-                          <button onClick={()=>updateChecklistItem(p.id,item.key,"lolos",itemData.catatan||"")}
-                            style={{width:60,height:28,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,
-                              background:itemData.status==="lolos"?"#16a34a":"#fff",color:itemData.status==="lolos"?"#fff":"#94a3b8"}}>
-                            Lolos
-                          </button>
-                          <button onClick={()=>updateChecklistItem(p.id,item.key,"gagal",itemData.catatan||"")}
-                            style={{width:60,height:28,border:"none",borderLeft:"1px solid #e2e8f0",cursor:"pointer",fontSize:11,fontWeight:600,
-                              background:itemData.status==="gagal"?"#dc2626":"#fff",color:itemData.status==="gagal"?"#fff":"#94a3b8"}}>
-                            Gagal
-                          </button>
+                    <div key={item.key} style={{background:itemData.status==="lolos"?"#f0fdf4":itemData.status==="gagal"?"#fef2f2":"#f8fafc",
+                      borderRadius:12,padding:"12px 14px",border:`1px solid ${itemData.status==="lolos"?"#bbf7d0":itemData.status==="gagal"?"#fecaca":"#e2e8f0"}`}}>
+                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:10}}>
+                        <div style={{width:30,height:30,borderRadius:8,background:"#fff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          <i className={"ti "+itemIcons[itemIdx]} style={{fontSize:16,color:"#16a34a"}}/>
                         </div>
+                        <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{item.label}</span>
+                      </div>
+                      <div style={{display:"flex",gap:8}}>
+                        <button onClick={()=>updateChecklistItem(p.id,item.key,"lolos",itemData.catatan||"")}
+                          style={{flex:1,height:44,borderRadius:10,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,
+                            display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+                            background:itemData.status==="lolos"?"#16a34a":"#fff",color:itemData.status==="lolos"?"#fff":"#94a3b8"}}>
+                          <i className="ti ti-check" style={{fontSize:16}}/> Lolos
+                        </button>
+                        <button onClick={()=>updateChecklistItem(p.id,item.key,"gagal",itemData.catatan||"")}
+                          style={{flex:1,height:44,borderRadius:10,border:"none",cursor:"pointer",fontSize:13,fontWeight:700,
+                            display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+                            background:itemData.status==="gagal"?"#dc2626":"#fff",color:itemData.status==="gagal"?"#fff":"#94a3b8"}}>
+                          <i className="ti ti-x" style={{fontSize:16}}/> Gagal
+                        </button>
                       </div>
                       {itemData.status==="gagal"&&(
-                        <input placeholder="Catatan kegagalan" defaultValue={itemData.catatan}
+                        <input placeholder="Catatan kegagalan..." defaultValue={itemData.catatan}
                           onBlur={(e:any)=>updateChecklistItem(p.id,item.key,"gagal",e.target.value)}
-                          style={{width:"100%",marginTop:8,padding:"7px 10px",fontSize:11.5,borderRadius:6,border:"1px solid #fecaca",outline:"none",background:"#fef2f2",boxSizing:"border-box" as const}}/>
+                          style={{width:"100%",marginTop:8,padding:"10px 12px",fontSize:12,borderRadius:8,border:"1px solid #fecaca",outline:"none"}}/>
                       )}
                     </div>
                   );
                 })}
               </div>
 
-              <div style={{padding:"12px 14px",borderBottom:"1px solid #f1f5f9"}}>
-                <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                  <span style={{fontSize:11.5,fontWeight:600,color:"#475569"}}>Dokumentasi foto</span>
-                  <span style={{fontSize:10.5,color:"#94a3b8"}}>{fotoList.length} foto</span>
+              <div style={{borderTop:"1px solid #f1f5f9",paddingTop:14}}>
+                <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:10}}>
+                  <i className="ti ti-camera" style={{fontSize:16,color:"#1e293b"}}/>
+                  <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>Dokumentasi Foto</span>
+                  {fotoList.length>0&&<span style={{fontSize:11,color:"#94a3b8"}}>({fotoList.length})</span>}
                 </div>
-                <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
+                <div style={{display:"flex",gap:8,flexWrap:"wrap" as const}}>
                   {fotoList.map((f:any,fi:number)=>(
-                    <div key={fi} style={{position:"relative" as const,width:52,height:52}}>
-                      <img src={f.url} style={{width:52,height:52,objectFit:"cover" as const,borderRadius:6,border:"1px solid #e2e8f0"}}/>
+                    <div key={fi} style={{position:"relative" as const,width:76,height:76}}>
+                      <img src={f.url} style={{width:76,height:76,objectFit:"cover" as const,borderRadius:10,border:"1px solid #e2e8f0"}}/>
                       <button onClick={()=>hapusFoto(p.id,f.url)}
-                        style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#64748b",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                        <i className="ti ti-x" style={{fontSize:10}}/>
+                        style={{position:"absolute" as const,top:-8,right:-8,width:24,height:24,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                        <i className="ti ti-x" style={{fontSize:13}}/>
                       </button>
                     </div>
                   ))}
-                  <label style={{width:52,height:52,border:"1px dashed #cbd5e1",borderRadius:6,display:"flex",alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#94a3b8",background:"#f8fafc"}}>
-                    <i className={uploadingId===p.id?"ti ti-loader-2":"ti ti-plus"} style={{fontSize:16}}/>
+                  <label style={{width:76,height:76,border:"2px dashed #16a34a",borderRadius:10,display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",cursor:"pointer",color:"#16a34a",gap:2,background:"#f0fdf4"}}>
+                    <i className={uploadingId===p.id?"ti ti-loader-2":"ti ti-camera-plus"} style={{fontSize:24}}/>
+                    <span style={{fontSize:9,fontWeight:700}}>{uploadingId===p.id?"Upload...":"Ambil Foto"}</span>
                     <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
                       onChange={(e:any)=>{if(e.target.files?.[0])uploadFoto(p.id,e.target.files[0]);}}/>
                   </label>
                 </div>
-              </div>
-
-              <div style={{padding:"12px 14px"}}>
-                {p.packing_done?(
-                  <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",padding:"10px 12px",background:"#f0fdf4",borderRadius:8}}>
-                    <div style={{display:"flex",alignItems:"center",gap:8}}>
-                      <i className="ti ti-circle-check" style={{fontSize:18,color:"#16a34a"}}/>
-                      <div>
-                        <div style={{fontSize:12.5,fontWeight:600,color:"#16a34a"}}>Sudah packing</div>
-                        <div style={{fontSize:10,color:"#86efac"}}>oleh {p.packing_done_by}</div>
-                      </div>
-                    </div>
-                    <button onClick={()=>togglePacking(p.id,true)}
-                      style={{fontSize:10.5,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>
-                      Batalkan
-                    </button>
-                  </div>
-                ):(
-                  <button onClick={()=>{if(qcLolosSemua)togglePacking(p.id,false);}} disabled={!qcLolosSemua}
-                    style={{width:"100%",height:42,borderRadius:8,border:"none",cursor:qcLolosSemua?"pointer":"not-allowed",
-                      fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6,
-                      background:qcLolosSemua?"#2563eb":"#f1f5f9",color:qcLolosSemua?"#fff":"#94a3b8"}}>
-                    <i className={qcLolosSemua?"ti ti-package":"ti ti-lock"} style={{fontSize:15}}/>
-                    {qcLolosSemua?"Tandai sudah packing":"Selesaikan QC dulu"}
-                  </button>
-                )}
               </div>
             </div>
           );

@@ -687,7 +687,7 @@ function QCChecklistTab({user}:any){
               </div>
 
               <div>
-                {QC_ITEMS.map((item)=>{
+                {QC_ITEMS.map((item,itemIdx)=>{
                   const itemData=cl[item.key]||{status:"belum",catatan:""};
                   return(
                     <div key={item.key} style={{padding:"10px 14px",borderBottom:"1px solid #f8fafc"}}>
@@ -772,7 +772,7 @@ function QCChecklistTab({user}:any){
   );
 }
 
-function NameplateView({user}:any){
+function NameplateView({user}:any){function NameplateView({user}:any){
   const[panelsList,setPanelsList]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
   const[search,setSearch]=useState("");
