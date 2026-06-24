@@ -551,7 +551,7 @@ function NameplateView({user}:any){
   if(!selectedWoId){
     return(
       <div style={{padding:"12px 14px"}}>
-        <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="🔍 Cari proyek atau WO..."
+        <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="\u{1F50D} Cari proyek atau WO..."
           style={{width:"100%",height:36,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,marginBottom:12,outline:"none"}}/>
         {loading?(
           <div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Memuat data...</div>
@@ -568,7 +568,7 @@ function NameplateView({user}:any){
                   style={{background:"#fff",border:`1px solid ${allDone?"#bbf7d0":"#e2e8f0"}`,borderRadius:10,padding:"14px 16px",cursor:"pointer",opacity:allDone?0.7:1,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div>
                     <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{g.wo?.proyek}</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>WO {g.wo?.wo} · {g.selesai}/{g.totalPanel} panel selesai</div>
+                    <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>WO {g.wo?.wo} \u00b7 {g.selesai}/{g.totalPanel} panel selesai</div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     {urg.label&&urg.level!=="normal"&&w&&(
