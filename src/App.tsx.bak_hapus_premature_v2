@@ -803,6 +803,10 @@ function QCChecklistTab({user}:any){
           );
         })}
       </div>
+    </div>
+  );
+}
+
       {lightbox&&(
         <div onClick={()=>setLightbox(null)}
           style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",padding:20}}>

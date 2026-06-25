@@ -803,22 +803,6 @@ function QCChecklistTab({user}:any){
           );
         })}
       </div>
-      {lightbox&&(
-        <div onClick={()=>setLightbox(null)}
-          style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.85)",zIndex:200,display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",padding:20}}>
-          <button onClick={()=>setLightbox(null)}
-            style={{position:"absolute" as const,top:16,right:16,width:36,height:36,borderRadius:99,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <i className="ti ti-x" style={{fontSize:18}}/>
-          </button>
-          <img src={lightbox.url} onClick={(e:any)=>e.stopPropagation()} style={{maxWidth:"100%",maxHeight:"75vh",borderRadius:8,objectFit:"contain" as const}}/>
-          <div onClick={(e:any)=>e.stopPropagation()} style={{marginTop:16,textAlign:"center" as const,color:"#fff"}}>
-            <div style={{fontSize:13,fontWeight:600}}>{lightbox.name||"Foto QC"}</div>
-            <div style={{fontSize:11,color:"#cbd5e1",marginTop:2}}>
-              Diupload oleh {lightbox.uploaded_by}{lightbox.uploaded_at?" · "+new Date(lightbox.uploaded_at).toLocaleString("id-ID"):""}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
