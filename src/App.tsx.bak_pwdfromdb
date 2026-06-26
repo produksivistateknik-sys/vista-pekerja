@@ -338,8 +338,7 @@ function Login({onLogin}:any){
       if(!username.trim()){setErr("Tulis nama kamu!");return;}
       if(!pwd){setErr("Masukkan password!");return;}
       setLoading(true);
-      const{data:pwRow,error:pwErr}=await supabase.from("fcs_sub_bagian_password").select("password").eq("sub_bagian",subBagianTerpilih).single();
-      const expectedPwd=pwErr?subBagianOptions[subBagianTerpilih]:pwRow?.password;
+      const expectedPwd=subBagianOptions[subBagianTerpilih];
       if(pwd!==expectedPwd){setErr("Password salah!");setLoading(false);return;}
       setSuccess(true);
       setTimeout(()=>onLogin({id:0,nama:username.trim(),name:username.trim(),divisi:div,sub_bagian:subBagianTerpilih}),800);
