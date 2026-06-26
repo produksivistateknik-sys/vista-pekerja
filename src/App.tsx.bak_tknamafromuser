@@ -831,8 +831,8 @@ function QCChecklistTab({user}:any){
   );
 }
 
-function TrackingKomponenView({user}:any){
-  const namaOperator=user?.nama||user?.name||"Operator";
+function TrackingKomponenView(){
+  const[namaOperator,setNamaOperator]=useState<string>(()=>localStorage.getItem("vista_tk_nama")||"");
   const[subBagian,setSubBagian]=useState<string>("Warehouse");
   const[woList,setWoList]=useState<any[]>([]);
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
@@ -887,13 +887,15 @@ function TrackingKomponenView({user}:any){
   };
 
   const submitTracking=async()=>{
+    if(!namaOperator.trim()){alert("Isi nama kamu dulu");return;}
     if(!selectedWoId){alert("Pilih Work Order dulu");return;}
     if(files.length===0&&!catatan.trim()){alert("Lampirkan foto atau tulis catatan minimal salah satu");return;}
+    localStorage.setItem("vista_tk_nama",namaOperator.trim());
     setUploading(true);
     const{data:tr,error:trErr}=await supabase.from("fcs_tracking_komponen").insert({
       wo_id:selectedWoId,
       sub_bagian:subBagian,
-      operator_name:namaOperator,
+      operator_name:namaOperator.trim(),
       catatan:catatan.trim()||null,
     }).select().single();
     if(trErr||!tr){
@@ -929,7 +931,12 @@ function TrackingKomponenView({user}:any){
   return(
     <div style={{padding:16}} className="fi">
       <div style={{fontWeight:800,fontSize:17,color:"#1e293b",marginBottom:4}}>📦 Tracking Komponen</div>
-      <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Halo {namaOperator}, dokumentasi serah terima komponen antar bagian</div>
+      <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Dokumentasi serah terima komponen antar bagian</div>
+
+      <div style={{marginBottom:12}}>
+        <Lbl>Nama Kamu</Lbl>
+        <Inp value={namaOperator} onChange={(e:any)=>setNamaOperator(e.target.value)} placeholder="Tulis nama kamu..."/>
+      </div>
 
       <div style={{marginBottom:12}}>
         <Lbl>Sub-bagian</Lbl>
@@ -2178,7 +2185,7 @@ export default function App(){
           </div>
         </div>
         <div style={{flex:1,overflowY:"auto"}}>
-          {user.divisi==="nameplate"?<NameplateView user={user}/>:user.divisi==="qc"?<QCChecklistTab user={user}/>:user.divisi==="komponen"?<TrackingKomponenView user={user}/>:<OperatorView user={user}/>}
+          {user.divisi==="nameplate"?<NameplateView user={user}/>:user.divisi==="qc"?<QCChecklistTab user={user}/>:user.divisi==="komponen"?<TrackingKomponenView/>:<OperatorView user={user}/>}
         </div>
         <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",
           display:"flex",height:52,zIndex:100,boxShadow:"0 -2px 10px #00000010"}}>
