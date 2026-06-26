@@ -85,7 +85,7 @@ const DIVISI_CONFIG: Record<string,any> = {
   wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8",password:"wiringp123", proses:["WIRING POWER"]},
   qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",password:"qc123",      proses:["QC TEST","PACKING"]},
   nameplate:  {label:"Nameplate",     icon:"🏷️", color:"#0891b2",bg:"#ecfeff",password:"nameplate123",proses:null},
-  komponen:   {label:"Komponen",       icon:"package", color:"#0d9488",bg:"#f0fdfa",password:"komponen123",proses:null,manualName:true},
+  komponen:   {label:"Komponen",       icon:"package", color:"#0d9488",bg:"#f0fdfa",password:"komponen123",proses:null},
 };
 
 const TODAY = new Date().toISOString().slice(0,10);
@@ -326,20 +326,7 @@ function Login({onLogin}:any){
     }
   },[div]);
 
-  const isManualName=!!(DIVISI_CONFIG as any)[div]?.manualName;
-
   const go=async()=>{
-    if(isManualName){
-      if(!username.trim()){setErr("Tulis nama kamu!");return;}
-      if(!pwd){setErr("Masukkan password!");return;}
-      setLoading(true);
-      const expectedPwd=(DIVISI_CONFIG as any)[div]?.password;
-      if(pwd!==expectedPwd){setErr("Password salah!");setLoading(false);return;}
-      setSuccess(true);
-      setTimeout(()=>onLogin({id:0,nama:username.trim(),name:username.trim(),divisi:div}),800);
-      setLoading(false);
-      return;
-    }
     if(!username){setErr("Pilih nama!");return;}
     if(!pwd){setErr("Masukkan password!");return;}
     setLoading(true);
@@ -450,18 +437,11 @@ function Login({onLogin}:any){
             <div className="lg-label">Nama</div>
             <div style={{position:"relative"}}>
               <span className="lg-icon">👤</span>
-              {isManualName?(
-                <input className="lg-sel" value={username} onChange={(e:any)=>{setUsername(e.target.value);setErr("");}}
-                  placeholder="Tulis nama kamu..."/>
-              ):(
-                <>
-                  <select className="lg-sel" value={username} onChange={(e:any)=>{setUsername(e.target.value);setErr("");}}>
-                    <option value="">-- Pilih Nama --</option>
-                    {userList.map((u:any)=><option key={u.id} value={u.username}>{u.nama}</option>)}
-                  </select>
-                  <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",fontSize:11,color:"#94a3b8",pointerEvents:"none"}}>▼</span>
-                </>
-              )}
+              <select className="lg-sel" value={username} onChange={(e:any)=>{setUsername(e.target.value);setErr("");}}>
+                <option value="">-- Pilih Nama --</option>
+                {userList.map((u:any)=><option key={u.id} value={u.username}>{u.nama}</option>)}
+              </select>
+              <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",fontSize:11,color:"#94a3b8",pointerEvents:"none"}}>▼</span>
             </div>
           </div>
           {/* Password */}
