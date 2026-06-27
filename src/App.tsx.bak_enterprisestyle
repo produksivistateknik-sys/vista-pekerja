@@ -904,20 +904,20 @@ function TrackingKomponenView({user}:any){
       <div style={{fontWeight:800,fontSize:17,color:"#1e293b",marginBottom:4}}>📦 Tracking Komponen</div>
       <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Halo {namaOperator}, dokumentasi serah terima komponen antar bagian</div>
 
-      <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:12,background:"#fff",border:"1px solid #cbd5e1",borderRadius:12,padding:"12px 14px"}}>
-        <div style={{width:42,height:42,borderRadius:10,background:"#f0fdfa",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:22}}>
+      <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:12,background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"12px 14px"}}>
+        <div style={{width:40,height:40,borderRadius:10,background:"#f0fdfa",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:20}}>
           {subBagianIcon[subBagian]}
         </div>
         <div>
-          <div style={{fontSize:12,fontWeight:600,color:"#475569"}}>Sub-bagian Anda</div>
-          <div style={{fontSize:16,fontWeight:800,color:"#0f172a"}}>{subBagian}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>Sub-bagian Anda</div>
+          <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{subBagian}</div>
         </div>
       </div>
 
       <div style={{marginBottom:14}}>
         <Lbl>Work Order</Lbl>
         <select value={selectedWoId??""} onChange={(e:any)=>setSelectedWoId(e.target.value?Number(e.target.value):null)}
-          style={{width:"100%",padding:"12px 14px",borderRadius:12,border:"1.5px solid #cbd5e1",fontSize:15,fontWeight:600,color:"#0f172a",background:"#fff"}}>
+          style={{width:"100%",padding:"12px 14px",borderRadius:12,border:"1.5px solid #e2e8f0",fontSize:14,background:"#fff"}}>
           <option value="">Pilih Work Order...</option>
           {woList.map((w:any)=>(
             <option key={w.id} value={w.id}>{w.wo} — {w.proyek}</option>
@@ -929,7 +929,7 @@ function TrackingKomponenView({user}:any){
         <div style={{marginBottom:14}}>
           <Lbl>Panel</Lbl>
           <select value={selectedPanelId??""} onChange={(e:any)=>setSelectedPanelId(e.target.value?Number(e.target.value):null)}
-            style={{width:"100%",padding:"12px 14px",borderRadius:12,border:"1.5px solid #cbd5e1",fontSize:15,fontWeight:600,color:"#0f172a",background:"#fff"}}>
+            style={{width:"100%",padding:"12px 14px",borderRadius:12,border:"1.5px solid #e2e8f0",fontSize:14,background:"#fff"}}>
             <option value="">Pilih Panel...</option>
             {panelList.map((p:any)=>(
               <option key={p.id} value={p.id}>#{p.no_pnl} {p.nama} ({p.tipe})</option>
@@ -947,7 +947,7 @@ function TrackingKomponenView({user}:any){
             <Lbl>Catatan</Lbl>
             <textarea value={catatan} onChange={(e:any)=>setCatatan(e.target.value)}
               placeholder="Tulis catatan, misal: komponen lengkap, diserahkan ke assembling"
-              style={{width:"100%",minHeight:60,padding:"12px 14px",borderRadius:12,border:"1.5px solid #cbd5e1",fontSize:15,fontWeight:500,color:"#0f172a",fontFamily:"inherit",resize:"vertical" as const}}/>
+              style={{width:"100%",minHeight:60,padding:"12px 14px",borderRadius:12,border:"1.5px solid #e2e8f0",fontSize:14,fontFamily:"inherit",resize:"vertical" as const}}/>
           </div>
 
           <div style={{marginBottom:16}}>
@@ -968,11 +968,11 @@ function TrackingKomponenView({user}:any){
           </div>
 
           <button onClick={submitTracking} disabled={uploading}
-            style={{width:"100%",padding:"15px",borderRadius:12,border:"none",background:uploading?"#94a3b8":"#0d9488",color:"#fff",fontSize:16,fontWeight:800,cursor:uploading?"default":"pointer",fontFamily:"inherit",marginBottom:24}}>
+            style={{width:"100%",padding:"14px",borderRadius:12,border:"none",background:uploading?"#94a3b8":"#0d9488",color:"#fff",fontSize:15,fontWeight:700,cursor:uploading?"default":"pointer",fontFamily:"inherit",marginBottom:24}}>
             {uploading?"Mengunggah...":"Kirim"}
           </button>
 
-          <div style={{fontSize:12,fontWeight:800,color:"#0f172a",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>Riwayat</div>
+          <div style={{fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>Riwayat</div>
           {loadingRiwayat?(
             <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Memuat...</div>
           ):riwayat.length===0?(
@@ -980,13 +980,13 @@ function TrackingKomponenView({user}:any){
           ):(
             <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
               {riwayat.map((r:any)=>(
-                <div key={r.id} style={{background:"#fff",border:"1px solid #cbd5e1",borderLeft:"4px solid #0d9488",borderRadius:10,padding:"14px 16px",textAlign:"left" as const}}>
+                <div key={r.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderLeft:"3px solid #0d9488",borderRadius:10,padding:"14px 16px",textAlign:"left" as const}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",marginBottom:4}}>
-                    <span style={{fontWeight:800,fontSize:15,color:"#0f172a",textAlign:"left" as const}}>{subBagianIcon[r.sub_bagian]} {r.sub_bagian}</span>
-                    <span style={{fontSize:12,fontWeight:600,color:"#64748b"}}>{fmtDateTime(r.created_at)}</span>
+                    <span style={{fontWeight:700,fontSize:14,color:"#1e293b",textAlign:"left" as const}}>{subBagianIcon[r.sub_bagian]} {r.sub_bagian}</span>
+                    <span style={{fontSize:11,color:"#94a3b8"}}>{fmtDateTime(r.created_at)}</span>
                   </div>
-                  <div style={{fontSize:13,fontWeight:600,color:"#475569",marginBottom:8,textAlign:"left" as const}}>oleh {r.operator_name}</div>
-                  {r.catatan&&<div style={{fontSize:15,fontWeight:500,color:"#1e293b",marginBottom:10,lineHeight:1.6,textAlign:"left" as const,whiteSpace:"pre-wrap" as const}}>{r.catatan}</div>}
+                  <div style={{fontSize:12,color:"#64748b",marginBottom:8,textAlign:"left" as const}}>oleh {r.operator_name}</div>
+                  {r.catatan&&<div style={{fontSize:14,color:"#1e293b",marginBottom:10,lineHeight:1.6,textAlign:"left" as const,whiteSpace:"pre-wrap" as const}}>{r.catatan}</div>}
                   {(fotoMap[r.id]||[]).length>0&&(
                     <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
                       {(fotoMap[r.id]||[]).map((foto:any)=>(
