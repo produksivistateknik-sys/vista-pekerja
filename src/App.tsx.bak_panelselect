@@ -790,17 +790,9 @@ function TrackingKomponenView({user}:any){
   const[fotoMap,setFotoMap]=useState<Record<number,any[]>>({});
   const[loadingRiwayat,setLoadingRiwayat]=useState(true);
 
-  const[panelList,setPanelList]=useState<any[]>([]);
-  const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
-
   const fetchWoList=async()=>{
     const{data}=await supabase.from("work_orders").select("id,wo,proyek").eq("is_archived",false).order("created_at",{ascending:false});
     setWoList(data??[]);
-  };
-
-  const fetchPanelList=async(woId:number)=>{
-    const{data}=await supabase.from("panels").select("id,no_pnl,nama,tipe").eq("wo_id",woId).is("deleted_at",null).order("no_pnl",{ascending:true});
-    setPanelList(data??[]);
   };
 
   const fetchRiwayat=async(woId:number)=>{
@@ -825,8 +817,7 @@ function TrackingKomponenView({user}:any){
   useEffect(()=>{fetchWoList();},[]);
 
   useEffect(()=>{
-    setSelectedPanelId(null);
-    if(selectedWoId){fetchPanelList(selectedWoId);fetchRiwayat(selectedWoId);}
+    if(selectedWoId)fetchRiwayat(selectedWoId);
     const ch=supabase.channel("realtime-tracking-komponen")
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_tracking_komponen"},()=>{if(selectedWoId)fetchRiwayat(selectedWoId);})
       .subscribe();
@@ -851,12 +842,10 @@ function TrackingKomponenView({user}:any){
 
   const submitTracking=async()=>{
     if(!selectedWoId){alert("Pilih Work Order dulu");return;}
-    if(!selectedPanelId){alert("Pilih Panel dulu");return;}
     if(files.length===0&&!catatan.trim()){alert("Lampirkan foto atau tulis catatan minimal salah satu");return;}
     setUploading(true);
     const{data:tr,error:trErr}=await supabase.from("fcs_tracking_komponen").insert({
       wo_id:selectedWoId,
-      panel_id:selectedPanelId,
       sub_bagian:subBagian,
       operator_name:namaOperator,
       catatan:catatan.trim()||null,
@@ -920,22 +909,6 @@ function TrackingKomponenView({user}:any){
       </div>
 
       {selectedWoId&&(
-        <div style={{marginBottom:14}}>
-          <Lbl>Panel</Lbl>
-          <select value={selectedPanelId??""} onChange={(e:any)=>setSelectedPanelId(e.target.value?Number(e.target.value):null)}
-            style={{width:"100%",padding:"12px 14px",borderRadius:12,border:"1.5px solid #e2e8f0",fontSize:14,background:"#fff"}}>
-            <option value="">Pilih Panel...</option>
-            {panelList.map((p:any)=>(
-              <option key={p.id} value={p.id}>#{p.no_pnl} {p.nama} ({p.tipe})</option>
-            ))}
-          </select>
-          {panelList.length===0&&(
-            <div style={{fontSize:12,color:"#94a3b8",marginTop:6}}>Belum ada panel untuk WO ini</div>
-          )}
-        </div>
-      )}
-
-      {selectedWoId&&selectedPanelId&&(
         <>
           <div style={{marginBottom:14}}>
             <Lbl>Catatan</Lbl>

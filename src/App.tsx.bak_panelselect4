@@ -920,22 +920,6 @@ function TrackingKomponenView({user}:any){
       </div>
 
       {selectedWoId&&(
-        <div style={{marginBottom:14}}>
-          <Lbl>Panel</Lbl>
-          <select value={selectedPanelId??""} onChange={(e:any)=>setSelectedPanelId(e.target.value?Number(e.target.value):null)}
-            style={{width:"100%",padding:"12px 14px",borderRadius:12,border:"1.5px solid #e2e8f0",fontSize:14,background:"#fff"}}>
-            <option value="">Pilih Panel...</option>
-            {panelList.map((p:any)=>(
-              <option key={p.id} value={p.id}>#{p.no_pnl} {p.nama} ({p.tipe})</option>
-            ))}
-          </select>
-          {panelList.length===0&&(
-            <div style={{fontSize:12,color:"#94a3b8",marginTop:6}}>Belum ada panel untuk WO ini</div>
-          )}
-        </div>
-      )}
-
-      {selectedWoId&&selectedPanelId&&(
         <>
           <div style={{marginBottom:14}}>
             <Lbl>Catatan</Lbl>
