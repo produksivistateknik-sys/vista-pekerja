@@ -70,7 +70,7 @@ const PCT_STEPS  = [25,50,75,90,100];
 const QTY_DIVISI = ["mekanik","painting"];
 
 const PROSES_COLOR: Record<string,string> = {
-  "POTONG":"#f59e0b","BENDING":"#10b981","STEL":"#3b82f6","RENDAM":"#0ea5e9","PAINTING":"#8b5cf6",
+  "POTONG":"#f59e0b","BENDING":"#10b981","STEL":"#3b82f6","PAINTING":"#8b5cf6",
   "RAKIT":"#ec4899","PASANG KOMPONEN":"#f97316","BUSBAR":"#06b6d4",
   "WIRING CONTROL":"#6366f1","WIRING POWER":"#ef4444","QC TEST":"#14b8a6","PACKING":"#84cc16",
 };
