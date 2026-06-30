@@ -78,15 +78,9 @@ const PROSES_COLOR: Record<string,string> = {
 const PRIORITAS_COLOR: Record<string,string> = {"Tinggi":"#dc2626","Sedang":"#f59e0b","Rendah":"#22c55e"};
 
 const DIVISI_CONFIG: Record<string,any> = {
-  mekanik:    {label:"Mekanik",       icon:"🔧", color:"#d97706",bg:"#fffbeb",proses:null,manualName:true,
-    subBagianPassword:{Potong:"potong123",Bending:"bending123",Stel:"stel123"},
-    subBagianProses:{Potong:["POTONG"],Bending:["BENDING"],Stel:["STEL"]}},
-  painting:   {label:"Painting",      icon:"🎨", color:"#7c3aed",bg:"#f5f3ff",proses:null,manualName:true,
-    subBagianPassword:{Rendam:"rendam123",Painting:"painting123"},
-    subBagianProses:{Rendam:["RENDAM"],Painting:["PAINTING"]}},
-  assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",proses:null,manualName:true,
-    subBagianPassword:{"Assembling Luar":"asmluar123","Assembling Dalam":"asmdalam123"},
-    subBagianProses:{"Assembling Luar":["RAKIT","PASANG KOMPONEN"],"Assembling Dalam":["BUSBAR"]}},
+  mekanik:    {label:"Mekanik",       icon:"🔧", color:"#d97706",bg:"#fffbeb",password:"mekanik123", proses:["POTONG","BENDING","STEL"]},
+  painting:   {label:"Painting",      icon:"🎨", color:"#7c3aed",bg:"#f5f3ff",password:"painting123",proses:["PAINTING"]},
+  assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",password:"assembling123",proses:["RAKIT","PASANG KOMPONEN","BUSBAR"]},
   wiring_ctrl:{label:"Wiring Control",icon:"⚡", color:"#6366f1",bg:"#eef2ff",password:"wiring123",  proses:["WIRING CONTROL"]},
   wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8",password:"wiringp123", proses:["WIRING POWER"]},
   qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",password:"qc123",      proses:["QC TEST","PACKING"]},
