@@ -1262,7 +1262,7 @@ function OperatorView({user}:any){
 
   const cfg=DIVISI_CONFIG[user.divisi];
   const isQtyBased=QTY_DIVISI.includes(user.divisi);
-  const myProses:string[]=(user.sub_bagian&&cfg.subBagianProses?.[user.sub_bagian])||cfg.proses||[];
+  const myProses:string[]=cfg.proses||[];
 
   // Load data dari Supabase
   useEffect(()=>{
