@@ -1843,19 +1843,6 @@ function OperatorView({user}:any){
           const priColor=PRIORITAS_COLOR[task.prioritas||"Sedang"]||"#64748b";
 
           (task.komponen||[]).forEach((kode:string,ki:number)=>{
-            // Handle token wiring khusus: __wiring_{org}org_{bobot}
-            if(kode.startsWith("__wiring_")){
-              const parts=kode.replace("__wiring_","").split("_");
-              const org=parts[0]; // misal "1org"
-              const bobot=parts.slice(1).join(" "); // misal "MEDIUM" atau "VERY HARD"
-              const wiringItem={kode,nama:`⚡ Wiring ${bobot} · ${org}`};
-              // Progress wiring disimpan di checklist dengan key = kode token
-              const cl=panel.checklist?.[kode]||{qty:0,progress:{},progressByDate:{}};
-              const pct=getProgressOnDate(cl,proses,viewDate);
-              rows.push({task,panel,panelId,item:wiringItem,kode,qtyKomp:1,qtyProses:1,pct,priColor,ki,wpDef:null,
-                isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:false,isWiring:true});
-              return;
-            }
             const isBusbarKomp=proses==="BUSBAR";
             const item=allItems.find((it:any)=>it.kode===kode);
             // Untuk BUSBAR, komponen adalah nama langsung (H-BUS, INCOMING, dll)
