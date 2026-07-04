@@ -1232,7 +1232,6 @@ function OperatorView({user}:any){
   const [pekerjaList,setPekerjaList]=useState<any[]>([]);
   const [woTargetMap,setWoTargetMap]=useState<Record<number,string>>({});
   const [wiringInfoMap,setWiringInfoMap]=useState<Record<string,any>>({});
-  const [komponenInfoMap,setKomponenInfoMap]=useState<Record<string,any>>({});
 
   const getUrgensi=(woId:number)=>{
     const target=woTargetMap[woId];
@@ -1361,40 +1360,6 @@ function OperatorView({user}:any){
       setWiringInfoMap(infoMap);
     } else {
       setWiringInfoMap({});
-    }
-
-    // Ambil info komponen (CREATE BY, CREATE ON, TARGET SELESAI) untuk proses biasa
-    const nonWiringProses=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR"];
-    const nonWiringTasks=tasks.filter((t:any)=>nonWiringProses.includes(t.proses));
-    if(nonWiringTasks.length>0){
-      const nwPanelIds=[...new Set(nonWiringTasks.map((t:any)=>t.panel_id||t.panelId).filter(Boolean))];
-      const nwProsesNames=[...new Set(nonWiringTasks.map((t:any)=>t.proses))];
-      const[{data:fcsDtNw},{data:rawDtNw}]=await Promise.all([
-        supabase.from("fcs_schedule").select("panel_id,jenis_pekerjaan,kode_komponen,generated_by,created_at")
-          .in("panel_id",nwPanelIds as any).in("jenis_pekerjaan",nwProsesNames),
-        supabase.from("raw_schedule").select("panel_id,proses,schedule")
-          .in("panel_id",nwPanelIds as any).in("proses",nwProsesNames),
-      ]);
-      const kompMap:Record<string,any>={};
-      (fcsDtNw||[]).forEach((row:any)=>{
-        const key=`${row.panel_id}_${row.jenis_pekerjaan}_${row.kode_komponen}`;
-        if(!kompMap[key])kompMap[key]={createdBy:row.generated_by,createdAt:row.created_at,targetSelesai:null};
-      });
-      (rawDtNw||[]).forEach((row:any)=>{
-        Object.entries(row.schedule||{}).forEach(([tgl,entries]:any)=>{
-          (entries||[]).forEach((e:any)=>{
-            (e.komponen||[]).forEach((k:string)=>{
-              if(k.startsWith("__wiring_"))return;
-              const key=`${row.panel_id}_${row.proses}_${k}`;
-              if(!kompMap[key])kompMap[key]={createdBy:null,createdAt:null,targetSelesai:null};
-              if(!kompMap[key].targetSelesai||tgl>kompMap[key].targetSelesai)kompMap[key].targetSelesai=tgl;
-            });
-          });
-        });
-      });
-      setKomponenInfoMap(kompMap);
-    } else {
-      setKomponenInfoMap({});
     }
     setLoadingData(false);
   };
@@ -1982,10 +1947,6 @@ function OperatorView({user}:any){
                         <th style={{...thS,minWidth:70}}>PRIORITAS</th>
                         <th style={{...thS,minWidth:60}}>QTY KOMP</th>
                         {isQtyBased&&<th style={{...thS,minWidth:70}}>QTY PROSES</th>}
-                        <th style={{...thS,minWidth:100}}>CREATE BY</th>
-                        <th style={{...thS,minWidth:100}}>CREATE ON</th>
-                        <th style={{...thS,minWidth:110}}>TARGET SELESAI</th>
-                        <th style={{...thS,minWidth:110}}>AKTUAL SELESAI</th>
                       </>
                     )}
                     <th style={{...thS,minWidth:70}}>PROGRESS</th>
@@ -2072,18 +2033,6 @@ function OperatorView({user}:any){
                                 {r.qtyKomp} 🔒
                               </span>
                             </td>
-                            {(()=>{
-                              const kInfo=komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
-                              const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"–";
-                              return(
-                                <>
-                                  <td style={{...td,fontSize:10,color:"#475569"}}>{kInfo.createdBy||"–"}</td>
-                                  <td style={{...td,fontSize:10,color:"#64748b"}}>{fmtDate(kInfo.createdAt)}</td>
-                                  <td style={{...td,fontSize:10,fontWeight:600,color:"#1d4ed8"}}>{fmtDate(kInfo.targetSelesai)}</td>
-                                  <td style={{...td,fontSize:10,fontWeight:600,color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtDate(new Date().toISOString()):"–"}</td>
-                                </>
-                              );
-                            })()}
                           </>
                         )}
                         {isQtyBased&&(()=>{
