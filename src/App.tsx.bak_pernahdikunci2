@@ -1694,10 +1694,9 @@ function OperatorView({user}:any){
     if(count>0||busbarCount>0||Object.keys(catatan).some(k=>catatan[k]?.trim())){
       setLockedCells(newLocked);
       setLockMsg(true);
+      setPernahDikunci(true);
       setTimeout(()=>setLockMsg(false),2500);
     }
-    // Selalu set pernahDikunci=true setiap kali tombol diklik (terlepas ada perubahan atau tidak)
-    setPernahDikunci(true);
   };
 
   const thS:any={background:"#1e3a8a",color:"#fff",padding:"7px 8px",fontWeight:700,fontSize:10,
