@@ -113,12 +113,6 @@ function getLatestProgress(cl:any, proses:string){
   }
   return cl?.progress?.[proses]||0;
 }
-function getFirstCompletionDate(cl:any, proses:string){
-  const byDate=cl?.progressByDate?.[proses];
-  if(!byDate) return null;
-  const doneDates=Object.keys(byDate).filter(d=>byDate[d]>=100).sort();
-  return doneDates.length>0?doneDates[0]:null;
-}
 function pColor(v:number){
   if(v===100)return"#16a34a"; if(v>=75)return"#ca8a04";
   if(v>=50)return"#ea580c";  if(v>=25)return"#dc2626";
@@ -1932,8 +1926,7 @@ function OperatorView({user}:any){
               const cl=panel.checklist?.[kode]||{qty:0,progress:{},progressByDate:{}};
               const pct=getProgressOnDate(cl,proses,viewDate);
               rows.push({task,panel,panelId,item:wiringItem,kode,qtyKomp:1,qtyProses:1,pct,priColor,ki,wpDef:null,
-                isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:false,isWiring:true,
-                aktualSelesai:getFirstCompletionDate(cl,proses)});
+                isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:false,isWiring:true});
               return;
             }
             const isBusbarKomp=proses==="BUSBAR";
@@ -1947,8 +1940,7 @@ function OperatorView({user}:any){
             const pct=isBusbarKomp?(cl.progress?.[proses]||0):getProgressOnDate(cl,proses,viewDate);
             const wpDef=isBusbarKomp?null:panelCfg.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
             rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
-              isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp,
-              aktualSelesai:getFirstCompletionDate(cl,proses)});
+              isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp});
           });
         });
 
@@ -2061,7 +2053,7 @@ function OperatorView({user}:any){
                               <td style={{...td,fontSize:10,color:"#475569"}}>{wInfo.createdBy||"–"}</td>
                               <td style={{...td,fontSize:10,color:"#64748b"}}>{fmtDate(wInfo.createdAt)}</td>
                               <td style={{...td,fontSize:10,fontWeight:600,color:"#1d4ed8"}}>{fmtDate(wInfo.targetSelesai)}</td>
-                              <td style={{...td,fontSize:10,fontWeight:600,color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtDate(r.aktualSelesai):"-"}</td>
+                              <td style={{...td,fontSize:10,fontWeight:600,color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtDate(new Date().toISOString()):"-"}</td>
                             </>
                           );
                         })():(
@@ -2112,7 +2104,7 @@ function OperatorView({user}:any){
                                   <td style={{...td,fontSize:10,color:"#475569"}}>{kInfo.createdBy||"–"}</td>
                                   <td style={{...td,fontSize:10,color:"#64748b"}}>{fmtDate(kInfo.createdAt)}</td>
                                   <td style={{...td,fontSize:10,fontWeight:600,color:"#1d4ed8"}}>{fmtDate(kInfo.targetSelesai)}</td>
-                                  <td style={{...td,fontSize:10,fontWeight:600,color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtDate(r.aktualSelesai):"–"}</td>
+                                  <td style={{...td,fontSize:10,fontWeight:600,color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtDate(new Date().toISOString()):"–"}</td>
                                 </>
                               );
                             })()}

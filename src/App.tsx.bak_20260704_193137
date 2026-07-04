@@ -2081,7 +2081,7 @@ function OperatorView({user}:any){
                               </span>
                             </td>
                             {(()=>{
-                              const kInfo=komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
+                              const kInfo=wiringInfoMap[`${r.panelId}_${proses}`]||{};
                               const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"–";
                               const locked=isCellLocked(r.panelId,r.kode,proses);
                               const floor=getLockedFloor(r.panelId,r.kode,proses);
