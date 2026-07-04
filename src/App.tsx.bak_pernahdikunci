@@ -1222,7 +1222,6 @@ function OperatorView({user}:any){
   const [catatan,setCatatan]=useState<Record<string,string>>({});
   const [savedNote,setSavedNote]=useState<Record<string,boolean>>({});
   const [lockMsg,setLockMsg]=useState(false);
-  const [pernahDikunci,setPernahDikunci]=useState(false);
   const [lockedCells,setLockedCells]=useState<Record<string,boolean>>({});
   const [fProyek,setFProyek]=useState("ALL");
   const [fPanel,setFPanel]=useState("ALL");
@@ -1268,7 +1267,6 @@ function OperatorView({user}:any){
 
   // Load data dari Supabase
   useEffect(()=>{
-    setPernahDikunci(false);
     loadData();
     // load semua pekerja untuk kolom OPERATOR
     supabase.from("pekerja").select("id,nama,divisi").then(({data})=>setPekerjaList(data??[]));
@@ -1694,7 +1692,6 @@ function OperatorView({user}:any){
     if(count>0||busbarCount>0||Object.keys(catatan).some(k=>catatan[k]?.trim())){
       setLockedCells(newLocked);
       setLockMsg(true);
-      setPernahDikunci(true);
       setTimeout(()=>setLockMsg(false),2500);
     }
   };
@@ -2185,10 +2182,10 @@ function OperatorView({user}:any){
           <button onClick={lockProgress}
             style={{width:"100%",padding:"14px",borderRadius:12,border:"none",
               cursor:"pointer",fontWeight:800,fontSize:14,
-              background:lockMsg||pernahDikunci?"#16a34a":"#1d4ed8",color:"#fff",
+              background:lockMsg||Object.keys(lockedCells).some(k=>k.includes(`_${viewDate}_`))?"#16a34a":"#1d4ed8",color:"#fff",
               boxShadow:"0 4px 14px #2563eb33",transition:"all .2s",
               display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            {lockMsg?"✅ Progress hari ini berhasil dikunci & tersimpan!":pernahDikunci?"✅ Sudah Dikunci — Kunci Ulang":"🔒 Kunci Progress Hari Ini"}
+            {lockMsg?"✅ Progress hari ini berhasil dikunci & tersimpan!":Object.keys(lockedCells).some(k=>k.includes(`_${viewDate}_`))?"✅ Sudah Dikunci — Kunci Ulang":"🔒 Kunci Progress Hari Ini"}
           </button>
           <div style={{fontSize:11,color:"#94a3b8",textAlign:"center",marginTop:8,lineHeight:1.5}}>
             Klik di akhir shift untuk menyimpan progress hari ini sebagai catatan permanen.<br/>
