@@ -1982,10 +1982,10 @@ function OperatorView({user}:any){
                         <th style={{...thS,minWidth:70}}>PRIORITAS</th>
                         <th style={{...thS,minWidth:60}}>QTY KOMP</th>
                         {isQtyBased&&<th style={{...thS,minWidth:70}}>QTY PROSES</th>}
-                        <th style={{...thS,minWidth:70}}>QTY PROSES</th>
                         <th style={{...thS,minWidth:100}}>CREATE BY</th>
                         <th style={{...thS,minWidth:100}}>CREATE ON</th>
                         <th style={{...thS,minWidth:110}}>TARGET SELESAI</th>
+                        <th style={{...thS,minWidth:110}}>AKTUAL SELESAI</th>
                       </>
                     )}
                     <th style={{...thS,minWidth:70}}>PROGRESS</th>
@@ -2104,6 +2104,7 @@ function OperatorView({user}:any){
                                   <td style={{...td,fontSize:10,color:"#475569"}}>{kInfo.createdBy||"–"}</td>
                                   <td style={{...td,fontSize:10,color:"#64748b"}}>{fmtDate(kInfo.createdAt)}</td>
                                   <td style={{...td,fontSize:10,fontWeight:600,color:"#1d4ed8"}}>{fmtDate(kInfo.targetSelesai)}</td>
+                                  <td style={{...td,fontSize:10,fontWeight:600,color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtDate(new Date().toISOString()):"–"}</td>
                                 </>
                               );
                             })()}
