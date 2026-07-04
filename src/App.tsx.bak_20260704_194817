@@ -95,13 +95,7 @@ const DIVISI_CONFIG: Record<string,any> = {
     subBagianPassword:{Warehouse:"warehouse123",Assembling:"assemblingkomp123",QS:"qs123",QC:"qckomp123"}},
 };
 
-function getLocalDateStr(d:Date=new Date()){
-  const y=d.getFullYear();
-  const m=String(d.getMonth()+1).padStart(2,"0");
-  const day=String(d.getDate()).padStart(2,"0");
-  return `${y}-${m}-${day}`;
-}
-const TODAY = getLocalDateStr();
+const TODAY = new Date().toISOString().slice(0,10);
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -1585,7 +1579,7 @@ function OperatorView({user}:any){
       }
     }
     if(!tanggalRencanaSelesai)return;
-    const hariIni=getLocalDateStr();
+    const hariIni=new Date().toISOString().slice(0,10);
     if(hariIni>=tanggalRencanaSelesai)return; // tidak lebih cepat, tidak perlu notifikasi
     const pekerja=pekerjaList.find((p:any)=>p.id===pekerjaId);
     const allItems=PANEL_TYPES[panel.tipe]?.wps.flatMap((w:any)=>w.items)||[];
