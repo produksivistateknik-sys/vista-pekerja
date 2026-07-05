@@ -2098,30 +2098,28 @@ function OperatorView({user}:any){
                               const floor=getLockedFloor(r.panelId,r.kode,proses);
                               return(
                                 <>
-                                  {isQtyBased&&(
-                                    <td style={{...td,textAlign:"center"}}>
-                                      {locked?(
-                                        <span style={{width:60,padding:"4px 6px",borderRadius:7,border:"1.5px solid #16a34a",
-                                          background:"#f0fdf4",fontSize:12,textAlign:"center",fontWeight:700,
-                                          fontFamily:"'DM Mono',monospace",color:"#16a34a",display:"inline-block"}}>
-                                          {r.qtyProses} 🔒
-                                        </span>
-                                      ):(
-                                        <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                                          <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses}
-                                            onChange={e=>updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value))}
-                                            disabled={r.qtyKomp===0}
-                                            style={{width:60,padding:"4px 6px",borderRadius:7,
-                                              border:`1.5px solid ${r.qtyKomp===0?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
-                                              background:r.qtyKomp===0?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
-                                              fontSize:12,textAlign:"center",fontWeight:700,
-                                              fontFamily:"'DM Mono',monospace",
-                                              color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
-                                          {floor>0&&<span style={{fontSize:9,color:"#f59e0b",fontWeight:700}}>min {floor} 🔒</span>}
-                                        </div>
-                                      )}
-                                    </td>
-                                  )}
+                                  <td style={{...td,textAlign:"center"}}>
+                                    {locked?(
+                                      <span style={{width:60,padding:"4px 6px",borderRadius:7,border:"1.5px solid #16a34a",
+                                        background:"#f0fdf4",fontSize:12,textAlign:"center",fontWeight:700,
+                                        fontFamily:"'DM Mono',monospace",color:"#16a34a",display:"inline-block"}}>
+                                        {r.qtyProses} 🔒
+                                      </span>
+                                    ):(
+                                      <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
+                                        <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses}
+                                          onChange={e=>updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value))}
+                                          disabled={r.qtyKomp===0}
+                                          style={{width:60,padding:"4px 6px",borderRadius:7,
+                                            border:`1.5px solid ${r.qtyKomp===0?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
+                                            background:r.qtyKomp===0?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
+                                            fontSize:12,textAlign:"center",fontWeight:700,
+                                            fontFamily:"'DM Mono',monospace",
+                                            color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
+                                        {floor>0&&<span style={{fontSize:9,color:"#f59e0b",fontWeight:700}}>min {floor} 🔒</span>}
+                                      </div>
+                                    )}
+                                  </td>
                                   <td style={{...td,fontSize:10,color:"#475569"}}>{kInfo.createdBy||"–"}</td>
                                   <td style={{...td,fontSize:10,color:"#64748b"}}>{fmtDate(kInfo.createdAt)}</td>
                                   <td style={{...td,fontSize:10,fontWeight:600,color:"#1d4ed8"}}>{fmtDate(kInfo.targetSelesai)}</td>
