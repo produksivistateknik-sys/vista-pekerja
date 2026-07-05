@@ -1930,8 +1930,16 @@ function OperatorView({user}:any){
           (task.komponen||[]).forEach((kode:string,ki:number)=>{
             // Handle token wiring khusus: __wiring_{org}org_{bobot}
             if(kode.startsWith("__wiring_")){
-              // Token wiring cuma buat ekstrak badge bobot/jumlah orang (via wiringInfoMap di row komponen real).
-              // Gak bikin baris sendiri lagi - komponen real di bawah yang jadi baris (per-komponen tracking).
+              const parts=kode.replace("__wiring_","").split("_");
+              const org=parts[0]; // misal "1org"
+              const bobot=parts.slice(1).join(" "); // misal "MEDIUM" atau "VERY HARD"
+              const wiringItem={kode,nama:`⚡ Wiring ${bobot} · ${org}`};
+              // Progress wiring disimpan di checklist dengan key = kode token
+              const cl=panel.checklist?.[kode]||{qty:0,progress:{},progressByDate:{}};
+              const pct=getProgressOnDate(cl,proses,viewDate);
+              rows.push({task,panel,panelId,item:wiringItem,kode,qtyKomp:1,qtyProses:1,pct,priColor,ki,wpDef:null,
+                isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:false,isWiring:true,
+                aktualSelesai:getFirstCompletionDate(cl,proses)});
               return;
             }
             const isBusbarKomp=proses==="BUSBAR";
@@ -1944,11 +1952,9 @@ function OperatorView({user}:any){
             const qtyProses=isBusbarKomp?0:cl.qtyProsesByDate?.[proses]?.[viewDate]??cl.qtyProses?.[proses]??0;
             const pct=isBusbarKomp?(cl.progress?.[proses]||0):getProgressOnDate(cl,proses,viewDate);
             const wpDef=isBusbarKomp?null:panelCfg.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
-            const wInfoLookup=wiringInfoMap[`${panelId}_${proses}`];
-            const wiringBadge=wInfoLookup&&wInfoLookup.bobot?wInfoLookup:null;
             rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
               isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp,
-              aktualSelesai:getFirstCompletionDate(cl,proses),wiringBadge});
+              aktualSelesai:getFirstCompletionDate(cl,proses)});
           });
         });
 
@@ -1973,7 +1979,7 @@ function OperatorView({user}:any){
                     <th style={{...thS,textAlign:"left",minWidth:40,position:"sticky",left:0,zIndex:4}}>NO</th>
                     <th style={{...thS,textAlign:"left",minWidth:100,position:"sticky",left:40,zIndex:4}}>PROYEK</th>
                     <th style={{...thS,textAlign:"left",minWidth:160,position:"sticky",left:140,zIndex:4}}>NAMA PANEL</th>
-                    {false?(
+                    {isWiringProses?(
                       <>
                         <th style={{...thS,minWidth:80}}>BOBOT</th>
                         <th style={{...thS,minWidth:60}}>ORANG</th>
@@ -2045,7 +2051,7 @@ function OperatorView({user}:any){
                               borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>↩ Lanjutan</span>
                           )}
                         </td>
-                        {false?(()=>{
+                        {isWiringProses?(()=>{
                           const wInfo=wiringInfoMap[`${r.panelId}_${proses}`]||{};
                           const BOBOT_COLOR:any={EASY:"#16a34a",MEDIUM:"#d97706",HARD:"#dc2626",VERY_HARD:"#7c3aed"};
                           const bc=BOBOT_COLOR[wInfo.bobot]||"#6366f1";
@@ -2069,18 +2075,7 @@ function OperatorView({user}:any){
                             <td style={{...td,textAlign:"center"}}>
                               {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
                             </td>
-                            <td style={{...td,fontWeight:600,color:"#374151",whiteSpace:"nowrap"}}>
-                              {r.item.nama}
-                              {r.wiringBadge&&(()=>{
-                                const BOBOT_COLOR:any={EASY:"#16a34a",MEDIUM:"#d97706",HARD:"#dc2626",VERY_HARD:"#7c3aed"};
-                                const bc=BOBOT_COLOR[r.wiringBadge.bobot]||"#6366f1";
-                                return(
-                                  <span style={{marginLeft:6,background:bc+"18",color:bc,border:`1px solid ${bc}33`,borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:700,whiteSpace:"nowrap"}}>
-                                    ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
-                                  </span>
-                                );
-                              })()}
-                            </td>
+                            <td style={{...td,fontWeight:600,color:"#374151",whiteSpace:"nowrap"}}>{r.item.nama}</td>
                             <td style={{...td,textAlign:"center",fontFamily:"'DM Mono',monospace",fontSize:10,color:"#94a3b8"}}>{r.kode}</td>
                             <td style={{...td,textAlign:"center"}}>
                               <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>
@@ -2092,7 +2087,7 @@ function OperatorView({user}:any){
                               </span>
                             </td>
                             {(()=>{
-                              const kInfo=r.wiringBadge||komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
+                              const kInfo=komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
                               const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"–";
                               const locked=isCellLocked(r.panelId,r.kode,proses);
                               const floor=getLockedFloor(r.panelId,r.kode,proses);
