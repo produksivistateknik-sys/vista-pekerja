@@ -1245,7 +1245,6 @@ function OperatorView({user}:any){
   const [woTargetMap,setWoTargetMap]=useState<Record<number,string>>({});
   const [wiringInfoMap,setWiringInfoMap]=useState<Record<string,any>>({});
   const [komponenInfoMap,setKomponenInfoMap]=useState<Record<string,any>>({});
-  const [expandedPanel,setExpandedPanel]=useState<Record<string,boolean>>({});
 
   const getUrgensi=(woId:number)=>{
     const target=woTargetMap[woId];
@@ -2014,36 +2013,7 @@ function OperatorView({user}:any){
                     const rBg=done?"#f0fdf4":ri%2===0?"#fff":"#f8fafc";
                     const td:any={padding:"6px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",
                       background:rBg,verticalAlign:"middle"};
-                    const isDrilldown=["WIRING CONTROL","WIRING POWER","BUSBAR"].includes(proses);
-                    const panelKey=`${proses}_${r.panelId}`;
-                    const isNewPanelGroup=isDrilldown&&(ri===0||rows[ri-1].panelId!==r.panelId);
-                    const panelExpanded=!!expandedPanel[panelKey];
-                    const panelHeaderRow=isNewPanelGroup?(()=>{
-                      const panelRows=rows.filter((x:any)=>x.panelId===r.panelId);
-                      const doneCount=panelRows.filter((x:any)=>isDone(x)).length;
-                      const allDone=panelRows.length>0&&doneCount===panelRows.length;
-                      return(
-                        <tr key={`ph-${proses}-${r.panelId}`} onClick={()=>setExpandedPanel(prev=>({...prev,[panelKey]:!prev[panelKey]}))}
-                          style={{cursor:"pointer",background:"#eef2ff"}}>
-                          <td colSpan={20} style={{padding:"8px 12px",borderBottom:"1px solid #e2e8f0"}}>
-                            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-                              <div style={{display:"flex",flexDirection:"column",gap:1}}>
-                                <span style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek}</span>
-                                <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{r.panel.nama}</span>
-                              </div>
-                              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                                <span style={{fontSize:11,fontWeight:700,background:allDone?"#dcfce7":"#fef3c7",
-                                  color:allDone?"#16a34a":"#b45309",borderRadius:20,padding:"3px 10px"}}>
-                                  {doneCount}/{panelRows.length} selesai
-                                </span>
-                                <span style={{fontSize:14,color:"#64748b"}}>{panelExpanded?"▲":"▼"}</span>
-                              </div>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    })():null;
-                    const dataRow=(!isDrilldown||panelExpanded)?(
+                    return(
                       <tr key={`${r.task.id}-${r.kode}`}>
                         <td style={{...td,position:"sticky",left:0,zIndex:1,textAlign:"center",fontFamily:"'DM Mono',monospace",color:"#94a3b8",fontWeight:700}}>{ri+1}</td>
                         <td style={{...td,position:"sticky",left:40,zIndex:1,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap"}}>
@@ -2252,8 +2222,7 @@ function OperatorView({user}:any){
                           }
                         </td>
                       </tr>
-                    ):null;
-                    return [panelHeaderRow,dataRow];
+                    );
                   })}
                 </tbody>
               </table>
