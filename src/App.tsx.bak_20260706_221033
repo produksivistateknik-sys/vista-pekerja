@@ -1229,22 +1229,8 @@ function NameplateView({user}:any){
 
 function OperatorView({user}:any){
   const [viewDate,setViewDate]=useState(TODAY);
-  const wsKey=`vista_pekerja_ws_${user.divisi}_${user.sub_bagian||""}_${user.id||user.username||user.nama||""}`;
-  const [shift,setShift]=useState(()=>{
-    try{
-      const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===TODAY&&saved.shift?saved.shift:"1";
-    }catch{return "1";}
-  });
-  const [shiftSet,setShiftSet]=useState(()=>{
-    try{
-      const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===TODAY?!!saved.shiftSet:false;
-    }catch{return false;}
-  });
-  useEffect(()=>{
-    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:TODAY,shift,shiftSet}));}catch{}
-  },[shift,shiftSet,wsKey]);
+  const [shift,setShift]=useState("1");
+  const [shiftSet,setShiftSet]=useState(false);
   const [catatan,setCatatan]=useState<Record<string,string>>({});
   const [savedNote,setSavedNote]=useState<Record<string,boolean>>({});
   const [lockMsg,setLockMsg]=useState(false);
@@ -1259,15 +1245,7 @@ function OperatorView({user}:any){
   const [woTargetMap,setWoTargetMap]=useState<Record<number,string>>({});
   const [wiringInfoMap,setWiringInfoMap]=useState<Record<string,any>>({});
   const [komponenInfoMap,setKomponenInfoMap]=useState<Record<string,any>>({});
-  const [selectedKomponen,setSelectedKomponen]=useState<Record<string,string[]>>(()=>{
-    try{
-      const saved=JSON.parse(localStorage.getItem(wsKey+"_komp")||"{}");
-      return saved.tanggal===TODAY&&saved.data?saved.data:{};
-    }catch{return {};}
-  });
-  useEffect(()=>{
-    try{localStorage.setItem(wsKey+"_komp",JSON.stringify({tanggal:TODAY,data:selectedKomponen}));}catch{}
-  },[selectedKomponen,wsKey]);
+  const [selectedKomponen,setSelectedKomponen]=useState<Record<string,string[]>>({});
   const [komponenPopup,setKomponenPopup]=useState<{proses:string,panelId:number}|null>(null);
   const [tempSelectedKomponen,setTempSelectedKomponen]=useState<string[]>([]);
 
