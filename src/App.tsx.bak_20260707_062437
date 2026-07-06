@@ -668,50 +668,46 @@ function QCChecklistTab({user}:any){
           const globalData=p.qc_checklist?._global||{};
           return(
             <div key={p.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
-              <div style={{padding:"14px 14px 12px",borderBottom:"1px solid #f1f5f9",background:"linear-gradient(180deg,#fafbfc,#fff)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <span style={{fontWeight:700,fontSize:14.5,color:"#0f172a"}}>{p.nama}</span>
-                  {(globalData.todo_at||globalData.complete_at)&&(
-                    <span style={{fontSize:9.5,color:"#94a3b8"}}>
-                      {globalData.complete_at?("Selesai "+fmtTglQc(globalData.complete_at)):("Mulai "+fmtTglQc(globalData.todo_at))}
-                    </span>
-                  )}
+              <div style={{padding:"12px 14px",borderBottom:"1px solid #f1f5f9"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                  <span style={{fontWeight:600,fontSize:13.5,color:"#0f172a"}}>{p.nama}</span>
+                  <div style={{display:"flex",border:"1px solid #e2e8f0",borderRadius:7,overflow:"hidden",flexShrink:0}}>
+                    <button onClick={()=>updateGlobalStatus(p.id,"to_do")}
+                      style={{width:52,height:28,border:"none",cursor:"pointer",fontSize:9.5,fontWeight:600,
+                        background:qcStatus==="to_do"?"#64748b":"#fff",color:qcStatus==="to_do"?"#fff":"#94a3b8"}}>
+                      To Do
+                    </button>
+                    <button onClick={()=>updateGlobalStatus(p.id,"in_progress")}
+                      style={{width:70,height:28,border:"none",borderLeft:"1px solid #e2e8f0",cursor:"pointer",fontSize:9.5,fontWeight:600,
+                        background:qcStatus==="in_progress"?"#ea580c":"#fff",color:qcStatus==="in_progress"?"#fff":"#94a3b8"}}>
+                      Progress
+                    </button>
+                    <button onClick={()=>updateGlobalStatus(p.id,"complete")}
+                      style={{width:64,height:28,border:"none",borderLeft:"1px solid #e2e8f0",cursor:"pointer",fontSize:9.5,fontWeight:600,
+                        background:qcStatus==="complete"?"#16a34a":"#fff",color:qcStatus==="complete"?"#fff":"#94a3b8"}}>
+                      Complete
+                    </button>
+                  </div>
                 </div>
-                <div style={{display:"flex",gap:6}}>
-                  {[{k:"to_do",label:"To Do",icon:"ti ti-circle-dashed",color:"#64748b"},
-                    {k:"in_progress",label:"Progress",icon:"ti ti-loader-2",color:"#ea580c"},
-                    {k:"complete",label:"Complete",icon:"ti ti-circle-check",color:"#16a34a"}].map((s:any)=>{
-                    const active=qcStatus===s.k;
-                    return(
-                      <button key={s.k} onClick={()=>updateGlobalStatus(p.id,s.k)}
-                        style={{flex:1,display:"flex",flexDirection:"column" as const,alignItems:"center",gap:3,
-                          padding:"9px 4px",borderRadius:10,border:active?"none":"1px solid #e2e8f0",
-                          background:active?s.color:"#fff",cursor:"pointer",transition:"all .15s",
-                          boxShadow:active?`0 3px 8px ${s.color}44`:"none"}}>
-                        <i className={s.icon} style={{fontSize:16,color:active?"#fff":s.color}}/>
-                        <span style={{fontSize:9,fontWeight:700,color:active?"#fff":"#94a3b8"}}>{s.label}</span>
-                      </button>
-                    );
-                  })}
-                </div>
+                {(globalData.todo_at||globalData.complete_at)&&(
+                  <div style={{display:"flex",gap:10,fontSize:9.5,color:"#94a3b8"}}>
+                    {globalData.todo_at&&<span>To Do: {fmtTglQc(globalData.todo_at)}</span>}
+                    {globalData.complete_at&&<span>Selesai: {fmtTglQc(globalData.complete_at)}</span>}
+                  </div>
+                )}
               </div>
 
-              <div style={{padding:"10px 10px 4px",display:"flex",flexDirection:"column" as const,gap:8}}>
+              <div>
                 {QC_ITEMS.map((item)=>{
                   const savedData=cl[item.key]||{catatan:""};
                   const fotoSeksi=savedData.foto||[];
                   const uploadKey=`${p.id}_${item.key}`;
                   return(
-                    <div key={item.key} style={{padding:12,background:"#f8fafc",borderRadius:12,border:"1px solid #eef2f7"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                        <div style={{width:26,height:26,borderRadius:8,background:"#fff",border:"1px solid #e2e8f0",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                          <i className={item.icon} style={{fontSize:13,color:"#475569"}}/>
-                        </div>
-                        <span style={{fontSize:12.5,color:"#1e293b",fontWeight:700}}>{item.label}</span>
-                      </div>
+                    <div key={item.key} style={{padding:"10px 14px",borderBottom:"1px solid #f8fafc"}}>
+                      <div style={{fontSize:12.5,color:"#334155",fontWeight:600,marginBottom:6}}>{item.label}</div>
                       <input defaultValue={savedData.catatan||""} placeholder="Catatan (opsional)"
                         onBlur={(e:any)=>updateCatatanSeksi(p.id,item.key,e.target.value)}
-                        style={{width:"100%",marginBottom:8,padding:"7px 10px",fontSize:11.5,borderRadius:6,border:"1px solid #e2e8f0",outline:"none",background:"#fff",color:"#1e293b",boxSizing:"border-box" as const}}/>
+                        style={{width:"100%",marginBottom:8,padding:"7px 10px",fontSize:11.5,borderRadius:6,border:"1px solid #e2e8f0",outline:"none",background:"#f8fafc",color:"#1e293b",boxSizing:"border-box" as const}}/>
                       <div>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
                           <span style={{fontSize:10.5,fontWeight:600,color:"#64748b"}}>Foto {fotoSeksi.length}</span>
@@ -726,7 +722,7 @@ function QCChecklistTab({user}:any){
                           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
                             {fotoSeksi.map((f:any,fi:number)=>(
                               <div key={fi}>
-                                <div onClick={()=>setLightbox(f)} style={{position:"relative" as const,aspectRatio:"1",borderRadius:8,overflow:"hidden",cursor:"pointer",background:"#f1f5f9",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
+                                <div onClick={()=>setLightbox(f)} style={{position:"relative" as const,aspectRatio:"1",borderRadius:6,overflow:"hidden",cursor:"pointer",background:"#f1f5f9"}}>
                                   <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
                                   <button onClick={(e:any)=>{e.stopPropagation();hapusFotoSeksi(p.id,item.key,f.url);}}
                                     style={{position:"absolute" as const,top:3,right:3,width:16,height:16,borderRadius:99,background:"rgba(15,23,42,0.6)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
@@ -761,11 +757,10 @@ function QCChecklistTab({user}:any){
                   </div>
                 ):(
                   <button onClick={()=>{if(qcSemuaComplete)togglePacking(p.id,false);}} disabled={!qcSemuaComplete}
-                    style={{width:"100%",height:44,borderRadius:10,border:"none",cursor:qcSemuaComplete?"pointer":"not-allowed",
-                      fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6,
-                      background:qcSemuaComplete?"linear-gradient(135deg,#3b82f6,#1d4ed8)":"#f1f5f9",color:qcSemuaComplete?"#fff":"#94a3b8",
-                      boxShadow:qcSemuaComplete?"0 4px 12px #1d4ed84a":"none"}}>
-                    <i className={qcSemuaComplete?"ti ti-package":"ti ti-lock"} style={{fontSize:16}}/>
+                    style={{width:"100%",height:42,borderRadius:8,border:"none",cursor:qcSemuaComplete?"pointer":"not-allowed",
+                      fontSize:13,fontWeight:600,display:"flex",alignItems:"center",justifyContent:"center",gap:6,
+                      background:qcSemuaComplete?"#2563eb":"#f1f5f9",color:qcSemuaComplete?"#fff":"#94a3b8"}}>
+                    <i className={qcSemuaComplete?"ti ti-package":"ti ti-lock"} style={{fontSize:15}}/>
                     {qcSemuaComplete?"Tandai sudah packing":"Selesaikan QC dulu"}
                   </button>
                 )}
