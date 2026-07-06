@@ -665,52 +665,78 @@ function QCChecklistTab({user}:any){
           const cl=p.qc_checklist||{};
           const qcStatus=getQcStatus(p);
           const qcSemuaComplete=qcStatus==="complete";
-          const globalData=p.qc_checklist?._global||{};
+          const statusBadge=qcStatus==="complete"?{bg:"#f0fdf4",color:"#16a34a",label:"Selesai"}:qcStatus==="in_progress"?{bg:"#fff7ed",color:"#ea580c",label:"Sedang Dikerjakan"}:{bg:"#f1f5f9",color:"#64748b",label:"To Do"};
           return(
             <div key={p.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
-              <div style={{padding:"12px 14px",borderBottom:"1px solid #f1f5f9"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
-                  <span style={{fontWeight:600,fontSize:13.5,color:"#0f172a"}}>{p.nama}</span>
-                  <div style={{display:"flex",border:"1px solid #e2e8f0",borderRadius:7,overflow:"hidden",flexShrink:0}}>
-                    <button onClick={()=>updateGlobalStatus(p.id,"to_do")}
-                      style={{width:52,height:28,border:"none",cursor:"pointer",fontSize:9.5,fontWeight:600,
-                        background:qcStatus==="to_do"?"#64748b":"#fff",color:qcStatus==="to_do"?"#fff":"#94a3b8"}}>
-                      To Do
-                    </button>
-                    <button onClick={()=>updateGlobalStatus(p.id,"in_progress")}
-                      style={{width:70,height:28,border:"none",borderLeft:"1px solid #e2e8f0",cursor:"pointer",fontSize:9.5,fontWeight:600,
-                        background:qcStatus==="in_progress"?"#ea580c":"#fff",color:qcStatus==="in_progress"?"#fff":"#94a3b8"}}>
-                      Progress
-                    </button>
-                    <button onClick={()=>updateGlobalStatus(p.id,"complete")}
-                      style={{width:64,height:28,border:"none",borderLeft:"1px solid #e2e8f0",cursor:"pointer",fontSize:9.5,fontWeight:600,
-                        background:qcStatus==="complete"?"#16a34a":"#fff",color:qcStatus==="complete"?"#fff":"#94a3b8"}}>
-                      Complete
-                    </button>
-                  </div>
-                </div>
-                {(globalData.todo_at||globalData.complete_at)&&(
-                  <div style={{display:"flex",gap:10,fontSize:9.5,color:"#94a3b8"}}>
-                    {globalData.todo_at&&<span>To Do: {fmtTglQc(globalData.todo_at)}</span>}
-                    {globalData.complete_at&&<span>Selesai: {fmtTglQc(globalData.complete_at)}</span>}
-                  </div>
-                )}
+              <div style={{padding:"12px 14px",borderBottom:"1px solid #f1f5f9",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <span style={{fontWeight:600,fontSize:13.5,color:"#0f172a"}}>{p.nama}</span>
+                <span style={{fontSize:10,fontWeight:600,padding:"3px 9px",borderRadius:5,background:statusBadge.bg,color:statusBadge.color}}>
+                  {statusBadge.label}
+                </span>
               </div>
 
               <div>
                 {QC_ITEMS.map((item)=>{
-                  const savedData=cl[item.key]||{catatan:""};
+                  const savedData=cl[item.key]||{status:"to_do",catatan:""};
+                  const pendKey=`${p.id}_${item.key}`;
+                  const pending=pendingChecklist[pendKey];
+                  const displayStatus=pending?pending.status:savedData.status;
+                  const isPending=!!pending&&pending.status!==savedData.status;
                   const fotoSeksi=savedData.foto||[];
                   const uploadKey=`${p.id}_${item.key}`;
+                  const fmtTgl=(iso:string)=>{
+                    if(!iso)return"";
+                    const d=new Date(iso);
+                    return d.toLocaleDateString("id-ID",{day:"numeric",month:"short"})+" "+d.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"});
+                  };
                   return(
                     <div key={item.key} style={{padding:"10px 14px",borderBottom:"1px solid #f8fafc"}}>
-                      <div style={{fontSize:12.5,color:"#334155",fontWeight:600,marginBottom:6}}>{item.label}</div>
-                      <input defaultValue={savedData.catatan||""} placeholder="Catatan (opsional)"
-                        onBlur={(e:any)=>updateCatatanSeksi(p.id,item.key,e.target.value)}
-                        style={{width:"100%",marginBottom:8,padding:"7px 10px",fontSize:11.5,borderRadius:6,border:"1px solid #e2e8f0",outline:"none",background:"#f8fafc",color:"#1e293b",boxSizing:"border-box" as const}}/>
-                      <div>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,marginBottom:6}}>
+                        <span style={{fontSize:12.5,color:"#334155",flex:1}}>{item.label}</span>
+                        <div style={{display:"flex",border:"1px solid #e2e8f0",borderRadius:7,overflow:"hidden",flexShrink:0}}>
+                          <button onClick={()=>setPendingChecklist(prev=>({...prev,[pendKey]:{status:"to_do",catatan:""}}))}
+                            style={{width:48,height:28,border:"none",cursor:"pointer",fontSize:9.5,fontWeight:600,
+                              background:displayStatus==="to_do"?(isPending?"#cbd5e1":"#64748b"):"#fff",color:displayStatus==="to_do"?"#fff":"#94a3b8"}}>
+                            To Do
+                          </button>
+                          <button onClick={()=>setPendingChecklist(prev=>({...prev,[pendKey]:{status:"in_progress",catatan:""}}))}
+                            style={{width:68,height:28,border:"none",borderLeft:"1px solid #e2e8f0",cursor:"pointer",fontSize:9.5,fontWeight:600,
+                              background:displayStatus==="in_progress"?(isPending?"#fdba74":"#ea580c"):"#fff",color:displayStatus==="in_progress"?"#fff":"#94a3b8"}}>
+                            Progress
+                          </button>
+                          <button onClick={()=>setPendingChecklist(prev=>({...prev,[pendKey]:{status:"complete",catatan:""}}))}
+                            style={{width:62,height:28,border:"none",borderLeft:"1px solid #e2e8f0",cursor:"pointer",fontSize:9.5,fontWeight:600,
+                              background:displayStatus==="complete"?(isPending?"#86efac":"#16a34a"):"#fff",color:displayStatus==="complete"?"#fff":"#94a3b8"}}>
+                            Complete
+                          </button>
+                        </div>
+                      </div>
+                      {(savedData.todo_at||savedData.complete_at)&&(
+                        <div style={{display:"flex",gap:10,fontSize:9.5,color:"#94a3b8",marginBottom:8}}>
+                          {savedData.todo_at&&<span>To Do: {fmtTgl(savedData.todo_at)}</span>}
+                          {savedData.complete_at&&<span>Selesai: {fmtTgl(savedData.complete_at)}</span>}
+                        </div>
+                      )}
+                      {isPending&&(
+                        <div style={{marginTop:8}}>
+                          <div style={{display:"flex",gap:6}}>
+                            <button onClick={()=>{
+                                updateChecklistItem(p.id,item.key,pending.status,pending.catatan||"");
+                                setPendingChecklist(prev=>{const n={...prev};delete n[pendKey];return n;});
+                              }}
+                              style={{flex:1,height:30,borderRadius:6,border:"none",cursor:"pointer",fontSize:11,fontWeight:600,background:"#2563eb",color:"#fff"}}>
+                              Simpan
+                            </button>
+                            <button onClick={()=>setPendingChecklist(prev=>{const n={...prev};delete n[pendKey];return n;})}
+                              style={{flex:1,height:30,borderRadius:6,border:"1px solid #e2e8f0",cursor:"pointer",fontSize:11,fontWeight:600,background:"#fff",color:"#94a3b8"}}>
+                              Batal
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                      <div style={{marginTop:8}}>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
-                          <span style={{fontSize:10.5,fontWeight:600,color:"#64748b"}}>Foto {fotoSeksi.length}</span>
+                          <span style={{fontSize:10.5,fontWeight:600,color:"#64748b"}}>Foto · {fotoSeksi.length}</span>
                           <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:10.5,fontWeight:600}}>
                             <i className={uploadingId===uploadKey?"ti ti-loader-2":"ti ti-plus"} style={{fontSize:12}}/>
                             Tambah
@@ -729,7 +755,7 @@ function QCChecklistTab({user}:any){
                                     <i className="ti ti-x" style={{fontSize:9}}/>
                                   </button>
                                 </div>
-                                <div style={{fontSize:8.5,color:"#94a3b8",marginTop:2}}>{fmtTglQc(f.uploaded_at)}</div>
+                                <div style={{fontSize:8.5,color:"#94a3b8",marginTop:2}}>{fmtTgl(f.uploaded_at)}</div>
                               </div>
                             ))}
                           </div>
