@@ -461,10 +461,10 @@ const getUrgensiPanel=(target:string|undefined)=>{
 };
 
 const QC_ITEMS=[
-  {key:"fisik",label:"Pemeriksaan Fisik",desc:"Kelayakan kualitas fisik panel",icon:"🔍"},
-  {key:"spesifikasi",label:"Verifikasi Spesifikasi Komponen",desc:"Sesuai partlist",icon:"📋"},
-  {key:"baut",label:"Pengecekan Kekencangan Baut",desc:"",icon:"🔧"},
-  {key:"test",label:"QC Test",desc:"Tes elektrikal standar",icon:"⚡"},
+  {key:"fisik",label:"Pemeriksaan Fisik",desc:"Kelayakan kualitas fisik panel",icon:"ti ti-eye"},
+  {key:"spesifikasi",label:"Verifikasi Spesifikasi Komponen",desc:"Sesuai partlist",icon:"ti ti-list-details"},
+  {key:"baut",label:"Pengecekan Kekencangan Baut",desc:"",icon:"ti ti-tool"},
+  {key:"test",label:"QC Test",desc:"Tes elektrikal standar",icon:"ti ti-bolt"},
 ];
 
 function QCChecklistTab({user}:any){
@@ -704,8 +704,8 @@ function QCChecklistTab({user}:any){
                   return(
                     <div key={item.key} style={{padding:12,background:"#f8fafc",borderRadius:12,border:"1px solid #eef2f7"}}>
                       <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                        <div style={{width:26,height:26,borderRadius:8,background:"#fff",border:"1px solid #e2e8f0",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:13}}>
-                          {item.icon}
+                        <div style={{width:26,height:26,borderRadius:8,background:"#fff",border:"1px solid #e2e8f0",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                          <i className={item.icon} style={{fontSize:13,color:"#475569"}}/>
                         </div>
                         <span style={{fontSize:12.5,color:"#1e293b",fontWeight:700}}>{item.label}</span>
                       </div>
