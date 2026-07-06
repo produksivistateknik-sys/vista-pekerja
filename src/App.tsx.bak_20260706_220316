@@ -2430,26 +2430,13 @@ function OperatorView({user}:any){
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App(){
-  const [user,setUser]=useState<any>(()=>{
-    try{
-      const saved=localStorage.getItem("vista_pekerja_session");
-      return saved?JSON.parse(saved):null;
-    }catch{return null;}
-  });
-  const [page,setPage]=useState<string>(()=>{
-    try{
-      return localStorage.getItem("vista_pekerja_session")?"app":"landing";
-    }catch{return "landing";}
-  });
+  const [page,setPage]=useState("landing");
+  const [user,setUser]=useState<any>(null);
 
   const cfg=user?DIVISI_CONFIG[user.divisi]:null;
 
   if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
-  if(!user) return <Login onLogin={(u:any)=>{
-    setUser(u);
-    try{localStorage.setItem("vista_pekerja_session",JSON.stringify(u));}catch{}
-    setPage("app");
-  }}/>;
+  if(!user) return <Login onLogin={(u:any)=>{setUser(u);setPage("app");}}/>;
 
   return(
     <div style={{minHeight:"100vh",background:"#f1f5f9"}}>
@@ -2471,7 +2458,7 @@ export default function App(){
                 cursor:"pointer",fontSize:13,color:"#64748b"}}>
               🔄
             </button>
-            <button onClick={()=>{setUser(null);try{localStorage.removeItem("vista_pekerja_session");}catch{}setPage("landing");}}
+            <button onClick={()=>{setUser(null);setPage("landing");}}
               style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#64748b",
                 borderRadius:8,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600}}>Keluar</button>
           </div>
