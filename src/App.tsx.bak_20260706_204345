@@ -1322,29 +1322,6 @@ function OperatorView({user}:any){
     return()=>{supabase.removeChannel(renharChannel);};
   },[viewDate,user.divisi]);
 
-  useEffect(()=>{
-    const fetchTimerData=()=>{
-      supabase.from("fcs_timer_kerja").select("*").or(`selesai.is.null,tanggal.eq.${viewDate}`).then(({data})=>{
-        const mapAktif:Record<string,any>={};
-        const mapPernahMulai:Record<string,boolean>={};
-        const mapSelesaiHariIni:Record<string,boolean>={};
-        (data??[]).forEach((t:any)=>{
-          const key=`${t.panel_id}_${t.kode_komponen}_${t.proses}_${t.pekerja_id}`;
-          if(!t.selesai)mapAktif[key]=t;
-          mapPernahMulai[key]=true;
-          if(t.tanggal===viewDate&&t.selesai)mapSelesaiHariIni[key]=true;
-        });
-        setTimerAktif(mapAktif);
-        setTimerPernahMulai(mapPernahMulai);
-        setTimerSelesaiHariIni(mapSelesaiHariIni);
-      });
-    };
-    const timerChannel=supabase.channel("realtime-timer-kerja-pekerja")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},()=>{fetchTimerData();})
-      .subscribe();
-    return()=>{supabase.removeChannel(timerChannel);};
-  },[viewDate]);
-
   const loadData=async()=>{
     setLoadingData(true);
     // ambil renhar berdasarkan divisi dan tanggal
