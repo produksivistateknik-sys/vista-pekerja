@@ -1340,7 +1340,7 @@ function OperatorView({user}:any){
       });
   },[operatorModal]);
   const [timerAktif,setTimerAktif]=useState<Record<string,any>>({});
-  const [,setTimerPernahMulai]=useState<Record<string,boolean>>({});
+  const [timerPernahMulai,setTimerPernahMulai]=useState<Record<string,boolean>>({});
   const [timerSelesaiHariIni,setTimerSelesaiHariIni]=useState<Record<string,boolean>>({});
   const [timerLoading,setTimerLoading]=useState<string|null>(null);
   const [, setTimerTick]=useState(0);
@@ -1628,7 +1628,7 @@ function OperatorView({user}:any){
     if(!isWiringProses(proses))return true;
     const ids=(task?.pekerja_per_komponen||{})[kode]||[];
     if(ids.length===0)return false;
-    return ids.some((pid:number)=>!!timerAktif[`${panelId}_${kode}_${proses}_${pid}`]);
+    return ids.some((pid:number)=>timerPernahMulai[`${panelId}_${kode}_${proses}_${pid}`]);
   };
 
   const canLockKomponen=(task:any,kode:string,panelId:number,proses:string):boolean=>{

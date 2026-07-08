@@ -1340,7 +1340,7 @@ function OperatorView({user}:any){
       });
   },[operatorModal]);
   const [timerAktif,setTimerAktif]=useState<Record<string,any>>({});
-  const [,setTimerPernahMulai]=useState<Record<string,boolean>>({});
+  const [timerPernahMulai,setTimerPernahMulai]=useState<Record<string,boolean>>({});
   const [timerSelesaiHariIni,setTimerSelesaiHariIni]=useState<Record<string,boolean>>({});
   const [timerLoading,setTimerLoading]=useState<string|null>(null);
   const [, setTimerTick]=useState(0);
