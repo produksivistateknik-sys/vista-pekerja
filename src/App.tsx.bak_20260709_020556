@@ -1836,15 +1836,8 @@ function OperatorView({user}:any){
     }
 
     // simpan checkpoint log - siapa nyampein checkpoint berapa, buat riwayat kontribusi per operator
-    console.log("[DEBUG checkpointLog] jumlah entry:",checkpointLogEntries.length,checkpointLogEntries);
     if(checkpointLogEntries.length>0){
-      try{
-        const{error:cpErr}=await supabase.from("progress_checkpoint_log").insert(checkpointLogEntries);
-        if(cpErr)console.error("[DEBUG checkpointLog] GAGAL insert:",cpErr);
-        else console.log("[DEBUG checkpointLog] BERHASIL insert");
-      }catch(e){
-        console.error("[DEBUG checkpointLog] EXCEPTION:",e);
-      }
+      await supabase.from("progress_checkpoint_log").insert(checkpointLogEntries);
     }
 
     // simpan catatan ke tabel kendala - 1 baris per (proses, panel) supaya bisa dikelompokkan per proyek/panel
@@ -2493,7 +2486,7 @@ function OperatorView({user}:any){
               background:lockMsg||pernahDikunci?"#16a34a":"#1d4ed8",color:"#fff",
               boxShadow:"0 4px 14px #2563eb33",transition:"all .2s",
               display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            {lockMsg?"✅ Progress hari ini berhasil dikunci & tersimpan! [v2]":pernahDikunci?"✅ Sudah Dikunci — Kunci Ulang [v2]":"🔒 Kunci Progress Hari Ini [v2]"}
+            {lockMsg?"✅ Progress hari ini berhasil dikunci & tersimpan!":pernahDikunci?"✅ Sudah Dikunci — Kunci Ulang":"🔒 Kunci Progress Hari Ini"}
           </button>
           <div style={{fontSize:11,color:"#94a3b8",textAlign:"center",marginTop:8,lineHeight:1.5}}>
             Klik di akhir shift untuk menyimpan progress hari ini sebagai catatan permanen.<br/>

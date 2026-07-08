@@ -2493,7 +2493,7 @@ function OperatorView({user}:any){
               background:lockMsg||pernahDikunci?"#16a34a":"#1d4ed8",color:"#fff",
               boxShadow:"0 4px 14px #2563eb33",transition:"all .2s",
               display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
-            {lockMsg?"✅ Progress hari ini berhasil dikunci & tersimpan! [v2]":pernahDikunci?"✅ Sudah Dikunci — Kunci Ulang [v2]":"🔒 Kunci Progress Hari Ini [v2]"}
+            {lockMsg?"✅ Progress hari ini berhasil dikunci & tersimpan!":pernahDikunci?"✅ Sudah Dikunci — Kunci Ulang":"🔒 Kunci Progress Hari Ini"}
           </button>
           <div style={{fontSize:11,color:"#94a3b8",textAlign:"center",marginTop:8,lineHeight:1.5}}>
             Klik di akhir shift untuk menyimpan progress hari ini sebagai catatan permanen.<br/>
