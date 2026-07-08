@@ -1756,15 +1756,12 @@ function OperatorView({user}:any){
                 const updatedHist=[...prevHist];
                 updatedHist[existIdx]={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
                 newChecklist[kode]={...cl,history:{...(cl.history||{}),[pr]:updatedHist}};
-                const idsKomp=(task.pekerja_per_komponen||{})[kode]||[];
-                const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
-                const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(", "):user.nama;
                 checkpointLogEntries.push({
                   panel_id:Number(panelId),
                   kode_komponen:kode,
                   proses:pr,
                   checkpoint:pct,
-                  pekerja_nama:pekerjaNamaLog,
+                  pekerja_nama:user.nama,
                   tanggal:viewDate,
                 });
               }
@@ -1779,19 +1776,14 @@ function OperatorView({user}:any){
             newLocked[`${panelId}_${kode}_${pr}_${viewDate}_${shift}`]=true;
             processed.add(cellKey);
             count++;
-            {
-              const idsKomp=(task.pekerja_per_komponen||{})[kode]||[];
-              const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
-              const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(", "):user.nama;
-              checkpointLogEntries.push({
-                panel_id:Number(panelId),
-                kode_komponen:kode,
-                proses:pr,
-                checkpoint:pct,
-                pekerja_nama:pekerjaNamaLog,
-                tanggal:viewDate,
-              });
-            }
+            checkpointLogEntries.push({
+              panel_id:Number(panelId),
+              kode_komponen:kode,
+              proses:pr,
+              checkpoint:pct,
+              pekerja_nama:user.nama,
+              tanggal:viewDate,
+            });
           });
         });
       });
