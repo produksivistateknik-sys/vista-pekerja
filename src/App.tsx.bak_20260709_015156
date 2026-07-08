@@ -1755,14 +1755,6 @@ function OperatorView({user}:any){
                 const updatedHist=[...prevHist];
                 updatedHist[existIdx]={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
                 newChecklist[kode]={...cl,history:{...(cl.history||{}),[pr]:updatedHist}};
-                checkpointLogEntries.push({
-                  panel_id:Number(panelId),
-                  kode_komponen:kode,
-                  proses:pr,
-                  checkpoint:pct,
-                  pekerja_nama:user.nama,
-                  tanggal:viewDate,
-                });
               }
               processed.add(cellKey);
               return;
