@@ -1727,7 +1727,6 @@ function OperatorView({user}:any){
 
   // Kunci progress — simpan ke Supabase
   const lockProgress=async()=>{
-    alert('LOCKPROGRESS DIPANGGIL - versi terbaru v3');
     let count=0;
     const newLocked={...lockedCells};
     const checkpointLogEntries:any[]=[];
