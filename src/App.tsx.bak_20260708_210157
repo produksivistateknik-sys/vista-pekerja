@@ -1819,16 +1819,6 @@ function OperatorView({user}:any){
     }
 
     // simpan catatan ke tabel kendala - 1 baris per (proses, panel) supaya bisa dikelompokkan per proyek/panel
-    // Cek dulu kendala yang sudah ada hari ini biar gak dobel kalau isinya sama pas dikunci ulang
-    const { data: existingKendalaHariIni } = await supabase.from("kendala")
-      .select("proses,panel_id,catatan")
-      .eq("tanggal",viewDate)
-      .eq("operator",user.nama);
-    const existingKendalaMap=new Map();
-    (existingKendalaHariIni||[]).forEach((e:any)=>{
-      existingKendalaMap.set(e.proses+"|"+e.panel_id,e.catatan);
-    });
-
     const kendalaLogged=new Set();
     for(const task of todayTasks){
       const proses=task.proses;
@@ -1837,14 +1827,12 @@ function OperatorView({user}:any){
       const comboKey=proses+"|"+panelIdTask;
       if(kendalaLogged.has(comboKey))continue;
       kendalaLogged.add(comboKey);
-      const catatanTrim=catatan[proses].trim();
-      if(existingKendalaMap.get(comboKey)===catatanTrim)continue;
       await supabase.from("kendala").insert({
         divisi:user.divisi,
         divisi_label:cfg.label,
         tanggal:viewDate,
         proses,
-        catatan:catatanTrim,
+        catatan:catatan[proses].trim(),
         operator:user.nama,
         ts:new Date().toISOString(),
         proyek:task.proyek||null,
