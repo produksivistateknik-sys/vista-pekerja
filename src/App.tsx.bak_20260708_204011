@@ -1818,27 +1818,22 @@ function OperatorView({user}:any){
       }
     }
 
-    // simpan catatan ke tabel kendala - 1 baris per (proses, panel) supaya bisa dikelompokkan per proyek/panel
-    const kendalaLogged=new Set();
+    // simpan catatan ke tabel kendala
+    const prosesLogged=new Set();
     for(const task of todayTasks){
       const proses=task.proses;
-      if(!catatan[proses]?.trim())continue;
-      const panelIdTask=task.panel_id||task.panelId;
-      const comboKey=proses+"|"+panelIdTask;
-      if(kendalaLogged.has(comboKey))continue;
-      kendalaLogged.add(comboKey);
-      await supabase.from("kendala").insert({
-        divisi:user.divisi,
-        divisi_label:cfg.label,
-        tanggal:viewDate,
-        proses,
-        catatan:catatan[proses].trim(),
-        operator:user.nama,
-        ts:new Date().toISOString(),
-        proyek:task.proyek||null,
-        panel:task.panel||null,
-        panel_id:panelIdTask||null,
-      });
+      if(catatan[proses]?.trim()&&!prosesLogged.has(proses)){
+        prosesLogged.add(proses);
+        await supabase.from("kendala").insert({
+          divisi:user.divisi,
+          divisi_label:cfg.label,
+          tanggal:viewDate,
+          proses,
+          catatan:catatan[proses].trim(),
+          operator:user.nama,
+          ts:new Date().toISOString(),
+        });
+      }
     }
 
     // Hitung busbar tasks juga
