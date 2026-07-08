@@ -1729,7 +1729,6 @@ function OperatorView({user}:any){
   const lockProgress=async()=>{
     let count=0;
     const newLocked={...lockedCells};
-    const checkpointLogEntries:any[]=[];
 
     for(const [panelId,panel] of Object.entries(panelsMap)){
       const relatedTasks=todayTasks.filter((t:any)=>(t.panel_id||t.panelId)===Number(panelId));
@@ -1767,14 +1766,6 @@ function OperatorView({user}:any){
             newLocked[`${panelId}_${kode}_${pr}_${viewDate}_${shift}`]=true;
             processed.add(cellKey);
             count++;
-            checkpointLogEntries.push({
-              panel_id:Number(panelId),
-              kode_komponen:kode,
-              proses:pr,
-              checkpoint:pct,
-              pekerja_nama:user.nama,
-              tanggal:viewDate,
-            });
           });
         });
       });
@@ -1825,11 +1816,6 @@ function OperatorView({user}:any){
           }
         }
       }
-    }
-
-    // simpan checkpoint log - siapa nyampein checkpoint berapa, buat riwayat kontribusi per operator
-    if(checkpointLogEntries.length>0){
-      await supabase.from("progress_checkpoint_log").insert(checkpointLogEntries);
     }
 
     // simpan catatan ke tabel kendala - 1 baris per (proses, panel) supaya bisa dikelompokkan per proyek/panel
