@@ -2407,9 +2407,8 @@ function OperatorView({user}:any){
                                   let durasiLabel="";
                                   if(timer){
                                     const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
-                                    const totalMenit=(timerDurasiSelesai[key]||0)+menitBerjalan;
-                                    const jam=Math.floor(totalMenit/60);
-                                    const menit=Math.round(totalMenit%60);
+                                    const jam=Math.floor(menitBerjalan/60);
+                                    const menit=Math.round(menitBerjalan%60);
                                     durasiLabel=jam>0?`${jam}j ${menit}m`:`${menit}m`;
                                   }
                                   return(
