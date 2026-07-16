@@ -1272,8 +1272,7 @@ function NameplateView({user}:any){
   );
 }
 
-function OperatorView({user,viewMode}:any){
-  void viewMode; // dipake nanti buat render mobile vs desktop
+function OperatorView({user}:any){
   const [viewDate,setViewDate]=useState(TODAY);
   const [bomPanelTypes,setBomPanelTypes]=useState<any>({});
   useEffect(()=>{
@@ -2645,7 +2644,7 @@ export default function App(){
           </div>
         </div>
         <div style={{flex:1,overflowY:"auto"}}>
-          {user.divisi==="nameplate"?<NameplateView user={user}/>:user.divisi==="qc"?<QCChecklistTab user={user}/>:user.divisi==="komponen"?<TrackingKomponenView user={user}/>:<OperatorView user={user} viewMode={viewMode}/>}
+          {user.divisi==="nameplate"?<NameplateView user={user}/>:user.divisi==="qc"?<QCChecklistTab user={user}/>:user.divisi==="komponen"?<TrackingKomponenView user={user}/>:<OperatorView user={user}/>}
         </div>
         <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",
           display:"flex",height:52,zIndex:100,boxShadow:"0 -2px 10px #00000010"}}>

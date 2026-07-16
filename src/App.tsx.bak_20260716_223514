@@ -1273,7 +1273,6 @@ function NameplateView({user}:any){
 }
 
 function OperatorView({user,viewMode}:any){
-  void viewMode; // dipake nanti buat render mobile vs desktop
   const [viewDate,setViewDate]=useState(TODAY);
   const [bomPanelTypes,setBomPanelTypes]=useState<any>({});
   useEffect(()=>{
