@@ -1,0 +1,344 @@
+1900       const proses=task.proses;
+1901       if(!catatan[proses]?.trim())continue;
+1902       const panelIdTask=task.panel_id||task.panelId;
+1903       const comboKey=proses+"|"+panelIdTask;
+1904       if(kendalaLogged.has(comboKey))continue;
+1905       kendalaLogged.add(comboKey);
+1906       const catatanTrim=catatan[proses].trim();
+1907       if(existingKendalaMap.get(comboKey)===catatanTrim)continue;
+1908       await supabase.from("kendala").insert({
+1909         divisi:user.divisi,
+1910         divisi_label:cfg.label,
+1911         tanggal:viewDate,
+1912         proses,
+1913         catatan:catatanTrim,
+1914         operator:user.nama,
+1915         ts:new Date().toISOString(),
+1916         proyek:task.proyek||null,
+1917         panel:task.panel||null,
+1918         panel_id:panelIdTask||null,
+1919       });
+1920     }
+1921 
+1922     // Hitung busbar tasks juga
+1923     const busbarCount=todayTasks.filter((t:any)=>t.proses==="BUSBAR").length;
+1924     if(count>0||busbarCount>0||Object.keys(catatan).some(k=>catatan[k]?.trim())){
+1925       setLockedCells(newLocked);
+1926       setLockMsg(true);
+1927       setTimeout(()=>setLockMsg(false),2500);
+1928     }
+1929     // Selalu set pernahDikunci=true setiap kali tombol diklik (terlepas ada perubahan atau tidak)
+1930     setPernahDikunci(true);
+1931   };
+1932 
+1933   const thS:any={background:"#1e3a8a",color:"#fff",padding:"7px 8px",fontWeight:700,fontSize:10,
+1934     whiteSpace:"nowrap",letterSpacing:.3,textAlign:"center",borderRight:"1px solid #ffffff15",
+1935     position:"sticky",top:0,zIndex:3};
+1936 
+1937   // ── Setup shift screen ──
+1938   if(!shiftSet){
+1939     return(
+1940       <div style={{padding:20,maxWidth:480,margin:"0 auto"}} className="fi">
+1941         <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:24}}>
+1942           <div style={{width:48,height:48,borderRadius:12,background:cfg.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>{cfg.icon}</div>
+1943           <div>
+1944             <div style={{fontWeight:800,fontSize:17,color:"#1e293b"}}>{cfg.label}</div>
+1945             <div style={{fontSize:12,color:"#64748b"}}>Setup sesi kerja hari ini</div>
+1946           </div>
+1947         </div>
+1948         <Card>
+1949           <div style={{marginBottom:16}}>
+1950             <Lbl>Tanggal</Lbl>
+1951             <Inp type="date" value={viewDate} onChange={(e:any)=>setViewDate(e.target.value)}/>
+1952           </div>
+1953           <div style={{marginBottom:16}}>
+1954             <Lbl>Shift</Lbl>
+1955             <div style={{display:"flex",gap:10}}>
+1956               {["1","2"].map(s=>(
+1957                 <button key={s} onClick={()=>setShift(s)}
+1958                   style={{flex:1,padding:"12px",borderRadius:10,border:`2px solid ${shift===s?cfg.color:"#e2e8f0"}`,
+1959                     background:shift===s?cfg.color+"18":"#f8fafc",color:shift===s?cfg.color:"#64748b",
+1960                     cursor:"pointer",fontWeight:800,fontSize:16,transition:"all .15s"}}>
+1961                   Shift {s}
+1962                 </button>
+1963               ))}
+1964             </div>
+1965           </div>
+1966           <Btn color={cfg.color} style={{width:"100%",padding:13,fontSize:15}} onClick={()=>setShiftSet(true)}>
+1967             Mulai Kerja →
+1968           </Btn>
+1969         </Card>
+1970       </div>
+1971     );
+1972   }
+1973 
+1974   // ── No tasks ──
+1975   if(loadingData){
+1976     return(
+1977       <div style={{padding:40,textAlign:"center",color:"#64748b"}}>
+1978         <div style={{fontSize:24,marginBottom:8}}>⏳</div>
+1979         <div style={{fontWeight:600}}>Memuat data...</div>
+1980       </div>
+1981     );
+1982   }
+1983 
+1984   if(todayTasks.length===0){
+1985     return(
+1986       <div style={{padding:16,maxWidth:520,margin:"0 auto"}} className="fi">
+1987         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16}}>
+1988           <div style={{display:"flex",alignItems:"center",gap:8}}>
+1989             <div style={{width:36,height:36,borderRadius:10,background:cfg.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:18}}>{cfg.icon}</div>
+1990             <div>
+1991               <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{user.nama} — Shift {shift}</div>
+1992               <div style={{fontSize:11,color:"#64748b"}}>{fmtDate(viewDate)}</div>
+1993             </div>
+1994           </div>
+1995           <button onClick={()=>setShiftSet(false)}
+1996             style={{fontSize:11,color:"#94a3b8",background:"none",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}>
+1997             Ganti Shift
+1998           </button>
+1999         </div>
+2000         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:20,background:"#fff",borderRadius:12,padding:"10px 14px",border:"1.5px solid #e2e8f0"}}>
+2001           <button onClick={()=>setViewDate(addDays(viewDate,-1))} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#475569"}}>‹</button>
+2002           <div style={{flex:1,textAlign:"center"}}>
+2003             <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{fmtDate(viewDate)}</div>
+2004             {viewDate===TODAY&&<div style={{fontSize:11,color:"#2563eb",fontWeight:600}}>Hari Ini</div>}
+2005           </div>
+2006           <button onClick={()=>setViewDate(addDays(viewDate,1))} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#475569"}}>›</button>
+2007         </div>
+2008         <div style={{textAlign:"center",padding:"40px 20px"}}>
+2009           <div style={{fontSize:40,marginBottom:10}}>📋</div>
+2010           <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:6}}>Tidak ada jadwal</div>
+2011           <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>Belum ada rencana kerja untuk tanggal ini</div>
+2012         </div>
+2013       </div>
+2014     );
+2015   }
+2016 
+2017   // ── Main tabel ──
+2018   return(
+2019     <div style={{padding:16}} className="fi">
+2020       {/* header */}
+2021       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
+2022         <div style={{display:"flex",alignItems:"center",gap:10}}>
+2023           <div style={{width:40,height:40,borderRadius:10,background:cfg.bg,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20}}>{cfg.icon}</div>
+2024           <div>
+2025             <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>{cfg.label} — {fmtDate(viewDate)}</div>
+2026             <div style={{fontSize:12,color:"#64748b"}}>Shift {shift} · {todayTasks.length} tugas</div>
+2027           </div>
+2028         </div>
+2029         <div style={{display:"flex",gap:8,alignItems:"center"}}>
+2030           <div style={{display:"flex",alignItems:"center",gap:4,background:"#fff",borderRadius:8,padding:"4px 8px",border:"1px solid #e2e8f0"}}>
+2031             <button onClick={()=>setViewDate(addDays(viewDate,-1))} style={{width:26,height:26,borderRadius:6,border:"none",background:"#f8fafc",cursor:"pointer",fontSize:14,color:"#475569"}}>‹</button>
+2032             <span style={{fontSize:11,fontWeight:600,color:"#475569",padding:"0 4px"}}>{fmtShort(viewDate)}</span>
+2033             <button onClick={()=>setViewDate(addDays(viewDate,1))} style={{width:26,height:26,borderRadius:6,border:"none",background:"#f8fafc",cursor:"pointer",fontSize:14,color:"#475569"}}>›</button>
+2034           </div>
+2035           <button onClick={()=>setShiftSet(false)}
+2036             style={{fontSize:11,color:"#94a3b8",background:"none",border:"1px solid #e2e8f0",borderRadius:6,padding:"5px 10px",cursor:"pointer"}}>
+2037             Ganti Shift
+2038           </button>
+2039         </div>
+2040       </div>
+2041 
+2042       {/* stats per proses */}
+2043       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
+2044         {myProses.map(pr=>{
+2045           const tasks=tasksByProses[pr]||[];
+2046           if(!tasks.length)return null;
+2047           const totalKomp=tasks.reduce((a:number,t:any)=>{
+2048             const panel=panelsMap[t.panel_id||t.panelId];
+2049             return a+(t.komponen||[]).filter((k:string)=>(panel?.checklist?.[k]?.qty||0)>0).length;
+2050           },0);
+2051           const doneKomp=tasks.reduce((a:number,t:any)=>{
+2052             const panel=panelsMap[t.panel_id||t.panelId];
+2053             return a+(t.komponen||[]).filter((k:string)=>getLatestProgress(panel?.checklist?.[k],pr)>=100).length;
+2054           },0);
+2055           const pc=PROSES_COLOR[pr]||"#64748b";
+2056           return(
+2057             <div key={pr} style={{background:"#fff",borderRadius:8,padding:"6px 12px",border:`1.5px solid ${pc}30`,
+2058               borderLeft:`3px solid ${pc}`,display:"flex",gap:8,alignItems:"center"}}>
+2059               <span style={{fontSize:11,fontWeight:700,color:pc}}>{pr}</span>
+2060               <span style={{fontSize:11,color:"#94a3b8"}}>{doneKomp}/{totalKomp} komponen</span>
+2061             </div>
+2062           );
+2063         })}
+2064       </div>
+2065 
+2066       {/* filter */}
+2067       {(proyekList.length>1||panelList.length>1)&&(
+2068         <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center",
+2069           background:"#fff",borderRadius:10,padding:"8px 12px",border:"1px solid #e2e8f0"}}>
+2070           <span style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>Filter:</span>
+2071           {proyekList.length>1&&(
+2072             <select value={fProyek} onChange={e=>{setFProyek(e.target.value);setFPanel("ALL");}}
+2073               style={{padding:"4px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",
+2074                 background:"#f8fafc",fontSize:11,fontWeight:600,color:"#475569",cursor:"pointer"}}>
+2075               <option value="ALL">Semua Proyek</option>
+2076               {proyekList.map((p:any)=><option key={p} value={p}>{p}</option>)}
+2077             </select>
+2078           )}
+2079           {panelList.length>1&&(
+2080             <select value={fPanel} onChange={e=>setFPanel(e.target.value)}
+2081               style={{padding:"4px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",
+2082                 background:"#f8fafc",fontSize:11,fontWeight:600,color:"#475569",cursor:"pointer",maxWidth:220}}>
+2083               <option value="ALL">Semua Panel</option>
+2084               {panelList.map((p:any)=><option key={p} value={p}>{p}</option>)}
+2085             </select>
+2086           )}
+2087           {(fProyek!=="ALL"||fPanel!=="ALL")&&(
+2088             <button onClick={()=>{setFProyek("ALL");setFPanel("ALL");}}
+2089               style={{padding:"4px 10px",borderRadius:8,border:"1px solid #fecaca",
+2090                 background:"#fef2f2",color:"#dc2626",fontSize:11,fontWeight:600,cursor:"pointer"}}>
+2091               ✕ Reset
+2092             </button>
+2093           )}
+2094         </div>
+2095       )}
+2096 
+2097       {/* tabel per proses */}
+2098       {myProses.map(proses=>{
+2099         const tasks=tasksByProses[proses]||[];
+2100         if(!tasks.length)return null;
+2101         const pc=PROSES_COLOR[proses]||"#64748b";
+2102 
+2103         const rows:any[]=[];
+2104         tasks.forEach((task:any)=>{
+2105           const panelId=task.panel_id||task.panelId;
+2106           const panel=panelsMap[panelId];
+2107           if(!panel)return;
+2108           const panelCfg=getEffCfg(panel.tipe);
+2109           if(!panelCfg)return;
+2110           const allItems=panelCfg.wps.flatMap((w:any)=>w.items);
+2111           const priColor=PRIORITAS_COLOR[task.prioritas||"Sedang"]||"#64748b";
+2112 
+2113           (task.komponen||[]).forEach((kode:string,ki:number)=>{
+2114             // Handle token wiring khusus: __wiring_{org}org_{bobot}
+2115             if(kode.startsWith("__wiring_")){
+2116               // Token wiring cuma buat ekstrak badge bobot/jumlah orang (via wiringInfoMap di row komponen real).
+2117               // Gak bikin baris sendiri lagi - komponen real di bawah yang jadi baris (per-komponen tracking).
+2118               return;
+2119             }
+2120             const isBusbarKomp=proses==="BUSBAR";
+2121             const item=allItems.find((it:any)=>it.kode===kode);
+2122             // Untuk BUSBAR, komponen adalah nama langsung (H-BUS, INCOMING, dll)
+2123             if(!item&&!isBusbarKomp)return;
+2124             const busbarItem=isBusbarKomp?{kode,nama:kode}:null;
+2125             const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{},qtyProsesByDate:{}};
+2126             const qtyKomp=isBusbarKomp?0:cl.qty||0;
+2127             const qtyProses=isBusbarKomp?0:cl.qtyProsesByDate?.[proses]?.[viewDate]??cl.qtyProses?.[proses]??0;
+2128             const pct=isBusbarKomp?(cl.progress?.[proses]||0):getProgressOnDate(cl,proses,viewDate);
+2129             const wpDef=isBusbarKomp?null:panelCfg.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
+2130             const wInfoLookup=wiringInfoMap[`${panelId}_${proses}`];
+2131             const wiringBadge=wInfoLookup&&wInfoLookup.bobot?wInfoLookup:null;
+2132             rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
+2133               isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp,
+2134               aktualSelesai:getFirstCompletionDate(cl,proses),wiringBadge});
+2135           });
+2136         });
+2137 
+2138         const isDone=(r:any)=>r.pct===100;
+2139         const isDrilldownProses=["WIRING CONTROL","WIRING POWER","BUSBAR"].includes(proses);
+2140         const visibleRows=isDrilldownProses?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
+2141       const isWiringProses=["WIRING CONTROL","WIRING POWER"].includes(proses);
+2142 
+2143         return(
+2144           <Card key={proses} style={{marginBottom:20,padding:0,overflow:"hidden"}}>
+2145             <div style={{background:pc,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+2146               <div style={{fontWeight:800,fontSize:14,color:"#fff"}}>{proses}</div>
+2147               <div style={{display:"flex",gap:8,alignItems:"center"}}>
+2148                 <span style={{fontSize:12,color:"#ffffff99"}}>Shift {shift}</span>
+2149                 <span style={{background:"#ffffff22",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
+2150                   {visibleRows.filter((r:any)=>isDone(r)).length}/{visibleRows.length} selesai
+2151                 </span>
+2152               </div>
+2153             </div>
+2154             {isDrilldownProses&&(
+2155               <div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+2156                 {(()=>{
+2157                   const seenPanel=new Set();
+2158                   const panelList:any[]=[];
+2159                   rows.forEach((r:any)=>{
+2160                     if(!seenPanel.has(r.panelId)){
+2161                       seenPanel.add(r.panelId);
+2162                       panelList.push({panelId:r.panelId,panel:r.panel,proyek:r.task.proyek});
+2163                     }
+2164                   });
+2165                   return panelList.map((pg:any)=>{
+2166                     const panelKey=`${proses}_${pg.panelId}`;
+2167                     const selCount=(selectedKomponen[panelKey]||[]).length;
+2168                     return(
+2169                       <button key={pg.panelId}
+2170                         onClick={()=>{setKomponenPopup({proses,panelId:pg.panelId});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
+2171                         style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
+2172                           padding:"6px 12px",borderRadius:8,border:selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
+2173                           background:selCount>0?"#eef2ff":"#fff",cursor:"pointer",textAlign:"left"}}>
+2174                         <span style={{fontSize:9,color:"#94a3b8"}}>{pg.proyek}</span>
+2175                         <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{pg.panel.nama}</span>
+2176                         <span style={{fontSize:9,color:selCount>0?"#4f46e5":"#94a3b8",fontWeight:600}}>
+2177                           {selCount>0?`${selCount} komponen dipilih`:"+ Pilih Komponen"}
+2178                         </span>
+2179                       </button>
+2180                     );
+2181                   });
+2182                 })()}
+2183               </div>
+2184             )}
+2185             {komponenPopup&&komponenPopup.proses===proses&&(()=>{
+2186               const panelRows=rows.filter((r:any)=>r.panelId===komponenPopup.panelId);
+2187               const panelInfo=panelRows[0];
+2188               return(
+2189                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
+2190                   onClick={()=>setKomponenPopup(null)}>
+2191                   <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+2192                     <div style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
+2193                       <div style={{fontSize:11,color:"#94a3b8"}}>{panelInfo?.task.proyek}</div>
+2194                       <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{panelInfo?.panel.nama}</div>
+2195                       <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Pilih komponen yang mau dikerjakan</div>
+2196                     </div>
+2197                     <div style={{overflowY:"auto",padding:"8px 16px",flex:1}}>
+2198                       {panelRows.map((r:any)=>{
+2199                         const checked=tempSelectedKomponen.includes(r.kode);
+2200                         return(
+2201                           <label key={r.kode} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",cursor:"pointer"}}>
+2202                             <input type="checkbox" checked={checked}
+2203                               onChange={()=>{
+2204                                 setTempSelectedKomponen((prev:string[])=>checked?prev.filter(k=>k!==r.kode):[...prev,r.kode]);
+2205                               }}
+2206                               style={{width:16,height:16}}/>
+2207                             <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
+2208                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+2209                                 <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{r.item.nama}</span>
+2210                                 {r.wiringBadge&&(
+2211                                   <span style={{fontSize:9,fontWeight:700,background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px"}}>
+2212                                     ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
+2213                                   </span>
+2214                                 )}
+2215                               </div>
+2216                               <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
+2217                             </div>
+2218                           </label>
+2219                         );
+2220                       })}
+2221                     </div>
+2222                     <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:"1px solid #f1f5f9"}}>
+2223                       <button onClick={()=>setTempSelectedKomponen(panelRows.map((r:any)=>r.kode))}
+2224                         style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
+2225                       <button onClick={()=>setTempSelectedKomponen([])}
+2226                         style={{fontSize:11,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
+2227                       <div style={{flex:1}}/>
+2228                       <button onClick={()=>setKomponenPopup(null)}
+2229                         style={{padding:"8px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",cursor:"pointer"}}>Batal</button>
+2230                       <button onClick={()=>{
+2231                           setSelectedKomponen((prev:any)=>({...prev,[`${proses}_${komponenPopup.panelId}`]:tempSelectedKomponen}));
+2232                           setKomponenPopup(null);
+2233                         }}
+2234                         style={{padding:"8px 14px",borderRadius:8,border:"none",background:"#4f46e5",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
+2235                         Konfirmasi ({tempSelectedKomponen.length})
+2236                       </button>
+2237                     </div>
+2238                   </div>
+2239                 </div>
+2240               );
+2241             })()}
+2242             <div style={{overflowX:"auto"}}>
+2243               <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
