@@ -1,0 +1,119 @@
+1682   const startTimer=async(pekerjaId:number,panelId:number,kode:string,proses:string,tanggal:string)=>{
+1683     const key=`${panelId}_${kode}_${proses}_${pekerjaId}`;
+1684     setTimerLoading(key);
+1685     const{data,error}=await supabase.from("fcs_timer_kerja").insert({
+1686       pekerja_id:pekerjaId,panel_id:panelId,kode_komponen:kode,proses,tanggal,mulai:new Date().toISOString()
+1687     }).select().single();
+1688     setTimerLoading(null);
+1689     if(!error&&data){
+1690       setTimerAktif(prev=>({...prev,[key]:data}));
+1691       setTimerPernahMulai(prev=>({...prev,[key]:true}));
+1692     }
+1693   };
+1694 
+1695   const stopTimer=async(pekerjaId:number,panelId:number,kode:string,proses:string)=>{
+1696     const key=`${panelId}_${kode}_${proses}_${pekerjaId}`;
+1697     const timer=timerAktif[key];
+1698     if(!timer)return;
+1699     setTimerLoading(key);
+1700     const{error}=await supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id);
+1701     setTimerLoading(null);
+1702     if(!error){
+1703       setTimerAktif(prev=>{const n={...prev};delete n[key];return n;});
+1704       setTimerSelesaiHariIni(prev=>({...prev,[key]:true}));
+1705       // Cek apakah progress sudah 100% dan lebih cepat dari rencana - kirim notifikasi
+1706       await cekDanKirimNotifikasiAvailable(pekerjaId,panelId,kode,proses);
+1707     }
+1708   };
+1709 
+1710   const cekDanKirimNotifikasiAvailable=async(pekerjaId:number,panelId:number,kode:string,proses:string)=>{
+1711     const panel=panelsMap[panelId];
+1712     if(!panel)return;
+1713     const pct=panel.checklist?.[kode]?.progress?.[proses]||0;
+1714     if(pct<100)return;
+1715     // Cari tanggal TERJAUH di mana komponen ini sudah di-assign manual di raw_schedule
+1716     // (ini jadi acuan "rencana selesai" - bukan dari rentangTanggal lagi, tapi dari assignment manual planner)
+1717     const{data:rawRows}=await supabase.from("raw_schedule").select("schedule").eq("panel_id",panelId).eq("proses",proses);
+1718     let tanggalRencanaSelesai:string|null=null;
+1719     for(const row of rawRows||[]){
+1720       for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
+1721         for(const entry of entries){
+1722           if((entry.komponen||[]).includes(kode)){
+1723             if(!tanggalRencanaSelesai||tglKey>tanggalRencanaSelesai)tanggalRencanaSelesai=tglKey;
+1724           }
+1725         }
+1726       }
+1727     }
+1728     if(!tanggalRencanaSelesai)return;
+1729     const hariIni=getLocalDateStr();
+1730     if(hariIni>=tanggalRencanaSelesai)return; // tidak lebih cepat, tidak perlu notifikasi
+1731     const pekerja=pekerjaList.find((p:any)=>p.id===pekerjaId);
+1732     const allItems=getEffCfg(panel.tipe)?.wps.flatMap((w:any)=>w.items)||[];
+1733     const namaKomponen=allItems.find((it:any)=>it.kode===kode)?.nama||kode;
+1734     await supabase.from("fcs_notifikasi").insert({
+1735       tipe:"available",pekerja_id:pekerjaId,pekerja_nama:pekerja?.nama||"",
+1736       panel_id:panelId,panel_nama:panel.nama,kode_komponen:kode,nama_komponen:namaKomponen,proses,
+1737       tanggal_rencana_selesai:tanggalRencanaSelesai,tanggal_aktual_selesai:hariIni,
+1738     });
+1739   };
+1740 
+1741   const updatePekerjaPerKomponen=async(taskId:number,kode:string,pekerjaIds:number[])=>{
+1742     const task=renhar.find((t:any)=>t.id===taskId);
+1743     if(!task)return;
+1744     const newMap={...(task.pekerja_per_komponen||{}),[kode]:pekerjaIds};
+1745     const{error}=await supabase.from("renhar").update({pekerja_per_komponen:newMap}).eq("id",taskId);
+1746     if(!error){
+1747       setRenhar(prev=>prev.map((t:any)=>t.id===taskId?{...t,pekerja_per_komponen:newMap}:t));
+1748     }
+1749   };
+1750 
+1751   const updatePctManual=async(panelId:number,kode:string,proses:string,pct:number)=>{
+1752     const panel=panelsMap[panelId];
+1753     if(!panel)return;
+1754     const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{}};
+1755     const newChecklist={
+1756       ...panel.checklist,
+1757       [kode]:{
+1758         ...cl,
+1759         progressByDate:{
+1760           ...(cl.progressByDate||{}),
+1761           [proses]:{...((cl.progressByDate||{})[proses]||{}),[viewDate]:pct}
+1762         },
+1763         progress:{...(cl.progress||{}),[proses]:pct},
+1764       }
+1765     };
+1766     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
+1767   };
+1768 
+1769   // Kunci progress — simpan ke Supabase
+1770   const lockProgress=async()=>{
+1771     let count=0;
+1772     const newLocked={...lockedCells};
+1773     const checkpointLogEntries:any[]=[];
+1774 
+1775     for(const [panelId,panel] of Object.entries(panelsMap)){
+1776       const relatedTasks=todayTasks.filter((t:any)=>(t.panel_id||t.panelId)===Number(panelId));
+1777       if(!relatedTasks.length)continue;
+1778       const newChecklist={...panel.checklist};
+1779       const processed=new Set();
+1780 
+1781       relatedTasks.forEach((task:any)=>{
+1782         (task.komponen||[]).forEach((kode:string)=>{
+1783           const cl=newChecklist[kode];
+1784           if(!cl||cl.qty===0)return;
+1785           myProses.forEach(pr=>{
+1786             if(task.proses!==pr)return;
+1787             const cellKey=`${kode}_${pr}`;
+1788             if(processed.has(cellKey))return;
+1789             if(!canLockKomponen(task,kode,Number(panelId),pr))return;
+1790             const pct=getProgressOnDate(cl,pr,viewDate);
+1791             if(pct===0)return;
+1792             const prevHist=cl.history?.[pr]||[];
+1793             const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
+1794             if(existIdx>=0){
+1795               if(prevHist[existIdx].pct!==pct){
+1796                 const updatedHist=[...prevHist];
+1797                 updatedHist[existIdx]={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
+1798                 newChecklist[kode]={...cl,history:{...(cl.history||{}),[pr]:updatedHist}};
+1799                 const idsKomp=(task.pekerja_per_komponen||{})[kode]||[];
+1800                 const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);

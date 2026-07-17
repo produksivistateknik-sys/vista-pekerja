@@ -1,0 +1,24 @@
+1332   const [selectedKomponen,setSelectedKomponen]=useState<Record<string,string[]>>(()=>{
+1339     try{localStorage.setItem(wsKey+"_komp",JSON.stringify({tanggal:TODAY,data:selectedKomponen}));}catch{}
+1340   },[selectedKomponen,wsKey]);
+1341   const [komponenPopup,setKomponenPopup]=useState<{proses:string,panelId:number}|null>(null);
+1342   const [tempSelectedKomponen,setTempSelectedKomponen]=useState<string[]>([]);
+1353   const [operatorModal,setOperatorModal]=useState<any>(null);
+1357     if(!operatorModal){setTerakhirKerjaPekerjaId(null);return;}
+1358     const task=renhar.find((r:any)=>r.id===operatorModal.taskId);
+1362       .eq("panel_id",panelId).eq("kode_komponen",operatorModal.kode).eq("proses",task.proses)
+1366   },[operatorModal]);
+1379   const [tempPekerjaIds,setTempPekerjaIds]=useState<number[]>([]);
+1682   const startTimer=async(pekerjaId:number,panelId:number,kode:string,proses:string,tanggal:string)=>{
+1741   const updatePekerjaPerKomponen=async(taskId:number,kode:string,pekerjaIds:number[])=>{
+2145         const visibleRows=isDrilldownProses?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
+2173                     const selCount=(selectedKomponen[panelKey]||[]).length;
+2176                         onClick={()=>{setKomponenPopup({proses,panelId:pg.panelId});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
+2191             {komponenPopup&&komponenPopup.proses===proses&&(()=>{
+2192               const panelRows=rows.filter((r:any)=>r.panelId===komponenPopup.panelId);
+2205                         const checked=tempSelectedKomponen.includes(r.kode);
+2237                           setSelectedKomponen((prev:any)=>({...prev,[`${proses}_${komponenPopup.panelId}`]:tempSelectedKomponen}));
+2241                         Konfirmasi ({tempSelectedKomponen.length})
+2676       {operatorModal&&(
+2686                 const checked=tempPekerjaIds.includes(p.id);
+2703               <button onClick={async()=>{await updatePekerjaPerKomponen(operatorModal.taskId,operatorModal.kode,tempPekerjaIds);setOperatorModal(null);}}
