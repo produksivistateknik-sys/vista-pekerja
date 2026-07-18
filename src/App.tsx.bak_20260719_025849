@@ -1659,9 +1659,8 @@ function OperatorView({user,viewMode}:any){
         progress:{...(cl.progress||{}),[proses]:pct},
       }
     };
-    // update local + realtime ke Supabase
+    // update local
     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
-    await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
   };
 
   const isWiringProses=(pr:string)=>pr==="WIRING CONTROL"||pr==="WIRING POWER";
@@ -1778,7 +1777,6 @@ function OperatorView({user,viewMode}:any){
       }
     };
     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
-    await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
   };
 
   // Kunci progress — simpan ke Supabase

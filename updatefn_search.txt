@@ -1,0 +1,2 @@
+1637   const updateQtyProses=async(panelId:number,kode:string,proses:string,val:number)=>{
+1764   const updatePctManual=async(panelId:number,kode:string,proses:string,pct:number)=>{

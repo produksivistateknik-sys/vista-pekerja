@@ -1,0 +1,49 @@
+1637   const updateQtyProses=async(panelId:number,kode:string,proses:string,val:number)=>{
+1638     if(isCellLocked(panelId,kode,proses))return;
+1639     const floor=getLockedFloor(panelId,kode,proses);
+1640     const panel=panelsMap[panelId];
+1641     if(!panel)return;
+1642     const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{},qtyProsesByDate:{}};
+1643     const qtyKomp=cl.qty||0;
+1644     const qtyProses=Math.min(Math.max(Number(val)||0,floor),qtyKomp);
+1645     const pct=qtyKomp>0?Math.min(100,Math.round((qtyProses/qtyKomp)*100)):0;
+1646     const newChecklist={
+1647       ...panel.checklist,
+1648       [kode]:{
+1649         ...cl,
+1650         qtyProses:{...(cl.qtyProses||{}),[proses]:qtyProses},
+1651         qtyProsesByDate:{
+1652           ...(cl.qtyProsesByDate||{}),
+1653           [proses]:{...((cl.qtyProsesByDate||{})[proses]||{}),[viewDate]:qtyProses}
+1654         },
+1655         progressByDate:{
+1656           ...(cl.progressByDate||{}),
+1657           [proses]:{...((cl.progressByDate||{})[proses]||{}),[viewDate]:pct}
+1658         },
+1659         progress:{...(cl.progress||{}),[proses]:pct},
+1660       }
+1661     };
+1662     // update local
+1663     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
+1664   };
+1665 
+---SPLIT---
+1764   const updatePctManual=async(panelId:number,kode:string,proses:string,pct:number)=>{
+1765     const panel=panelsMap[panelId];
+1766     if(!panel)return;
+1767     const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{}};
+1768     const newChecklist={
+1769       ...panel.checklist,
+1770       [kode]:{
+1771         ...cl,
+1772         progressByDate:{
+1773           ...(cl.progressByDate||{}),
+1774           [proses]:{...((cl.progressByDate||{})[proses]||{}),[viewDate]:pct}
+1775         },
+1776         progress:{...(cl.progress||{}),[proses]:pct},
+1777       }
+1778     };
+1779     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
+1780   };
+1781 
+1782   // Kunci progress — simpan ke Supabase
