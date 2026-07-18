@@ -2425,6 +2425,38 @@ function OperatorView({user,viewMode}:any){
                   <div key={`${r.task.id}-${r.kode}-m`} style={{background:done?"#f0fdf4":"#fff",
                     border:`1.5px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:14,padding:"12px 14px",
                     display:"flex",flexDirection:"column",gap:10}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                      <div style={{display:"flex",flexDirection:"column",gap:3}}>
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                          {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
+                          <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{r.item.nama}</span>
+                        </div>
+                        <div style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek} · {r.panel.nama}</div>
+                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                          <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
+                          <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>
+                          {cardMode==='timer'&&r.wiringBadge&&(
+                            <span style={{background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:700}}>
+                              ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {r.pct===100
+                        ?<Badge label="TERCAPAI" color="#16a34a" bg="#dcfce7"/>
+                        :r.pct===0
+                        ?<Badge label="BELUM MULAI" color="#94a3b8" bg="#f1f5f9"/>
+                        :<Badge label="ON PROGRESS" color="#2563eb" bg="#dbeafe"/>
+                      }
+                    </div>
+
+                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,fontSize:10,color:"#64748b"}}>
+                      <div>QTY KOMP: <b style={{color:"#475569"}}>{r.qtyKomp} 🔒</b></div>
+                      <div>CREATE BY: <b style={{color:"#475569"}}>{kInfo.createdBy||"–"}</b></div>
+                      <div>TARGET: <b style={{color:"#1d4ed8"}}>{fmtD(kInfo.targetSelesai)}</b></div>
+                      <div>AKTUAL: <b style={{color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtD(r.aktualSelesai):"–"}</b></div>
+                    </div>
+
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {workers.length===0&&(
                         <div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",padding:"6px 0"}}>Belum ada operator - klik "Pilih Operator" di atas.</div>
@@ -2478,38 +2510,6 @@ function OperatorView({user,viewMode}:any){
                           background:"#eff6ff",color:"#1d4ed8"}}>
                         💾 Simpan Progress
                       </button>
-                    </div>
-
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                      <div style={{display:"flex",flexDirection:"column",gap:3}}>
-                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
-                          <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{r.item.nama}</span>
-                        </div>
-                        <div style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek} · {r.panel.nama}</div>
-                        <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
-                          <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>
-                          {cardMode==='timer'&&r.wiringBadge&&(
-                            <span style={{background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:700}}>
-                              ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
-                            </span>
-                          )}
-                        </div>
-                      </div>
-                      {r.pct===100
-                        ?<Badge label="TERCAPAI" color="#16a34a" bg="#dcfce7"/>
-                        :r.pct===0
-                        ?<Badge label="BELUM MULAI" color="#94a3b8" bg="#f1f5f9"/>
-                        :<Badge label="ON PROGRESS" color="#2563eb" bg="#dbeafe"/>
-                      }
-                    </div>
-
-                    <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,fontSize:10,color:"#64748b"}}>
-                      <div>QTY KOMP: <b style={{color:"#475569"}}>{r.qtyKomp} 🔒</b></div>
-                      <div>CREATE BY: <b style={{color:"#475569"}}>{kInfo.createdBy||"–"}</b></div>
-                      <div>TARGET: <b style={{color:"#1d4ed8"}}>{fmtD(kInfo.targetSelesai)}</b></div>
-                      <div>AKTUAL: <b style={{color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtD(r.aktualSelesai):"–"}</b></div>
                     </div>
 
                     {cardMode==='qty'?(()=>{
