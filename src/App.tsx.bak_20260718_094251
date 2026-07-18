@@ -1541,8 +1541,7 @@ function OperatorView({user,viewMode}:any){
             (e.komponen||[]).forEach((k:string)=>{
               if(k.startsWith("__wiring_"))return;
               const key=`${row.panel_id}_${row.proses}_${k}`;
-              if(!kompMap[key])kompMap[key]={createdBy:e.createdBy||null,createdAt:e.createdAt||null,targetSelesai:null};
-              else if(!kompMap[key].createdBy&&e.createdBy){kompMap[key].createdBy=e.createdBy;kompMap[key].createdAt=e.createdAt;}
+              if(!kompMap[key])kompMap[key]={createdBy:null,createdAt:null,targetSelesai:null};
               if(!kompMap[key].targetSelesai||tgl>kompMap[key].targetSelesai)kompMap[key].targetSelesai=tgl;
             });
           });

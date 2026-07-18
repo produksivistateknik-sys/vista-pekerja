@@ -1,0 +1,191 @@
+9 import { useRawSchedule } from './hooks/useRawSchedule'
+12 import { generateFCSSchedule, generateFCSWiring, syncFCSToRawSchedule, checkKapasitasDanKomponenSwapV2, executeSwapKomponenV2, checkKuotaOrangDanKomponenSwap, executeSwapKomponenOrang, setOverrideAndRebalance, generateAndSaveToRawSchedule } from './services/fcsService'
+90 const ALL_PROSES = ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
+97   "POTONG":"#f59e0b","BENDING":"#10b981","STEL":"#3b82f6","FINISHING":"#0891b2","RENDAM":"#0ea5e9","PAINTING":"#8b5cf6",
+98   "RAKIT":"#ec4899","PASANG KOMPONEN":"#f97316","BUSBAR":"#06b6d4",
+99   "WIRING CONTROL":"#6366f1","WIRING POWER":"#ef4444","QC TEST":"#14b8a6","PACKING":"#84cc16",
+105   mekanik:    ["POTONG","BENDING","STEL"],
+107   assembling: ["RAKIT","PASANG KOMPONEN","BUSBAR"],
+108   wiring_ctrl:["WIRING CONTROL"],
+109   wiring_pwr: ["WIRING POWER"],
+110   qc:         ["QC TEST","PACKING"],
+123   "FS.1": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT"],
+124   "FS.2": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+125   "FS.3": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+126   "FS.4": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
+127   "FS.5": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
+128   "FS.8": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
+129   "FS.9": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","BUSBAR"],
+130   "FS.10": ["POTONG","STEL","RENDAM","PAINTING","RAKIT"],
+131   "FS.11": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
+132   "FS.12": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","WIRING POWER"],
+133   "FS.13": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
+134   "FS.17": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+135   "FS.19": ["POTONG","RENDAM","PAINTING","RAKIT"],
+136   "FS.20": ["POTONG","RENDAM","PAINTING","RAKIT"],
+137   "FS.21": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT"],
+138   "FS.22": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+139   "FS.23": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+140   "FS.27": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+141   "FS.28": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+142   "FS.29": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT"],
+143   "FS.30": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT"],
+144   "FS.31": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+145   "FS.32": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+146   "FS.33": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+148   "F3B.1": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT"],
+149   "F3B.2": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
+150   "F3B.3": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","BUSBAR"],
+151   "F3B.4": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+152   "F3B.5": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+153   "F3B.8": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
+154   "F3B.9": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
+155   "F3B.10": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
+156   "F3B.11": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","BUSBAR"],
+157   "F3B.12": ["POTONG","STEL","RENDAM","PAINTING","RAKIT"],
+158   "F3B.13": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
+159   "F3B.14": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","WIRING POWER"],
+160   "F3B.15": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL"],
+161   "F3B.20": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+162   "F3B.21": ["POTONG","RENDAM","PAINTING","RAKIT"],
+163   "F3B.22": ["POTONG","RENDAM","PAINTING","RAKIT"],
+164   "F3B.23": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT"],
+165   "F3B.24": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+166   "F3B.25": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+167   "F3B.29": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+168   "F3B.30": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+169   "F3B.31": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT"],
+170   "F3B.32": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT"],
+171   "F3B.33": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+172   "F3B.35": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+173   "F3B.36": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+175   "WM.1": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","BUSBAR"],
+176   "WM.2": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER","BUSBAR"],
+177   "WM.3": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT"],
+178   "WM.4": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
+179   "WM.5": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+180   "WM.6": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+181   "WM.7": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+182   "WM.8": ["POTONG","RENDAM","PAINTING","RAKIT"],
+183   "WM.9": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+184   "WM.10": ["POTONG","BENDING","RENDAM","PAINTING","RAKIT"],
+185   "WM.11": ["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","WIRING CONTROL","WIRING POWER"],
+190 // BUSBAR KOMPONEN per tipe panel
+192 const BUSBAR_KOMPONEN:Record<string,string[]> = {
+200   return BUSBAR_KOMPONEN[tipe]||BUSBAR_KOMPONEN["FS"];
+203 const BUSBAR_COLORS:Record<string,string>={
+232     return ALL_PROSES.filter((pr:string)=>GLOBAL_PROSES_RELEVAN_SET.has(kode+"|"+tipe+"|"+pr));
+240   mekanik:    {label:"Mekanik",       icon:"🔧", color:"#d97706",bg:"#fffbeb", proses:["POTONG","BENDING","STEL"]},
+242   assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",proses:["RAKIT","PASANG KOMPONEN","BUSBAR"]},
+243   wiring_ctrl:{label:"Wiring Control",icon:"⚡", color:"#6366f1",bg:"#eef2ff",  proses:["WIRING CONTROL"]},
+244   wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8", proses:["WIRING POWER"]},
+245   qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",      proses:["QC TEST","PACKING"]},
+271     c[it.kode]={ qty:qtyAwal, qtyProses:{}, progress: ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{}),
+272       progressByDate: ALL_PROSES.reduce((a,p)=>({...a,[p]:{}}),{}),
+273       stepDates: ALL_PROSES.reduce((a,p)=>({...a,[p]:{}}),{}) };
+358   if(!cfg||!panel.checklist) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
+360   if(!active.length) return ALL_PROSES.reduce((a,p)=>({...a,[p]:0}),{} as Record<string, number>);
+362   ALL_PROSES.forEach(pr=>{
+364     // Tambahkan busbar_progress ke kalkulasi BUSBAR
+365     if(pr==="BUSBAR"&&panel.busbar_progress){
+397 const PROSES_ORANG_RAW_GLOBAL=["WIRING POWER","WIRING CONTROL"];
+1276   // Khusus untuk task yang punya pekerja_per_komponen (WIRING CONTROL/POWER), pecah jadi komponen tersendiri
+1929       if(row.proses==="BUSBAR"){
+1933           const alreadyInSchedule=entries.some(e=>e.wp==="BUSBAR");
+1939               wp:"BUSBAR",komponen:busbarItems,tanggal:selDate,
+2069         {ALL_PROSES.filter(pr=>allTasks.some(t=>t.proses===pr)).map(pr=>{
+3296     POTONG:"Potong",BENDING:"Bending",STEL:"Stel",RENDAM:"Rendam",PAINTING:"Painting",
+3298     BUSBAR:"Busbar","WIRING CONTROL":"Wiring Control","WIRING POWER":"Wiring Power",
+3299     "QC TEST":"QC Test",PACKING:"Packing",
+3311     const proses=ALL_PROSES[prosesIdx];
+3318     const prosesSebelumnya=ALL_PROSES[prosesIdx-1];
+3338       ALL_PROSES.forEach((proses:string)=>{
+3400                   {ALL_PROSES.map((proses:string)=>(
+3412                       {ALL_PROSES.map((proses:string,prosesIdx:number)=>{
+3448   const PROSES_LIST=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
+3582         const prosesAda=PROSES_LIST.filter(pr=>
+3583           pr!=="QC TEST"&&pr!=="PACKING"&&panelProgressData.some((pd:any)=>pd[pr]!==undefined)
+3640                       <th style={{...thS,minWidth:55,borderTop:"3px solid #2563eb"}}>PACKING</th>
+3727   const PROSES_LIST=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
+3815   const prosesAda=PROSES_LIST.filter(pr=>allPanels.some(p=>p.pd[pr]!==undefined&&p.pd[pr]>=0));
+3905         // Tampilkan BUSBAR jika tipe panel punya komponen busbar (WM) atau ada progress
+3906         const BUSBAR_TIPE=["WM_MS","WM_POLY","FS","F3B"];
+3907         const hasBusbar=BUSBAR_TIPE.includes(p.tipe)||Object.keys(p.busbar_progress||{}).length>0;
+3908         const prosesPanel=PROSES_LIST.filter(pr=>{
+3909           if(pr==="QC TEST"||pr==="PACKING") return false;
+3910           if(pr==="BUSBAR") return hasBusbar;
+3964                     <th style={{...thS,minWidth:60,borderTop:"3px solid #2563eb"}}>PACKING</th>
+4021                       .filter((r:any)=>r.proses==="BUSBAR"&&Number(r.panel_id||r.panelId)===Number(p.id))
+4044                           <td style={{...tdS,background:"#f0fdfe",color:"#94a3b8",fontSize:9}}>BUSBAR</td>
+4047                             if(pr!=="BUSBAR") return <td key={pr} style={{...tdS,background:"#f0fdfe",color:"#e2e8f0",fontSize:9}}>—</td>;
+4049                             const color=PROSES_COLOR["BUSBAR"]||"#06b6d4";
+4098 function RawSchedule({woData,rawData,setRawData,renhar,setRenhar,pekerja,createRaw,updateRaw,removeRaw,refetchRaw,createRenhar,updateRenhar,removeRenhar,refetchRenhar,logActivity,logAct,log,user,livePanelTypes}:any){
+4172   const PROSES_ORANG_RAW=["WIRING POWER","WIRING CONTROL"];
+4669     const relevantProses=ALL_PROSES.filter((pr:string)=>isKomponenRelevant(kode,tipe,pr));
+4698     // Validasi kuota ORANG (khusus WIRING POWER/CONTROL)
+4720     if(tipePanelCek&&prosesCek&&prosesCek!=="BUSBAR"&&!PROSES_ORANG_RAW.includes(prosesCek)){
+4784     const isBusbarRow=rawRow?.proses==="BUSBAR";
+4899       const toAdd=ALL_PROSES.filter(pr=>!existing.includes(pr));
+4927       if(r.proses==="BUSBAR"){
+4932             wp:"BUSBAR",komponen:busbarItems,tanggal:selDate,isBusbar:true});
+5035         {ALL_PROSES.map(pr=>{const pc=PROSES_COLOR[pr]||"#64748b";const isSel=filterProses.includes(pr);return(<button key={pr} onClick={()=>toggleFilterProses(pr)} style={{padding:"3px 12px",borderRadius:20,border:`1.5px solid ${isSel?pc:"#e2e8f0"}`,background:isSel?pc+"18":"#fff",color:isSel?pc:"#64748b",cursor:"pointer",fontSize:11,fontWeight:700}}>{pr}</button>);})}
+5118               const prosesToShow=filterProses.length===0?["POTONG","BENDING","STEL","PAINTING","WIRING CONTROL","WIRING POWER"]:filterProses;
+5157                     <button onClick={()=>{setOverrideModal({tanggalMulai:d,tanggalAkhir:d,proses:filterProses.length>0?filterProses:["POTONG"]});setOverrideValue("");setOverrideResult(null);}}
+5227                 const ai=ALL_PROSES.indexOf(a.proses);const bi=ALL_PROSES.indexOf(b.proses);
+5355                               {row.proses==="BUSBAR"&&busbarEntries.length>0?(
+5358                                     <span key={b} style={{background:(BUSBAR_COLORS[b]||"#64748b")+"22",
+5359                                       color:BUSBAR_COLORS[b]||"#64748b",
+5360                                       border:`1px solid ${BUSBAR_COLORS[b]||"#64748b"}44`,
+5600           {rawRow?.proses!=="BUSBAR"&&(<>
+5713           {rawRow?.proses==="BUSBAR"&&(()=>{
+5723                     const bc=BUSBAR_COLORS[b]||"#64748b";
+5746               if(rawRow?.proses==="BUSBAR"){
+5760                     r.wp==="BUSBAR"
+5769                     wp:"BUSBAR",
+5789                     r.wp==="BUSBAR"
+5798                   action:'JADWAL BUSBAR',
+6059                 <button type="button" onClick={()=>setOverrideModal({...overrideModal,proses:["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"]})}
+6066               {["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>{
+6080           {overrideModal.proses.length>0&&overrideModal.proses.every(p=>["WIRING CONTROL","WIRING POWER"].includes(p))?(
+6105               <Btn color="#1d4ed8" disabled={overrideSaving||(overrideModal.proses.length>0&&overrideModal.proses.every(p=>["WIRING CONTROL","WIRING POWER"].includes(p))?!overrideValue:(!overrideJamKerja||!overrideEfektivitas))||overrideModal.proses.length===0||!overrideModal.tanggalMulai||!overrideModal.tanggalAkhir} onClick={async()=>{
+6117                     const isOrangOv=["WIRING CONTROL","WIRING POWER"].includes(proses);
+6352   const [fcsForm,setFcsForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),jenisPekerjaan:"POTONG"});
+6354   // State bobot per panel untuk WIRING CONTROL/WIRING POWER
+6357   const WIRING_PROSES=["WIRING CONTROL","WIRING POWER"];
+6568         nc[kode].progress=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:0}),{});
+6569         nc[kode].progressByDate=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:{}}),{});
+6570         nc[kode].history=ALL_PROSES.reduce((a,pr)=>({...a,[pr]:[]}),{});
+6576         ALL_PROSES.forEach(pr=>{
+6953                   let res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,uname);
+6957                       res=await generateAndSaveToRawSchedule(quickGenModal.id,quickGenTanggal,"__force__"+uname);
+8642   const [procForm,setProcForm]=useState({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});
+8645   const [overrideForm,setOverrideForm]=useState({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"] as string[],jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});
+8647   const PROSES_ORANG=["WIRING POWER","WIRING CONTROL"];
+8650   const [rentangForm,setRentangForm]=useState({tanggalMulai:new Date().toISOString().slice(0,10),tanggalAkhir:new Date().toISOString().slice(0,10),hariAktif:[1,2,3,4,5] as number[],jenis_pekerjaan:["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"] as string[],jam_kerja:8,efektivitas_pct:80,keterangan:""});
+8713   const ALL_PROSES=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
+8819       if(!error){await fetchOverride();setEditOverride(null);setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"],jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});}
+8838         setOverrideForm({tanggal:new Date().toISOString().slice(0,10),jenis_pekerjaan:["POTONG"],jam_kerja:8,efektivitas_pct:80,jumlah_orang:6,keterangan:""});
+8884         setProcForm({kode_komponen:"",nama_komponen:"",tipe_panel:"FS",wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});
+8906       ALL_PROSES.forEach((proses:string)=>{
+8982               {ALL_PROSES.map(p=><option key={p} value={p}>{p}</option>)}
+8985             <button onClick={()=>{setEditProc(null);setProcForm({kode_komponen:"",nama_komponen:"",tipe_panel:filterTipe,wp:"WP1",jenis_pekerjaan:"POTONG",menit_per_pcs:0});setShowAddProc(true);}}
+8990           {(filterPekerjaan==="ALL"?ALL_PROSES:[filterPekerjaan]).map((proses:string)=>{
+8994               POTONG:"#f59e0b",BENDING:"#8b5cf6",STEL:"#06b6d4",RENDAM:"#0ea5e9",PAINTING:"#ec4899",
+8995               RAKIT:"#10b981","PASANG KOMPONEN":"#3b82f6",BUSBAR:"#f43f5e",
+8996               "WIRING CONTROL":"#6366f1","WIRING POWER":"#0ea5e9","QC TEST":"#84cc16",PACKING:"#64748b"
+9350               {ALL_PROSES.map((proses:string)=>(
+9424                         {ALL_PROSES.map((proses:string)=>{
+9489                   {ALL_PROSES.map(p=><option key={p} value={p}>{p}</option>)}
+9584             panelRows.push(["WO","PROYEK","PANEL","TIPE","QTY","OVERALL",...ALL_PROSES]);
+9591                   overall+'%',...ALL_PROSES.map(pr=>(pd[pr]||0)+'%')]);
+10747   const [filterPekerjaan,setFilterPekerjaan]=useState("POTONG");
+10789       // Untuk WIRING CONTROL/POWER, kapasitas disimpan di jumlah_orang (bukan kapasitas_menit)
+10799   const isProsesSatuanOrang=["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan);
+10936     const isWiring=["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan);
+11018         const res=await syncFCSToRawSchedule(realWoNumber,filterPekerjaan,uname,panel.nama,null);
+11041         {["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"].map(p=>(
+11118                         {["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan)?"⚡ Bobot & Jadwal per Panel":"Atur Jadwal per WP"}
+11120                       {["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan)?(
+11265                   {["WIRING CONTROL","WIRING POWER"].includes(filterPekerjaan)&&selPanels.length>0&&Object.keys(wpPreview[wo.woId]||{}).length>0&&(()=>{
+11983 const { data: rawList, loading: rawLoading, create: createRaw, update: updateRaw, remove: removeRaw, refetch: refetchRaw } = useRawSchedule()
+12460               {tab==="raw"&&<RawSchedule woData={woData} rawData={rawData.filter((r:any)=>woData.some((w:any)=>w.id===r.wo_id))} setRawData={setRawData} renhar={renhar} setRenhar={setRenhar} pekerja={pekerja} createRaw={createRaw} updateRaw={updateRaw} removeRaw={removeRaw} refetchRaw={refetchRaw} createRenhar={createRenhar} updateRenhar={updateRenhar} removeRenhar={removeRenhar} refetchRenhar={refetchRenhar} logActivity={logActivity} logAct={logAct} log={log} user={user} livePanelTypes={livePanelTypes}/>}

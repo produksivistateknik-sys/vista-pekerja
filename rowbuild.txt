@@ -1,0 +1,46 @@
+4099   const getEffCfg=(tipe:string)=>(livePanelTypes?.[tipe]?.wps?.length>0)?livePanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
+4162   const [addForm,setAddForm]=useState<{woId:string;panelIds:number[];prioritas:string}>({woId:"",panelIds:[],prioritas:"Sedang"});
+4174   const renderKotakWiring=(komp:any,tanggal:string,rowId:number,panelId:number)=>{
+4178     const namaKomp=getNamaKomponenDariKode(panelId,komp.kode);
+4197     const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(row.panel_id||row.panelId));
+4308   const getNamaKomponenDariKode=(panelId:number,kode:string):string=>{
+4309     const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
+4312     const item=getEffCfg(tipe)?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode);
+4319       const panelId=row.panel_id||row.panelId;
+4320       const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
+4329             const cfg=getEffCfg(panelData.tipe);
+4333             hasil.push({rawId:row.id,panelId,panel:row.panel,proyek:row.proyek,kode,nama:item.nama,wp:entry.wp});
+4346   const getKomponenStatus=(panelId,proses,kode)=>{
+4347     const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===panelId);
+4358     const panelId=row.panel_id||row.panelId;
+4359     const panelData=woData.flatMap(w=>w.panels||[]).find(p=>p.id===panelId);
+4379     const cfg=getEffCfg(panelData.tipe);
+4584   const livePanelForCell=rawRow?woData.flatMap(w=>w.panels||[]).find(p=>Number(p.id)===Number(rawRow.panel_id||rawRow.panelId)):null;
+4585   const panelCfg=livePanelForCell?getEffCfg(livePanelForCell.tipe):null;
+4656         schedule[tgl]=existing.map((e:any)=>e.wp===modalWp?{...e,komponen:Array.from(new Set([...e.komponen,...newKomp]))}:e);
+4668   const checkEstafet=(kode:string,tipe:string,targetProses:string,panelId:number):{ok:boolean;prosesSebelum?:string}=>{
+4673     const rowSebelum=rawData.find((r:any)=>(r.panel_id||r.panelId)===panelId&&r.proses===prosesSebelum);
+4687       const panelIdCek=livePanelForCell?.id;
+4689         const cekEstafet=checkEstafet(kode,tipePanelCek,prosesCek,panelIdCek);
+4691           const namaKomp=getNamaKomponenDariKode(panelIdCek,kode);
+4875   const updatePrioritasPanel=async(panelId,val)=>{
+4876     const toUpdate=rawData.filter(r=>(r.panel_id||r.panelId)===panelId);
+4877     setRawData(prev=>prev.map(r=>(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
+4878     setRenhar(prev=>prev.map(r=>(r.panel_id||r.panelId)!==panelId?r:{...r,prioritas:val}));
+4883     const existingProsesP=rawData.filter((r:any)=>(r.panel_id||r.panelId)===p.id).map((r:any)=>r.proses);
+4890     if(!addForm.woId||addForm.panelIds.length===0)return;
+4895     for(const panelId of addForm.panelIds){
+4896       const p=wo.panels.find(x=>x.id===panelId);
+4898       const existing=rawData.filter(r=>(r.panel_id||r.panelId)===p.id).map(r=>r.proses);
+4913     setAddModal(false);setAddForm({woId:"",panelIds:[],prioritas:"Sedang"});
+4922         tasks.push({rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,
+4930           tasks.push({rawId:r.id,woId:r.wo_id||r.woId,panelId:r.panel_id||r.panelId,
+4954         raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+4970         raw_id:task.rawId,wo_id:task.woId,panel_id:task.panelId,
+5058                       const panelDataTarget=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(k.panelId));
+5125                   const panelId=r.panel_id||r.panelId;
+5126                   const panelData=woData.flatMap((w:any)=>w.panels||[]).find((p:any)=>Number(p.id)===Number(panelId));
+5225                 const aId=a.panel_id||a.panelId;const bId=b.panel_id||b.panelId;
+5232                 const pid=String(row.panel_id||row.panelId);
+5240                 const prevPanelId=prevRow?(prevRow.panel_id||prevRow.panelId):null;
+5241                 const curPanelId=row.panel_id||row.panelId;

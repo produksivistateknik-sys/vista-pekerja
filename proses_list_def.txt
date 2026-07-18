@@ -1,0 +1,12 @@
+94 const PRIORITAS  = ["Tinggi","Sedang","Rendah"];
+102 const PRIORITAS_COLOR = {"Tinggi":"#dc2626","Sedang":"#f59e0b","Rendah":"#22c55e"};
+2119                     const wc=WP_COLOR[t.wp]||"#64748b";const priColor=PRIORITAS_COLOR[t.prioritas]||"#64748b";
+2207               <Badge label={task.prioritas} color={PRIORITAS_COLOR[task.prioritas]||"#64748b"}/>
+3448   const PROSES_LIST=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
+3727   const PROSES_LIST=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
+5203               <th style={{...thS,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e2330"}}>PRIORITAS</th>
+5237                 const priColor=PRIORITAS_COLOR[row.prioritas]||"#64748b";
+5268                                 {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
+5296                         {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}
+5432                       <Badge label={t0.prioritas||"Sedang"} color={PRIORITAS_COLOR[t0.prioritas]||"#64748b"}/>
+6257                 {PRIORITAS.map(p=><option key={p} value={p}>{p}</option>)}

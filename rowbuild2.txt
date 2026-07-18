@@ -1,0 +1,108 @@
+4885     return syncedProsesP.some((pr:string)=>!existingProsesP.includes(pr));
+4886   }):[];
+4887   const [addLoading,setAddLoading]=useState(false);
+4888   const submitAdd=async()=>{
+4889     if(addLoading)return;
+4890     if(!addForm.woId||addForm.panelIds.length===0)return;
+4891     const wo=woData.find(w=>w.id===Number(addForm.woId));
+4892     if(!wo)return;
+4893     setAddLoading(true);
+4894     let totalPanelDitambah=0;
+4895     for(const panelId of addForm.panelIds){
+4896       const p=wo.panels.find(x=>x.id===panelId);
+4897       if(!p)continue;
+4898       const existing=rawData.filter(r=>(r.panel_id||r.panelId)===p.id).map(r=>r.proses);
+4899       const toAdd=ALL_PROSES.filter(pr=>!existing.includes(pr));
+4900       if(!toAdd.length)continue;
+4901       for(const proses of toAdd){
+4902         await createRaw({
+4903           wo_id:wo.id,panel_id:p.id,proyek:wo.proyek,panel:p.nama,
+4904           proses,prioritas:addForm.prioritas,schedule:{}
+4905         });
+4906       }
+4907       totalPanelDitambah++;
+4908       if(log) await log("TAMBAH RAW SCHEDULE","Tambah Panel "+p.nama+" ke Raw Schedule","raw_schedule",{module:"raw",action_type:"create",proyek:wo.proyek||"",panel:p.nama||"",wo_number:wo.wo||"",halaman:"Raw Schedule"});
+4909     }
+4910     await refetchRaw();
+4911     setAddLoading(false);
+4912     if(totalPanelDitambah===0){alert("Semua proses panel yang dipilih sudah ada!");}
+4913     setAddModal(false);setAddForm({woId:"",panelIds:[],prioritas:"Sedang"});
+4914   };
+4915 
+4916   const dateTasks=useMemo(()=>{
+4917     if(!selDate)return[];
+4918     const tasks:any[]=[];
+4919     rawData.forEach(r=>{
+4920       // WP biasa dari schedule
+---SPLIT---
+5190             })}
+5191           </div>
+5192           )}
+5193         </div>
+5194       )}
+5195 
+5196       <div style={{overflowX:"auto",overflowY:"auto",maxHeight:"calc(100vh - 120px)",borderRadius:12,border:"1px solid #e2e8f0",boxShadow:"0 1px 4px #00000008"}}>
+5197         <table style={{width:"100%",borderCollapse:"collapse",fontSize:9}}>
+5198           <thead style={{position:"sticky",top:0,zIndex:10}}>
+5199             <tr>
+5200               <th style={{...thS,textAlign:"left",minWidth:80,position:"sticky",left:0,zIndex:5,background:"#1e2330"}}>PROYEK</th>
+5201               <th style={{...thS,textAlign:"left",minWidth:150,position:"sticky",left:80,zIndex:5,background:"#1e2330"}}>PANEL</th>
+5202               <th style={{...thS,minWidth:110,position:"sticky",left:230,zIndex:5,background:"#1e2330"}}>PROSES</th>
+5203               <th style={{...thS,minWidth:90,position:"sticky",left:340,zIndex:5,background:"#1e2330"}}>PRIORITAS</th>
+5204               {days.map(d=>(
+5205                 <th key={d} onClick={()=>setSelDate(d===selDate?null:d)}
+5206                   style={{...thS,minWidth:120,cursor:"pointer",background:d===TODAY?"#1e40af":isSunday(d)?"#7f1d1d":selDate===d?"#1d4ed8":"#1e3a8a",borderBottom:d===TODAY?"2px solid #60a5fa":selDate===d?"2px solid #93c5fd":"none"}}>
+5207                   <div>{getDayLabel(d)}</div>
+5208                   {d===TODAY&&<div style={{fontSize:9,opacity:.7}}>Hari Ini</div>}
+5209                   {selDate===d&&<div style={{fontSize:9,color:"#93c5fd"}}>▼ Review</div>}
+5210                 </th>
+5211               ))}
+5212               <th style={{...thS,minWidth:40,position:"sticky",right:0,zIndex:5}}>✕</th>
+5213             </tr>
+5214           </thead>
+5215           <tbody>
+5216             {(()=>{
+5217               const PRIO_ORDER={"Tinggi":0,"Sedang":1,"Rendah":2};
+5218               const visibleRows=rawData.filter(row=>
+5219                 (filterProses.length===0||filterProses.includes(row.proses))&&
+5220                 (filterProyek.length===0||filterProyek.includes(row.proyek))&&
+5221                 (filterPanel==="ALL"||row.panel===filterPanel)
+5222               ).sort((a,b)=>{
+5223                 const pa=PRIO_ORDER[a.prioritas]??1;const pb=PRIO_ORDER[b.prioritas]??1;
+5224                 if(pa!==pb)return pa-pb;
+5225                 const aId=a.panel_id||a.panelId;const bId=b.panel_id||b.panelId;
+5226                 if(aId!==bId)return aId-bId;
+5227                 const ai=ALL_PROSES.indexOf(a.proses);const bi=ALL_PROSES.indexOf(b.proses);
+5228                 return ai-bi;
+5229               });
+5230               const panelRowCount:Record<string,number>={};
+5231               visibleRows.forEach(row=>{
+5232                 const pid=String(row.panel_id||row.panelId);
+5233                 panelRowCount[pid]=(panelRowCount[pid]||0)+1;
+5234               });
+5235               return visibleRows.map((row,ri)=>{
+5236                 const pc=PROSES_COLOR[row.proses]||"#64748b";
+5237                 const priColor=PRIORITAS_COLOR[row.prioritas]||"#64748b";
+5238                 const rBg=ri%2===0?"#fff":"#f8fafc";
+5239                 const prevRow=visibleRows[ri-1];
+5240                 const prevPanelId=prevRow?(prevRow.panel_id||prevRow.panelId):null;
+5241                 const curPanelId=row.panel_id||row.panelId;
+5242                 const isNewPanel=!prevRow||prevPanelId!==curPanelId;
+5243                 const panelTopBorder=isNewPanel&&ri>0?"3px solid #1e293b":"1px solid #f1f5f9";
+5244                 const td={borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",background:rBg,padding:"2px 4px",verticalAlign:"middle",borderTop:panelTopBorder};
+5245                 const rowSpanCount=panelRowCount[String(curPanelId)]||1;
+5246                 const subBarisKomponen=getSemuaKomponenSebagaiSubBaris(row);
+5247 
+5248                 if(false&&subBarisKomponen&&subBarisKomponen.length>0){
+5249                   return(
+5250                     <Fragment key={row.id}>
+5251                       {subBarisKomponen.map((komp:any,ki:number)=>(
+5252                         <tr key={row.id+"-"+komp.wp+"-"+komp.kode}>
+5253                           {isNewPanel&&ki===0&&(
+5254                             <>
+5255                               <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:0,zIndex:2,fontWeight:600,fontSize:9,color:"#475569",background:"#fff",minWidth:80,maxWidth:80,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap",textAlign:"center" as const,verticalAlign:"middle"}}>{row.proyek}</td>
+5256                               <td rowSpan={rowSpanCount} style={{...td,position:"sticky",left:80,zIndex:2,fontWeight:600,fontSize:9,color:"#1e293b",background:"#fff",minWidth:150,maxWidth:150,wordBreak:"break-word",whiteSpace:"normal",lineHeight:1.3,textAlign:"center" as const,verticalAlign:"middle"}}>{row.panel}</td>
+5257                             </>
+5258                           )}
+5259                           {ki===0&&(
+5260                             <td rowSpan={subBarisKomponen.length} style={{...td,position:"sticky",left:230,zIndex:2,textAlign:"center" as const,background:"#fff",verticalAlign:"top",paddingTop:8}}>
