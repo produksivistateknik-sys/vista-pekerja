@@ -1,0 +1,75 @@
+2271             {komponenPopup&&komponenPopup.proses===proses&&(()=>{
+2272               const panelRows=rows.filter((r:any)=>r.panelId===komponenPopup.panelId);
+2273               const panelInfo=panelRows[0];
+2274               return(
+2275                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
+2276                   onClick={()=>setKomponenPopup(null)}>
+2277                   <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+2278                     <div style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
+2279                       <div style={{fontSize:11,color:"#94a3b8"}}>{panelInfo?.task.proyek}</div>
+2280                       <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{panelInfo?.panel.nama}</div>
+2281                       <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Pilih komponen yang mau dikerjakan</div>
+2282                     </div>
+2283                     <div style={{overflowY:"auto",padding:"8px 16px",flex:1}}>
+2284                       {panelRows.map((r:any)=>{
+2285                         const checked=tempSelectedKomponen.includes(r.kode);
+2286                         const panelKeyPopup=`${proses}_${komponenPopup.panelId}`;
+2287                         const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
+2288                         return(
+2289                           <label key={r.kode} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
+2290                             cursor:alreadyConfirmed?"not-allowed":"pointer",opacity:alreadyConfirmed?0.55:1}}>
+2291                             <input type="checkbox" checked={checked} disabled={alreadyConfirmed}
+2292                               onChange={()=>{
+2293                                 if(alreadyConfirmed)return;
+2294                                 setTempSelectedKomponen((prev:string[])=>checked?prev.filter(k=>k!==r.kode):[...prev,r.kode]);
+2295                               }}
+2296                               style={{width:16,height:16}}/>
+2297                             <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
+2298                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+2299                                 <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{r.item.nama}</span>
+2300                                 {r.wiringBadge&&(
+2301                                   <span style={{fontSize:9,fontWeight:700,background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px"}}>
+2302                                     ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
+2303                                   </span>
+2304                                 )}
+2305                                 {alreadyConfirmed&&(()=>{
+2306                                   const pct=r.pct||0;
+2307                                   const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
+2308                                   const statusBadgeColor=pct>=100?"#16a34a":pct>0?"#2563eb":"#94a3b8";
+2309                                   const statusBadgeBg=pct>=100?"#dcfce7":pct>0?"#dbeafe":"#f1f5f9";
+2310                                   return(
+2311                                     <span style={{fontSize:9,fontWeight:700,background:statusBadgeBg,color:statusBadgeColor,borderRadius:6,padding:"1px 6px"}}>
+2312                                       {statusBadgeLabel}
+2313                                     </span>
+2314                                   );
+2315                                 })()}
+2316                               </div>
+2317                               <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
+2318                             </div>
+2319                           </label>
+2320                         );
+2321                       })}
+2322                     </div>
+2323                     <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:"1px solid #f1f5f9"}}>
+2324                       <button onClick={()=>setTempSelectedKomponen(panelRows.map((r:any)=>r.kode))}
+2325                         style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
+2326                       <button onClick={()=>setTempSelectedKomponen([])}
+2327                         style={{fontSize:11,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
+2328                       <div style={{flex:1}}/>
+2329                       <button onClick={()=>setKomponenPopup(null)}
+2330                         style={{padding:"8px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",cursor:"pointer"}}>Batal</button>
+2331                       <button onClick={()=>{
+2332                           setSelectedKomponen((prev:any)=>({...prev,[`${proses}_${komponenPopup.panelId}`]:tempSelectedKomponen}));
+2333                           setKomponenPopup(null);
+2334                         }}
+2335                         style={{padding:"8px 14px",borderRadius:8,border:"none",background:"#4f46e5",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
+2336                         Konfirmasi ({tempSelectedKomponen.length})
+2337                       </button>
+2338                     </div>
+2339                   </div>
+2340                 </div>
+2341               );
+2342             })()}
+2343             {viewMode==='mobile'?(
+2344               <div style={{display:"flex",flexDirection:"column",gap:10,padding:"4px 2px"}}>
+2345   {(()=>{

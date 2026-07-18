@@ -1,0 +1,10 @@
+1757     const bulkAssignAndStart=async(_proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
+1758       // Cuma assign operator, TIDAK auto-start timer.
+1759       // Operator klik tombol Mulai manual satu-satu per komponen.
+1760       for(const r of rowsToAssign){
+1761         await updatePekerjaPerKomponen(r.task.id,r.kode,pekerjaIds);
+1762       }
+1763     };
+1764 
+1765   const updatePctManual=async(panelId:number,kode:string,proses:string,pct:number)=>{
+1766     const panel=panelsMap[panelId];
