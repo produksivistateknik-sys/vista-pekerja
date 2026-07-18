@@ -2299,17 +2299,11 @@ function OperatorView({user,viewMode}:any){
                                     ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
                                   </span>
                                 )}
-                                {alreadyConfirmed&&(()=>{
-                                  const pct=r.pct||0;
-                                  const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
-                                  const statusBadgeColor=pct>=100?"#16a34a":pct>0?"#2563eb":"#94a3b8";
-                                  const statusBadgeBg=pct>=100?"#dcfce7":pct>0?"#dbeafe":"#f1f5f9";
-                                  return(
-                                    <span style={{fontSize:9,fontWeight:700,background:statusBadgeBg,color:statusBadgeColor,borderRadius:6,padding:"1px 6px"}}>
-                                      {statusBadgeLabel}
-                                    </span>
-                                  );
-                                })()}
+                                {alreadyConfirmed&&(
+                                  <span style={{fontSize:9,fontWeight:700,background:"#f1f5f9",color:"#94a3b8",borderRadius:6,padding:"1px 6px"}}>
+                                    sudah dipilih
+                                  </span>
+                                )}
                               </div>
                               <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
                             </div>
