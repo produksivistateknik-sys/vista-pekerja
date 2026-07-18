@@ -1774,18 +1774,6 @@ function OperatorView({user,viewMode}:any){
       }
     };
 
-    const bulkStopDesktop=async(proses:string,rowsToStop:any[])=>{
-      for(const r of rowsToStop){
-        const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
-        for(const pid of idsKomp){
-          const key=`${r.panelId}_${r.kode}_${proses}_${pid}`;
-          if(timerAktif[key]){
-            await stopTimer(pid,r.panelId,r.kode,proses);
-          }
-        }
-      }
-    };
-
   const updatePctManual=async(panelId:number,kode:string,proses:string,pct:number)=>{
     const panel=panelsMap[panelId];
     if(!panel)return;
@@ -2370,19 +2358,6 @@ function OperatorView({user,viewMode}:any){
                   style={{padding:"8px 16px",borderRadius:8,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
                   Pilih Operator & Mulai ({visibleRows.length} komponen)
                 </button>
-                {(()=>{
-                  const adaTimerJalan=visibleRows.some((r:any)=>{
-                    const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
-                    return idsKomp.some((pid:number)=>!!timerAktif[`${r.panelId}_${r.kode}_${proses}_${pid}`]);
-                  });
-                  if(!adaTimerJalan)return null;
-                  return(
-                    <button onClick={()=>bulkStopDesktop(proses,visibleRows)}
-                      style={{marginLeft:8,padding:"8px 16px",borderRadius:8,border:"none",background:"#dc2626",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
-                      ⏹ Selesai Semua
-                    </button>
-                  );
-                })()}
                 {bulkAssignProses===proses&&viewMode==='desktop'&&(
                   <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
                     onClick={()=>setBulkAssignProses(null)}>

@@ -1,0 +1,3 @@
+2519                                     if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,proses);
+2522                                   workers.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,proses,viewDate));
+2831                                         onClick={()=>timer?stopTimer(w.id,r.panelId,r.kode,proses):startTimer(w.id,r.panelId,r.kode,proses,viewDate)}
