@@ -1378,8 +1378,8 @@ function OperatorView({user,viewMode}:any){
   },[]);
   const [tempPekerjaIds,setTempPekerjaIds]=useState<number[]>([]);
   const [bulkAssignProses,setBulkAssignProses]=useState<string|null>(null);
-  const [expandedPanel,setExpandedPanel]=useState<Record<string,string|null>>({});
-  const [bulkAssignGroupKey,setBulkAssignGroupKey]=useState<string|null>(null);
+  const [expandedPanel,setExpandedPanel]=useState<Record<string,number|null>>({});
+  const [bulkAssignPanelId,setBulkAssignPanelId]=useState<number|null>(null);
   const [tempBulkPekerjaIds,setTempBulkPekerjaIds]=useState<number[]>([]);
 
   const cfg=DIVISI_CONFIG[user.divisi];
@@ -1780,57 +1780,6 @@ function OperatorView({user,viewMode}:any){
   };
 
   // Kunci progress — simpan ke Supabase
-  // Kunci progress SATU komponen aja (dipanggil dari tombol per kartu di mobile)
-  const lockSingleKomponen=async(panelId:number,kode:string,proses:string)=>{
-    const panel=panelsMap[panelId];
-    if(!panel)return;
-    const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses===proses&&(t.komponen||[]).includes(kode));
-    if(!task)return;
-    if(!canLockKomponen(task,kode,panelId,proses)){alert('Belum bisa dikunci - pastikan timer sudah pernah dijalankan hari ini.');return;}
-    const cl=panel.checklist?.[kode];
-    if(!cl||cl.qty===0)return;
-    const pct=getProgressOnDate(cl,proses,viewDate);
-    if(pct===0){alert('Progress masih 0%, belum ada yang bisa dikunci.');return;}
-    const newChecklist={...panel.checklist};
-    const prevHist=cl.history?.[proses]||[];
-    const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
-    const idsKomp=(task.pekerja_per_komponen||{})[kode]||[];
-    const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
-    const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
-    const checkpointEntry={panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate};
-    if(existIdx>=0){
-      if(prevHist[existIdx].pct===pct)return;
-      const updatedHist=[...prevHist];
-      updatedHist[existIdx]={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
-      newChecklist[kode]={...cl,history:{...(cl.history||{}),[proses]:updatedHist}};
-    } else {
-      const newEntry={pct,tanggal:viewDate,shift,ts:new Date().toISOString()};
-      newChecklist[kode]={...cl,history:{...(cl.history||{}),[proses]:[...prevHist,newEntry]}};
-      setLockedCells((prev:any)=>({...prev,[`${panelId}_${kode}_${proses}_${viewDate}_${shift}`]:true}));
-    }
-    await supabase.from('progress_checkpoint_log').insert([checkpointEntry]);
-    await supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId);
-    setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
-    if((proses==='WIRING CONTROL'||proses==='WIRING POWER')&&pct>=100){
-      const{data:rawRows}=await supabase.from('raw_schedule').select('id,schedule').eq('panel_id',panelId).eq('proses',proses);
-      for(const row of rawRows||[]){
-        let berubah=false;
-        const newSchedule:any={};
-        for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
-          const newEntries=entries.map((entry:any)=>{
-            const filteredKomp=(entry.komponen||[]).filter((k:string)=>k!==kode);
-            if(filteredKomp.length!==(entry.komponen||[]).length)berubah=true;
-            return{...entry,komponen:filteredKomp};
-          }).filter((entry:any)=>(entry.komponen||[]).length>0);
-          if(newEntries.length>0)newSchedule[tglKey]=newEntries;
-        }
-        if(berubah){
-          await supabase.from('raw_schedule').update({schedule:newSchedule}).eq('id',row.id);
-        }
-      }
-    }
-  };
-  
   const lockProgress=async()=>{
     let count=0;
     const newLocked={...lockedCells};
@@ -2312,13 +2261,13 @@ function OperatorView({user,viewMode}:any){
             {viewMode==='mobile'?(
               <div style={{display:"flex",flexDirection:"column",gap:10,padding:"4px 2px"}}>
   {(()=>{
-    const komponenGroups:Record<string,{namaKomponen:string,rows:any[]}> = {};
+    const panelGroups:Record<string,{panelId:number,panelNama:string,proyek:string,rows:any[]}> = {};
     visibleRows.forEach((r:any)=>{
-      const key=r.item?.nama||r.kode;
-      if(!komponenGroups[key])komponenGroups[key]={namaKomponen:r.item?.nama||r.kode,rows:[]};
-      komponenGroups[key].rows.push(r);
+      const pid=r.panelId;
+      if(!panelGroups[pid])panelGroups[pid]={panelId:pid,panelNama:r.panel?.nama||"",proyek:r.task?.proyek||"",rows:[]};
+      panelGroups[pid].rows.push(r);
     });
-    const groups=Object.values(komponenGroups);
+    const groups=Object.values(panelGroups);
     if(groups.length===0){
       return(
         <div style={{textAlign:"center",padding:"24px 10px",color:"#94a3b8",fontSize:12}}>
@@ -2327,18 +2276,16 @@ function OperatorView({user,viewMode}:any){
       );
     }
     return groups.map(group=>{
-      const groupKey=group.namaKomponen;
-      const isOpen=expandedPanel[proses]===groupKey;
+      const isOpen=expandedPanel[proses]===group.panelId;
       const activeRows=group.rows.filter((r:any)=>((r.task.pekerja_per_komponen||{}))[r.kode]?.length>0);
       const pendingRows=group.rows.filter((r:any)=>!(((r.task.pekerja_per_komponen||{}))[r.kode]?.length>0));
-      const panelCount=new Set(group.rows.map((r:any)=>r.panelId)).size;
       return(
-        <div key={groupKey} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,overflow:"hidden"}}>
-          <div onClick={()=>setExpandedPanel(prev=>({...prev,[proses]:isOpen?null:groupKey}))}
+        <div key={group.panelId} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,overflow:"hidden"}}>
+          <div onClick={()=>setExpandedPanel(prev=>({...prev,[proses]:isOpen?null:group.panelId}))}
             style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",cursor:"pointer",background:isOpen?"#eff6ff":"#fff"}}>
             <div style={{display:"flex",flexDirection:"column",gap:2}}>
-              <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{group.namaKomponen}</span>
-              <span style={{fontSize:10,color:"#94a3b8"}}>{panelCount} panel · {group.rows.length} komponen{pendingRows.length>0?` · ${pendingRows.length} belum ada operator`:""}</span>
+              <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{group.panelNama}</span>
+              <span style={{fontSize:10,color:"#94a3b8"}}>{group.proyek} · {group.rows.length} komponen{pendingRows.length>0?` · ${pendingRows.length} belum ada operator`:""}</span>
             </div>
             <span style={{fontSize:14,color:"#94a3b8",transition:"transform .15s",transform:isOpen?"rotate(180deg)":"none"}}>▾</span>
           </div>
@@ -2350,22 +2297,22 @@ function OperatorView({user,viewMode}:any){
                   <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     {pendingRows.map((r:any)=>(
                       <div key={`${r.task.id}-${r.kode}-pending`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,fontSize:12}}>
-                        <span style={{fontWeight:600,color:"#374151"}}>{r.task.proyek} · {r.panel.nama}</span>
+                        <span style={{fontWeight:600,color:"#374151"}}>{r.item.nama}</span>
                         <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>QTY {r.qtyKomp}</span>
                       </div>
                     ))}
                   </div>
-                  <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);}}
+                  <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignPanelId(group.panelId);setTempBulkPekerjaIds([]);}}
                     style={{padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
                     Pilih Operator ({pendingRows.length})
                   </button>
-                  {bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
+                  {bulkAssignProses===proses&&bulkAssignPanelId===group.panelId&&(
                     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
-                      onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);}}>
+                      onClick={()=>{setBulkAssignProses(null);setBulkAssignPanelId(null);}}>
                       <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
                         onClick={(e:any)=>e.stopPropagation()}>
                         <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
-                        <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-assign untuk {pendingRows.length} "{group.namaKomponen}" di {panelCount} panel. Timer tetap diklik manual per komponen.</div>
+                        <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-assign untuk {pendingRows.length} komponen di {group.panelNama}. Timer tetap perlu diklik manual per komponen.</div>
                         <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
                           {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
                             const checked=tempBulkPekerjaIds.includes(p.id);
@@ -2379,13 +2326,13 @@ function OperatorView({user,viewMode}:any){
                           })}
                         </div>
                         <div style={{display:"flex",gap:8}}>
-                          <button onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);}}
+                          <button onClick={()=>{setBulkAssignProses(null);setBulkAssignPanelId(null);}}
                             style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
                           <button disabled={tempBulkPekerjaIds.length===0}
                             onClick={async()=>{
                               await bulkAssignAndStart(proses,pendingRows,tempBulkPekerjaIds);
                               setBulkAssignProses(null);
-                              setBulkAssignGroupKey(null);
+                              setBulkAssignPanelId(null);
                             }}
                             style={{flex:1,padding:"10px",borderRadius:10,border:"none",
                               background:tempBulkPekerjaIds.length===0?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
@@ -2405,7 +2352,6 @@ function OperatorView({user,viewMode}:any){
                 const fmtD=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):"–";
                 const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
                 const workers=idsKomp.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
-                const cellLocked=isCellLocked(r.panelId,r.kode,proses);
                 return(
                   <div key={`${r.task.id}-${r.kode}-m`} style={{background:done?"#f0fdf4":"#fff",
                     border:`1.5px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:14,padding:"12px 14px",
@@ -2416,7 +2362,6 @@ function OperatorView({user,viewMode}:any){
                           {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
                           <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{r.item.nama}</span>
                         </div>
-                        <div style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek} · {r.panel.nama}</div>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
                           <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>
@@ -2514,18 +2459,10 @@ function OperatorView({user,viewMode}:any){
                           </div>
                         );
                       })}
-                      <div style={{display:"flex",gap:6}}>
-                        <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
-                          style={{flex:1,fontSize:11,color:"#64748b",fontWeight:600,background:"none",border:"1px dashed #cbd5e1",borderRadius:10,padding:"7px 10px",cursor:"pointer"}}>
-                          {workers.length>0?"+ Edit Operator":"+ Pilih Operator"}
-                        </button>
-                        <button disabled={cellLocked||r.pct===0} onClick={()=>lockSingleKomponen(r.panelId,r.kode,proses)}
-                          style={{flex:1,fontSize:11,fontWeight:700,border:"none",borderRadius:10,padding:"7px 10px",
-                            cursor:(cellLocked||r.pct===0)?"not-allowed":"pointer",
-                            background:cellLocked?"#f0fdf4":"#eff6ff",color:cellLocked?"#16a34a":"#1d4ed8"}}>
-                          {cellLocked?"🔒 Terkunci":"🔒 Kunci Progress"}
-                        </button>
-                      </div>
+                      <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
+                        style={{fontSize:11,color:"#64748b",fontWeight:600,background:"none",border:"1px dashed #cbd5e1",borderRadius:10,padding:"7px 10px",cursor:"pointer"}}>
+                        {workers.length>0?"+ Edit Operator":"+ Pilih Operator"}
+                      </button>
                     </div>
                   </div>
                 );

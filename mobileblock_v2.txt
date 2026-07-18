@@ -1,0 +1,217 @@
+2261             {viewMode==='mobile'?(
+2262               <div style={{display:"flex",flexDirection:"column",gap:10,padding:"4px 2px"}}>
+2263   {(()=>{
+2264     const panelGroups:Record<string,{panelId:number,panelNama:string,proyek:string,rows:any[]}> = {};
+2265     visibleRows.forEach((r:any)=>{
+2266       const pid=r.panelId;
+2267       if(!panelGroups[pid])panelGroups[pid]={panelId:pid,panelNama:r.panel?.nama||"",proyek:r.task?.proyek||"",rows:[]};
+2268       panelGroups[pid].rows.push(r);
+2269     });
+2270     const groups=Object.values(panelGroups);
+2271     if(groups.length===0){
+2272       return(
+2273         <div style={{textAlign:"center",padding:"24px 10px",color:"#94a3b8",fontSize:12}}>
+2274           Belum ada komponen dikumpulkan.<br/>Tap panel di atas untuk pilih komponen.
+2275         </div>
+2276       );
+2277     }
+2278     return groups.map(group=>{
+2279       const isOpen=expandedPanel[proses]===group.panelId;
+2280       const activeRows=group.rows.filter((r:any)=>((r.task.pekerja_per_komponen||{}))[r.kode]?.length>0);
+2281       const pendingRows=group.rows.filter((r:any)=>!(((r.task.pekerja_per_komponen||{}))[r.kode]?.length>0));
+2282       return(
+2283         <div key={group.panelId} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,overflow:"hidden"}}>
+2284           <div onClick={()=>setExpandedPanel(prev=>({...prev,[proses]:isOpen?null:group.panelId}))}
+2285             style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",cursor:"pointer",background:isOpen?"#eff6ff":"#fff"}}>
+2286             <div style={{display:"flex",flexDirection:"column",gap:2}}>
+2287               <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{group.panelNama}</span>
+2288               <span style={{fontSize:10,color:"#94a3b8"}}>{group.proyek} · {group.rows.length} komponen{pendingRows.length>0?` · ${pendingRows.length} belum ada operator`:""}</span>
+2289             </div>
+2290             <span style={{fontSize:14,color:"#94a3b8",transition:"transform .15s",transform:isOpen?"rotate(180deg)":"none"}}>▾</span>
+2291           </div>
+2292           {isOpen&&(
+2293             <div style={{padding:"0 14px 14px 14px",display:"flex",flexDirection:"column",gap:10}}>
+2294               {pendingRows.length>0&&(
+2295                 <div style={{background:"#fffbeb",border:"1.5px dashed #fcd34d",borderRadius:12,padding:"10px 12px",display:"flex",flexDirection:"column",gap:8}}>
+2296                   <div style={{fontSize:11,fontWeight:700,color:"#92400e"}}>BELUM ADA OPERATOR ({pendingRows.length})</div>
+2297                   <div style={{display:"flex",flexDirection:"column",gap:6}}>
+2298                     {pendingRows.map((r:any)=>(
+2299                       <div key={`${r.task.id}-${r.kode}-pending`} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,fontSize:12}}>
+2300                         <span style={{fontWeight:600,color:"#374151"}}>{r.item.nama}</span>
+2301                         <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>QTY {r.qtyKomp}</span>
+2302                       </div>
+2303                     ))}
+2304                   </div>
+2305                   <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignPanelId(group.panelId);setTempBulkPekerjaIds([]);}}
+2306                     style={{padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+2307                     Pilih Operator ({pendingRows.length})
+2308                   </button>
+2309                   {bulkAssignProses===proses&&bulkAssignPanelId===group.panelId&&(
+2310                     <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+2311                       onClick={()=>{setBulkAssignProses(null);setBulkAssignPanelId(null);}}>
+2312                       <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
+2313                         onClick={(e:any)=>e.stopPropagation()}>
+2314                         <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
+2315                         <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-assign untuk {pendingRows.length} komponen di {group.panelNama}. Timer tetap perlu diklik manual per komponen.</div>
+2316                         <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+2317                           {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
+2318                             const checked=tempBulkPekerjaIds.includes(p.id);
+2319                             return(
+2320                               <label key={p.id} style={{display:"flex",alignItems:"center",gap:10,border:`1.5px solid ${checked?"#2563eb":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
+2321                                 <input type="checkbox" checked={checked}
+2322                                   onChange={()=>setTempBulkPekerjaIds((prev:number[])=>checked?prev.filter((id:number)=>id!==p.id):[...prev,p.id])}/>
+2323                                 <span style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{p.nama}</span>
+2324                               </label>
+2325                             );
+2326                           })}
+2327                         </div>
+2328                         <div style={{display:"flex",gap:8}}>
+2329                           <button onClick={()=>{setBulkAssignProses(null);setBulkAssignPanelId(null);}}
+2330                             style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
+2331                           <button disabled={tempBulkPekerjaIds.length===0}
+2332                             onClick={async()=>{
+2333                               await bulkAssignAndStart(proses,pendingRows,tempBulkPekerjaIds);
+2334                               setBulkAssignProses(null);
+2335                               setBulkAssignPanelId(null);
+2336                             }}
+2337                             style={{flex:1,padding:"10px",borderRadius:10,border:"none",
+2338                               background:tempBulkPekerjaIds.length===0?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
+2339                               cursor:tempBulkPekerjaIds.length===0?"not-allowed":"pointer"}}>
+2340                             Simpan ({tempBulkPekerjaIds.length})
+2341                           </button>
+2342                         </div>
+2343                       </div>
+2344                     </div>
+2345                   )}
+2346                 </div>
+2347               )}
+2348               {activeRows.map((r:any)=>{
+2349                 const done=isDone(r);
+2350                 const bisaEdit=canEditProgressKomponen(r.task,r.kode,r.panelId,proses);
+2351                 const kInfo=r.wiringBadge||komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
+2352                 const fmtD=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):"–";
+2353                 const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
+2354                 const workers=idsKomp.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
+2355                 return(
+2356                   <div key={`${r.task.id}-${r.kode}-m`} style={{background:done?"#f0fdf4":"#fff",
+2357                     border:`1.5px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:14,padding:"12px 14px",
+2358                     display:"flex",flexDirection:"column",gap:10}}>
+2359                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+2360                       <div style={{display:"flex",flexDirection:"column",gap:3}}>
+2361                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+2362                           {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
+2363                           <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{r.item.nama}</span>
+2364                         </div>
+2365                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+2366                           <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
+2367                           <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>
+2368                           {cardMode==='timer'&&r.wiringBadge&&(
+2369                             <span style={{background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:700}}>
+2370                               ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
+2371                             </span>
+2372                           )}
+2373                         </div>
+2374                       </div>
+2375                       {r.pct===100
+2376                         ?<Badge label="TERCAPAI" color="#16a34a" bg="#dcfce7"/>
+2377                         :r.pct===0
+2378                         ?<Badge label="BELUM MULAI" color="#94a3b8" bg="#f1f5f9"/>
+2379                         :<Badge label="ON PROGRESS" color="#2563eb" bg="#dbeafe"/>
+2380                       }
+2381                     </div>
+2382 
+2383                     <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,fontSize:10,color:"#64748b"}}>
+2384                       <div>QTY KOMP: <b style={{color:"#475569"}}>{r.qtyKomp} 🔒</b></div>
+2385                       <div>CREATE BY: <b style={{color:"#475569"}}>{kInfo.createdBy||"–"}</b></div>
+2386                       <div>TARGET: <b style={{color:"#1d4ed8"}}>{fmtD(kInfo.targetSelesai)}</b></div>
+2387                       <div>AKTUAL: <b style={{color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtD(r.aktualSelesai):"–"}</b></div>
+2388                     </div>
+2389 
+2390                     {cardMode==='qty'?(()=>{
+2391                       const locked=isCellLocked(r.panelId,r.kode,proses);
+2392                       const floor=getLockedFloor(r.panelId,r.kode,proses);
+2393                       return(
+2394                         <div style={{display:"flex",alignItems:"center",gap:10}}>
+2395                           {locked?(
+2396                             <span style={{padding:"7px 10px",borderRadius:8,border:"1.5px solid #16a34a",background:"#f0fdf4",fontSize:13,fontWeight:700,color:"#16a34a"}}>{r.qtyProses} 🔒</span>
+2397                           ):(
+2398                             <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses}
+2399                               onChange={(e:any)=>updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value))}
+2400                               disabled={r.qtyKomp===0}
+2401                               style={{width:70,padding:"8px",borderRadius:8,
+2402                                 border:`1.5px solid ${r.qtyKomp===0?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
+2403                                 background:r.qtyKomp===0?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
+2404                                 fontSize:14,textAlign:"center",fontWeight:700,fontFamily:"'DM Mono',monospace",
+2405                                 color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
+2406                           )}
+2407                           <div style={{flex:1,background:"#e2e8f0",borderRadius:99,height:8,overflow:"hidden"}}>
+2408                             <div style={{width:`${r.pct}%`,height:"100%",background:pColor(r.pct),borderRadius:99}}/>
+2409                           </div>
+2410                           <span style={{fontWeight:800,color:pColor(r.pct),fontFamily:"'DM Mono',monospace",fontSize:13,minWidth:34}}>{r.pct}%</span>
+2411                         </div>
+2412                       );
+2413                     })():(
+2414                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+2415                         {PCT_STEPS.map((s:number)=>{
+2416                           const reached=r.pct>=s;
+2417                           const isNext=!done&&s===PCT_STEPS.find((x:number)=>x>r.pct);
+2418                           const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
+2419                           return(
+2420                             <button key={s} disabled={!bisaEdit}
+2421                               onClick={()=>{if(bisaEdit)updatePctManual(r.panelId,r.kode,proses,reached?prevStep:s);}}
+2422                               style={{flex:1,minWidth:40,padding:"9px 4px",borderRadius:8,border:"none",
+2423                                 cursor:bisaEdit?"pointer":"not-allowed",
+2424                                 background:reached?pColor(s):isNext?"#eff6ff":"#f1f5f9",
+2425                                 color:reached?"#fff":isNext?pc:"#94a3b8",
+2426                                 fontWeight:700,fontSize:11,outline:isNext&&bisaEdit?`2px solid ${pc}`:"none"}}>
+2427                               {reached?"✓":`${s}%`}
+2428                             </button>
+2429                           );
+2430                         })}
+2431                       </div>
+2432                     )}
+2433 
+2434                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
+2435                       {workers.map((w:any)=>{
+2436                         const key=`${r.panelId}_${r.kode}_${proses}_${w.id}`;
+2437                         const timer=timerAktif[key];
+2438                         const loading=timerLoading===key;
+2439                         let durasiLabel="";
+2440                         if(timer){
+2441                           const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
+2442                           const totalMenit=(timerDurasiSelesai[key]||0)+menitBerjalan;
+2443                           const jam=Math.floor(totalMenit/60);
+2444                           const menit=Math.round(totalMenit%60);
+2445                           durasiLabel=jam>0?`${jam}j ${menit}m`:`${menit}m`;
+2446                         }
+2447                         return(
+2448                           <div key={w.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
+2449                             background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",borderRadius:20,padding:"4px 8px 4px 12px"}}>
+2450                             <span style={{fontSize:12,fontWeight:700,color:DIVISI_CONFIG[w.divisi]?.color||"#64748b"}}>
+2451                               {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
+2452                             </span>
+2453                             <button disabled={loading}
+2454                               onClick={()=>timer?stopTimer(w.id,r.panelId,r.kode,proses):startTimer(w.id,r.panelId,r.kode,proses,viewDate)}
+2455                               style={{fontSize:11,fontWeight:700,border:"none",borderRadius:10,padding:"5px 10px",cursor:loading?"not-allowed":"pointer",
+2456                                 background:timer?"#fef2f2":"#f0fdf4",color:timer?"#dc2626":"#16a34a"}}>
+2457                               {loading?"...":timer?`⏹ ${durasiLabel}`:"▶ Mulai"}
+2458                             </button>
+2459                           </div>
+2460                         );
+2461                       })}
+2462                       <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
+2463                         style={{fontSize:11,color:"#64748b",fontWeight:600,background:"none",border:"1px dashed #cbd5e1",borderRadius:10,padding:"7px 10px",cursor:"pointer"}}>
+2464                         {workers.length>0?"+ Edit Operator":"+ Pilih Operator"}
+2465                       </button>
+2466                     </div>
+2467                   </div>
+2468                 );
+2469               })}
+2470             </div>
+2471           )}
+2472         </div>
+2473       );
+2474     });
+2475   })()}
+2476 </div>
+2477             ):(
