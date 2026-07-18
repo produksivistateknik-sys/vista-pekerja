@@ -1,0 +1,95 @@
+2376                                   ):(
+2377                                     <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses}
+2378                                       onChange={(e:any)=>updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value))}
+2379                                       disabled={r.qtyKomp===0}
+2380                                       style={{width:70,padding:"8px",borderRadius:8,
+2381                                         border:`1.5px solid ${r.qtyKomp===0?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
+2382                                         background:r.qtyKomp===0?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
+2383                                         fontSize:14,textAlign:"center",fontWeight:700,fontFamily:"'DM Mono',monospace",
+2384                                         color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
+2385                                   )}
+2386                                   <div style={{flex:1,background:"#e2e8f0",borderRadius:99,height:8,overflow:"hidden"}}>
+2387                                     <div style={{width:`${r.pct}%`,height:"100%",background:pColor(r.pct),borderRadius:99}}/>
+2388                                   </div>
+2389                                   <span style={{fontWeight:800,color:pColor(r.pct),fontFamily:"'DM Mono',monospace",fontSize:13,minWidth:34}}>{r.pct}%</span>
+2390                                 </div>
+2391                               );
+2392                             })():(
+2393                               <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+2394                                 {PCT_STEPS.map((s:number)=>{
+2395                                   const reached=r.pct>=s;
+2396                                   const isNext=!done&&s===PCT_STEPS.find((x:number)=>x>r.pct);
+2397                                   const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
+2398                                   return(
+2399                                     <button key={s} disabled={!bisaEdit}
+2400                                       onClick={()=>{if(bisaEdit)updatePctManual(r.panelId,r.kode,proses,reached?prevStep:s);}}
+2401                                       style={{flex:1,minWidth:40,padding:"9px 4px",borderRadius:8,border:"none",
+2402                                         cursor:bisaEdit?"pointer":"not-allowed",
+2403                                         background:reached?pColor(s):isNext?"#eff6ff":"#f1f5f9",
+2404                                         color:reached?"#fff":isNext?pc:"#94a3b8",
+2405                                         fontWeight:700,fontSize:11,outline:isNext&&bisaEdit?`2px solid ${pc}`:"none"}}>
+2406                                       {reached?"✓":`${s}%`}
+2407                                     </button>
+2408                                   );
+2409                                 })}
+2410                               </div>
+2411                             )}
+2412 
+2413                             <div style={{display:"flex",flexDirection:"column",gap:6}}>
+2414                               {workers.map((w:any)=>{
+2415                                 const key=`${r.panelId}_${r.kode}_${proses}_${w.id}`;
+2416                                 const timer=timerAktif[key];
+2417                                 const loading=timerLoading===key;
+2418                                 let durasiLabel="";
+2419                                 if(timer){
+2420                                   const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
+2421                                   const totalMenit=(timerDurasiSelesai[key]||0)+menitBerjalan;
+2422                                   const jam=Math.floor(totalMenit/60);
+2423                                   const menit=Math.round(totalMenit%60);
+2424                                   durasiLabel=jam>0?`${jam}j ${menit}m`:`${menit}m`;
+2425                                 }
+2426                                 return(
+2427                                   <div key={w.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
+2428                                     background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",borderRadius:20,padding:"4px 8px 4px 12px"}}>
+2429                                     <span style={{fontSize:12,fontWeight:700,color:DIVISI_CONFIG[w.divisi]?.color||"#64748b"}}>
+2430                                       {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
+2431                                     </span>
+2432                                     <button disabled={loading}
+2433                                       onClick={()=>timer?stopTimer(w.id,r.panelId,r.kode,proses):startTimer(w.id,r.panelId,r.kode,proses,viewDate)}
+2434                                       style={{fontSize:11,fontWeight:700,border:"none",borderRadius:10,padding:"5px 10px",cursor:loading?"not-allowed":"pointer",
+2435                                         background:timer?"#fef2f2":"#f0fdf4",color:timer?"#dc2626":"#16a34a"}}>
+2436                                       {loading?"...":timer?`⏹ ${durasiLabel}`:"▶ Mulai"}
+2437                                     </button>
+2438                                   </div>
+2439                                 );
+2440                               })}
+2441                               <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
+2442                                 style={{fontSize:11,color:"#64748b",fontWeight:600,background:"none",border:"1px dashed #cbd5e1",borderRadius:10,padding:"7px 10px",cursor:"pointer"}}>
+2443                                 {workers.length>0?"+ Edit Operator":"+ Pilih Operator"}
+2444                               </button>
+2445                             </div>
+2446                           </div>
+2447                         );
+2448                       })}
+2449 
+2450                       {visibleRows.length===0&&(
+2451                         <div style={{textAlign:"center",padding:"24px 10px",color:"#94a3b8",fontSize:12}}>
+2452                           Belum ada komponen dikumpulkan.<br/>Tap panel di atas untuk pilih komponen.
+2453                         </div>
+2454                       )}
+2455                     </>
+2456                   );
+2457                 })()}
+2458               </div>
+2459             ):(
+2460             <div style={{overflowX:"auto"}}>
+2461               <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+2462                 <thead>
+2463                   <tr>
+2464                     <th style={{...thS,textAlign:"left",minWidth:40,position:"sticky",left:0,zIndex:4}}>NO</th>
+2465                     <th style={{...thS,textAlign:"left",minWidth:100,position:"sticky",left:40,zIndex:4}}>PROYEK</th>
+2466                     <th style={{...thS,textAlign:"left",minWidth:160,position:"sticky",left:140,zIndex:4}}>NAMA PANEL</th>
+2467                     {false?(
+2468                       <>
+2469                         <th style={{...thS,minWidth:80}}>BOBOT</th>
+2470                         <th style={{...thS,minWidth:60}}>ORANG</th>
