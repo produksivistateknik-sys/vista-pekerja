@@ -1806,7 +1806,7 @@ function OperatorView({user,viewMode}:any){
     } else {
       const newEntry={pct,tanggal:viewDate,shift,ts:new Date().toISOString()};
       newChecklist[kode]={...cl,history:{...(cl.history||{}),[proses]:[...prevHist,newEntry]}};
-      // TIDAK setLockedCells - biar qty tetap bisa diedit lanjut, cuma checkpoint aja yang disimpan
+      setLockedCells((prev:any)=>({...prev,[`${panelId}_${kode}_${proses}_${viewDate}_${shift}`]:true}));
     }
     await supabase.from('progress_checkpoint_log').insert([checkpointEntry]);
     await supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId);
@@ -2419,6 +2419,7 @@ function OperatorView({user,viewMode}:any){
                 const fmtD=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):"–";
                 const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
                 const workers=idsKomp.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
+                const cellLocked=isCellLocked(r.panelId,r.kode,proses);
                 return(
                   <div key={`${r.task.id}-${r.kode}-m`} style={{background:done?"#f0fdf4":"#fff",
                     border:`1.5px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:14,padding:"12px 14px",
@@ -2546,11 +2547,11 @@ function OperatorView({user,viewMode}:any){
                           </div>
                         );
                       })()}
-                      <button disabled={r.pct===0} onClick={()=>lockSingleKomponen(r.panelId,r.kode,proses)}
+                      <button disabled={cellLocked||r.pct===0} onClick={()=>lockSingleKomponen(r.panelId,r.kode,proses)}
                         style={{fontSize:11,fontWeight:700,border:"none",borderRadius:10,padding:"7px 10px",
-                          cursor:r.pct===0?"not-allowed":"pointer",
-                          background:"#eff6ff",color:"#1d4ed8"}}>
-                        💾 Simpan Progress
+                          cursor:(cellLocked||r.pct===0)?"not-allowed":"pointer",
+                          background:cellLocked?"#f0fdf4":"#eff6ff",color:cellLocked?"#16a34a":"#1d4ed8"}}>
+                        {cellLocked?"🔒 Terkunci":"🔒 Kunci Progress"}
                       </button>
                     </div>
                   </div>
