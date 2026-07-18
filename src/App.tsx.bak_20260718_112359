@@ -2476,49 +2476,33 @@ function OperatorView({user,viewMode}:any){
                       {workers.length===0&&(
                         <div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",padding:"6px 0"}}>Belum ada operator - klik "Pilih Operator" di atas.</div>
                       )}
-                      {workers.length>0&&(()=>{
-                        const timerKeys=workers.map((w:any)=>`${r.panelId}_${r.kode}_${proses}_${w.id}`);
-                        const anyTimerRunning=timerKeys.some((k:string)=>!!timerAktif[k]);
-                        const anyLoading=timerKeys.some((k:string)=>timerLoading===k);
+                      {workers.map((w:any)=>{
+                        const key=`${r.panelId}_${r.kode}_${proses}_${w.id}`;
+                        const timer=timerAktif[key];
+                        const loading=timerLoading===key;
                         let durasiLabel="";
-                        const runningKey=timerKeys.find((k:string)=>timerAktif[k]);
-                        if(runningKey){
-                          const timer=timerAktif[runningKey];
+                        if(timer){
                           const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
-                          const totalMenit=(timerDurasiSelesai[runningKey]||0)+menitBerjalan;
+                          const totalMenit=(timerDurasiSelesai[key]||0)+menitBerjalan;
                           const jam=Math.floor(totalMenit/60);
                           const menit=Math.round(totalMenit%60);
                           durasiLabel=jam>0?`${jam}j ${menit}m`:`${menit}m`;
                         }
                         return(
-                          <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
-                              {workers.map((w:any)=>(
-                                <span key={w.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,
-                                  color:DIVISI_CONFIG[w.divisi]?.color||"#64748b",background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
-                                  borderRadius:20,padding:"4px 10px"}}>
-                                  {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
-                                </span>
-                              ))}
-                            </div>
-                            <button disabled={anyLoading}
-                              onClick={()=>{
-                                if(anyTimerRunning){
-                                  workers.forEach((w:any)=>{
-                                    const k=`${r.panelId}_${r.kode}_${proses}_${w.id}`;
-                                    if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,proses);
-                                  });
-                                } else {
-                                  workers.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,proses,viewDate));
-                                }
-                              }}
-                              style={{fontSize:12,fontWeight:700,border:"none",borderRadius:10,padding:"8px 10px",cursor:anyLoading?"not-allowed":"pointer",
-                                background:anyTimerRunning?"#fef2f2":"#f0fdf4",color:anyTimerRunning?"#dc2626":"#16a34a"}}>
-                              {anyLoading?"...":anyTimerRunning?`⏹ Selesai ${durasiLabel}`:"▶ Mulai"}
+                          <div key={w.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,
+                            background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",borderRadius:20,padding:"4px 8px 4px 12px"}}>
+                            <span style={{fontSize:12,fontWeight:700,color:DIVISI_CONFIG[w.divisi]?.color||"#64748b"}}>
+                              {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
+                            </span>
+                            <button disabled={loading}
+                              onClick={()=>timer?stopTimer(w.id,r.panelId,r.kode,proses):startTimer(w.id,r.panelId,r.kode,proses,viewDate)}
+                              style={{fontSize:11,fontWeight:700,border:"none",borderRadius:10,padding:"5px 10px",cursor:loading?"not-allowed":"pointer",
+                                background:timer?"#fef2f2":"#f0fdf4",color:timer?"#dc2626":"#16a34a"}}>
+                              {loading?"...":timer?`⏹ ${durasiLabel}`:"▶ Mulai"}
                             </button>
                           </div>
                         );
-                      })()}
+                      })}
                       <button disabled={cellLocked||r.pct===0} onClick={()=>lockSingleKomponen(r.panelId,r.kode,proses)}
                         style={{fontSize:11,fontWeight:700,border:"none",borderRadius:10,padding:"7px 10px",
                           cursor:(cellLocked||r.pct===0)?"not-allowed":"pointer",
