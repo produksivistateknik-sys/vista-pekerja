@@ -1,0 +1,2 @@
+2466                             <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses}
+2709                                           <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses}
