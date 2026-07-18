@@ -2340,7 +2340,6 @@ function OperatorView({user,viewMode}:any){
                                   {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
                                   <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{r.item.nama}</span>
                                 </div>
-                                <div style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek} · {r.panel.nama}</div>
                                 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                                   <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
                                   <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>

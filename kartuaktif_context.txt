@@ -1,0 +1,41 @@
+2330                         const fmtD=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):"–";
+2331                         const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
+2332                         const workers=idsKomp.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
+2333                         return(
+2334                           <div key={`${r.task.id}-${r.kode}-m`} style={{background:done?"#f0fdf4":"#fff",
+2335                             border:`1.5px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:14,padding:"12px 14px",
+2336                             display:"flex",flexDirection:"column",gap:10}}>
+2337                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+2338                               <div style={{display:"flex",flexDirection:"column",gap:3}}>
+2339                                 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+2340                                   {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
+2341                                   <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{r.item.nama}</span>
+2342                                 </div>
+2343                                 <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+2344                                   <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
+2345                                   <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>
+2346                                   {cardMode==='timer'&&r.wiringBadge&&(
+2347                                     <span style={{background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:700}}>
+2348                                       ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
+2349                                     </span>
+2350                                   )}
+2351                                 </div>
+2352                               </div>
+2353                               {r.pct===100
+2354                                 ?<Badge label="TERCAPAI" color="#16a34a" bg="#dcfce7"/>
+2355                                 :r.pct===0
+2356                                 ?<Badge label="BELUM MULAI" color="#94a3b8" bg="#f1f5f9"/>
+2357                                 :<Badge label="ON PROGRESS" color="#2563eb" bg="#dbeafe"/>
+2358                               }
+2359                             </div>
+2360 
+2361                             <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:5,fontSize:10,color:"#64748b"}}>
+2362                               <div>QTY KOMP: <b style={{color:"#475569"}}>{r.qtyKomp} 🔒</b></div>
+2363                               <div>CREATE BY: <b style={{color:"#475569"}}>{kInfo.createdBy||"–"}</b></div>
+2364                               <div>TARGET: <b style={{color:"#1d4ed8"}}>{fmtD(kInfo.targetSelesai)}</b></div>
+2365                               <div>AKTUAL: <b style={{color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtD(r.aktualSelesai):"–"}</b></div>
+2366                             </div>
+2367 
+2368                             {cardMode==='qty'?(()=>{
+2369                               const locked=isCellLocked(r.panelId,r.kode,proses);
+2370                               const floor=getLockedFloor(r.panelId,r.kode,proses);

@@ -1,0 +1,9 @@
+1487     // Ambil info wiring (CREATE BY, CREATE ON, TARGET SELESAI) dari fcs_schedule dan raw_schedule
+1521     // Ambil info komponen (CREATE BY, CREATE ON, TARGET SELESAI) untuk proses biasa
+2229                                 <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{r.item.nama}</span>
+2276                                   <span style={{fontWeight:600,color:"#374151"}}>{r.item.nama}</span>
+2341                                   <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{r.item.nama}</span>
+2363                               <div>CREATE BY: <b style={{color:"#475569"}}>{kInfo.createdBy||"–"}</b></div>
+2470                         <th style={{...thS,minWidth:100}}>CREATE BY</th>
+2483                         <th style={{...thS,minWidth:100}}>CREATE BY</th>
+2563                               {r.item.nama}
