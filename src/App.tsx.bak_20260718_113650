@@ -2234,14 +2234,7 @@ function OperatorView({user,viewMode}:any){
                   });
                   return panelList.map((pg:any)=>{
                     const panelKey=`${proses}_${pg.panelId}`;
-                    const selKodeList=selectedKomponen[panelKey]||[];
-                    const selCount=selKodeList.length;
-                    const selRows=rows.filter((r:any)=>r.panelId===pg.panelId&&selKodeList.includes(r.kode));
-                    const belumDikerjakanCount=selRows.filter((r:any)=>(r.pct||0)===0).length;
-                    const dikerjakanRows=selRows.filter((r:any)=>(r.pct||0)>0&&(r.pct||0)<100);
-                    const dikerjakanCount=dikerjakanRows.length;
-                    const dikerjakanPcs=dikerjakanRows.reduce((s:number,r:any)=>s+(r.qtyProses||0),0);
-                    const selesaiCount=selRows.filter((r:any)=>(r.pct||0)>=100).length;
+                    const selCount=(selectedKomponen[panelKey]||[]).length;
                     return(
                       <button key={pg.panelId}
                         onClick={()=>{setKomponenPopup({proses,panelId:pg.panelId});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
@@ -2250,15 +2243,9 @@ function OperatorView({user,viewMode}:any){
                           background:selCount>0?"#eef2ff":"#fff",cursor:"pointer",textAlign:"left"}}>
                         <span style={{fontSize:9,color:"#94a3b8"}}>{pg.proyek}</span>
                         <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{pg.panel.nama}</span>
-                        {selCount>0?(
-                          <span style={{fontSize:9,color:"#4f46e5",fontWeight:600,display:"flex",gap:6,flexWrap:"wrap" as const}}>
-                            {belumDikerjakanCount>0&&<span>{belumDikerjakanCount} belum</span>}
-                            {dikerjakanCount>0&&<span>{dikerjakanCount} dikerjakan{dikerjakanPcs>0?` (${dikerjakanPcs}pcs)`:""}</span>}
-                            {selesaiCount>0&&<span style={{color:"#16a34a"}}>{selesaiCount} selesai</span>}
-                          </span>
-                        ):(
-                          <span style={{fontSize:9,color:"#94a3b8",fontWeight:600}}>+ Pilih Komponen</span>
-                        )}
+                        <span style={{fontSize:9,color:selCount>0?"#4f46e5":"#94a3b8",fontWeight:600}}>
+                          {selCount>0?`${selCount} komponen dipilih`:"+ Pilih Komponen"}
+                        </span>
                       </button>
                     );
                   });
@@ -2280,14 +2267,10 @@ function OperatorView({user,viewMode}:any){
                     <div style={{overflowY:"auto",padding:"8px 16px",flex:1}}>
                       {panelRows.map((r:any)=>{
                         const checked=tempSelectedKomponen.includes(r.kode);
-                        const panelKeyPopup=`${proses}_${komponenPopup.panelId}`;
-                        const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
                         return(
-                          <label key={r.kode} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
-                            cursor:alreadyConfirmed?"not-allowed":"pointer",opacity:alreadyConfirmed?0.55:1}}>
-                            <input type="checkbox" checked={checked} disabled={alreadyConfirmed}
+                          <label key={r.kode} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",cursor:"pointer"}}>
+                            <input type="checkbox" checked={checked}
                               onChange={()=>{
-                                if(alreadyConfirmed)return;
                                 setTempSelectedKomponen((prev:string[])=>checked?prev.filter(k=>k!==r.kode):[...prev,r.kode]);
                               }}
                               style={{width:16,height:16}}/>
@@ -2297,11 +2280,6 @@ function OperatorView({user,viewMode}:any){
                                 {r.wiringBadge&&(
                                   <span style={{fontSize:9,fontWeight:700,background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px"}}>
                                     ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
-                                  </span>
-                                )}
-                                {alreadyConfirmed&&(
-                                  <span style={{fontSize:9,fontWeight:700,background:"#f1f5f9",color:"#94a3b8",borderRadius:6,padding:"1px 6px"}}>
-                                    sudah dipilih
                                   </span>
                                 )}
                               </div>

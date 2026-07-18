@@ -1,0 +1,51 @@
+2210       const isWiringProses=["WIRING CONTROL","WIRING POWER"].includes(proses);
+2211       const cardMode=PROSES_CARD_MODE[proses]||'qty';
+2212 
+2213         return(
+2214           <Card key={proses} style={{marginBottom:20,padding:0,overflow:"hidden"}}>
+2215             <div style={{background:pc,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+2216               <div style={{fontWeight:800,fontSize:14,color:"#fff"}}>{proses}</div>
+2217               <div style={{display:"flex",gap:8,alignItems:"center"}}>
+2218                 <span style={{fontSize:12,color:"#ffffff99"}}>Shift {shift}</span>
+2219                 <span style={{background:"#ffffff22",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
+2220                   {visibleRows.filter((r:any)=>isDone(r)).length}/{visibleRows.length} selesai
+2221                 </span>
+2222               </div>
+2223             </div>
+2224             {(isDrilldownProses||viewMode==='mobile')&&(
+2225               <div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+2226                 {(()=>{
+2227                   const seenPanel=new Set();
+2228                   const panelList:any[]=[];
+2229                   rows.forEach((r:any)=>{
+2230                     if(!seenPanel.has(r.panelId)){
+2231                       seenPanel.add(r.panelId);
+2232                       panelList.push({panelId:r.panelId,panel:r.panel,proyek:r.task.proyek});
+2233                     }
+2234                   });
+2235                   return panelList.map((pg:any)=>{
+2236                     const panelKey=`${proses}_${pg.panelId}`;
+2237                     const selCount=(selectedKomponen[panelKey]||[]).length;
+2238                     return(
+2239                       <button key={pg.panelId}
+2240                         onClick={()=>{setKomponenPopup({proses,panelId:pg.panelId});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
+2241                         style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
+2242                           padding:"6px 12px",borderRadius:8,border:selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
+2243                           background:selCount>0?"#eef2ff":"#fff",cursor:"pointer",textAlign:"left"}}>
+2244                         <span style={{fontSize:9,color:"#94a3b8"}}>{pg.proyek}</span>
+2245                         <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{pg.panel.nama}</span>
+2246                         <span style={{fontSize:9,color:selCount>0?"#4f46e5":"#94a3b8",fontWeight:600}}>
+2247                           {selCount>0?`${selCount} komponen dipilih`:"+ Pilih Komponen"}
+2248                         </span>
+2249                       </button>
+2250                     );
+2251                   });
+2252                 })()}
+2253               </div>
+2254             )}
+2255             {komponenPopup&&komponenPopup.proses===proses&&(()=>{
+2256               const panelRows=rows.filter((r:any)=>r.panelId===komponenPopup.panelId);
+2257               const panelInfo=panelRows[0];
+2258               return(
+2259                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
+2260                   onClick={()=>setKomponenPopup(null)}>

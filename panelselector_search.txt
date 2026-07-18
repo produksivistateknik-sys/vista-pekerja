@@ -1,0 +1,6 @@
+1341   const [komponenPopup,setKomponenPopup]=useState<{proses:string,panelId:number}|null>(null);
+2240                         onClick={()=>{setKomponenPopup({proses,panelId:pg.panelId});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
+2247                           {selCount>0?`${selCount} komponen dipilih`:"+ Pilih Komponen"}
+2260                   onClick={()=>setKomponenPopup(null)}>
+2298                       <button onClick={()=>setKomponenPopup(null)}
+2302                           setKomponenPopup(null);
