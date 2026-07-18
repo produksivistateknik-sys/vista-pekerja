@@ -1385,7 +1385,7 @@ function OperatorView({user,viewMode}:any){
   const cfg=DIVISI_CONFIG[user.divisi];
   const isQtyBased=QTY_DIVISI.includes(user.divisi);
   const PROSES_CARD_MODE:Record<string,string>={
-    POTONG:'qty',RENDAM:'qty',PAINTING:'qty',
+    POTONG:'batch',RENDAM:'batch',PAINTING:'batch',
     BENDING:'qty',STEL:'qty',FINISHING:'qty',RAKIT:'qty',"PASANG KOMPONEN":'qty',BUSBAR:'qty',
     "WIRING CONTROL":'timer',"WIRING POWER":'timer',
   };
@@ -2457,6 +2457,50 @@ function OperatorView({user,viewMode}:any){
                       <div>AKTUAL: <b style={{color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtD(r.aktualSelesai):"–"}</b></div>
                     </div>
 
+                    {cardMode==='qty'?(()=>{
+                      const locked=isCellLocked(r.panelId,r.kode,proses);
+                      const floor=getLockedFloor(r.panelId,r.kode,proses);
+                      return(
+                        <div style={{display:"flex",alignItems:"center",gap:10}}>
+                          {locked?(
+                            <span style={{padding:"7px 10px",borderRadius:8,border:"1.5px solid #16a34a",background:"#f0fdf4",fontSize:13,fontWeight:700,color:"#16a34a"}}>{r.qtyProses} 🔒</span>
+                          ):(
+                            <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
+                              onChange={(e:any)=>updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value))}
+                              disabled={r.qtyKomp===0}
+                              style={{width:70,padding:"8px",borderRadius:8,
+                                border:`1.5px solid ${r.qtyKomp===0?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
+                                background:r.qtyKomp===0?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
+                                fontSize:14,textAlign:"center",fontWeight:700,fontFamily:"'DM Mono',monospace",
+                                color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
+                          )}
+                          <div style={{flex:1,background:"#e2e8f0",borderRadius:99,height:8,overflow:"hidden"}}>
+                            <div style={{width:`${r.pct}%`,height:"100%",background:pColor(r.pct),borderRadius:99}}/>
+                          </div>
+                          <span style={{fontWeight:800,color:pColor(r.pct),fontFamily:"'DM Mono',monospace",fontSize:13,minWidth:34}}>{r.pct}%</span>
+                        </div>
+                      );
+                    })():(
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                        {PCT_STEPS.map((s:number)=>{
+                          const reached=r.pct>=s;
+                          const isNext=!done&&s===PCT_STEPS.find((x:number)=>x>r.pct);
+                          const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
+                          return(
+                            <button key={s} disabled={!bisaEdit}
+                              onClick={()=>{if(bisaEdit)updatePctManual(r.panelId,r.kode,proses,reached?prevStep:s);}}
+                              style={{flex:1,minWidth:40,padding:"9px 4px",borderRadius:8,border:"none",
+                                cursor:bisaEdit?"pointer":"not-allowed",
+                                background:reached?pColor(s):isNext?"#eff6ff":"#f1f5f9",
+                                color:reached?"#fff":isNext?pc:"#94a3b8",
+                                fontWeight:700,fontSize:11,outline:isNext&&bisaEdit?`2px solid ${pc}`:"none"}}>
+                              {reached?"✓":`${s}%`}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {workers.length===0&&(
                         <div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",padding:"6px 0"}}>Belum ada operator - klik "Pilih Operator" di atas.</div>
@@ -2511,50 +2555,6 @@ function OperatorView({user,viewMode}:any){
                         💾 Simpan Progress
                       </button>
                     </div>
-
-                    {cardMode==='qty'?(()=>{
-                      const locked=isCellLocked(r.panelId,r.kode,proses);
-                      const floor=getLockedFloor(r.panelId,r.kode,proses);
-                      return(
-                        <div style={{display:"flex",alignItems:"center",gap:10}}>
-                          {locked?(
-                            <span style={{padding:"7px 10px",borderRadius:8,border:"1.5px solid #16a34a",background:"#f0fdf4",fontSize:13,fontWeight:700,color:"#16a34a"}}>{r.qtyProses} 🔒</span>
-                          ):(
-                            <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
-                              onChange={(e:any)=>updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value))}
-                              disabled={r.qtyKomp===0}
-                              style={{width:70,padding:"8px",borderRadius:8,
-                                border:`1.5px solid ${r.qtyKomp===0?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
-                                background:r.qtyKomp===0?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
-                                fontSize:14,textAlign:"center",fontWeight:700,fontFamily:"'DM Mono',monospace",
-                                color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
-                          )}
-                          <div style={{flex:1,background:"#e2e8f0",borderRadius:99,height:8,overflow:"hidden"}}>
-                            <div style={{width:`${r.pct}%`,height:"100%",background:pColor(r.pct),borderRadius:99}}/>
-                          </div>
-                          <span style={{fontWeight:800,color:pColor(r.pct),fontFamily:"'DM Mono',monospace",fontSize:13,minWidth:34}}>{r.pct}%</span>
-                        </div>
-                      );
-                    })():(
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                        {PCT_STEPS.map((s:number)=>{
-                          const reached=r.pct>=s;
-                          const isNext=!done&&s===PCT_STEPS.find((x:number)=>x>r.pct);
-                          const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
-                          return(
-                            <button key={s} disabled={!bisaEdit}
-                              onClick={()=>{if(bisaEdit)updatePctManual(r.panelId,r.kode,proses,reached?prevStep:s);}}
-                              style={{flex:1,minWidth:40,padding:"9px 4px",borderRadius:8,border:"none",
-                                cursor:bisaEdit?"pointer":"not-allowed",
-                                background:reached?pColor(s):isNext?"#eff6ff":"#f1f5f9",
-                                color:reached?"#fff":isNext?pc:"#94a3b8",
-                                fontWeight:700,fontSize:11,outline:isNext&&bisaEdit?`2px solid ${pc}`:"none"}}>
-                              {reached?"✓":`${s}%`}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
                   </div>
                 );
               })}
