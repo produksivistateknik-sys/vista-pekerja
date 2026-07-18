@@ -2208,8 +2208,7 @@ function OperatorView({user,viewMode}:any){
 
         const isDone=(r:any)=>r.pct===100;
         const isDrilldownProses=["WIRING CONTROL","WIRING POWER","BUSBAR"].includes(proses);
-        const PROSES_KUMPUL_DULU_DESKTOP=["POTONG","RENDAM","PAINTING"];
-        const visibleRows=(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
+        const visibleRows=(isDrilldownProses||viewMode==='mobile')?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
       const isWiringProses=["WIRING CONTROL","WIRING POWER"].includes(proses);
       const cardMode=PROSES_CARD_MODE[proses]||'qty';
 
@@ -2224,7 +2223,7 @@ function OperatorView({user,viewMode}:any){
                 </span>
               </div>
             </div>
-            {(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))&&(
+            {(isDrilldownProses||viewMode==='mobile')&&(
               <div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
                 {(()=>{
                   const seenPanel=new Set();
