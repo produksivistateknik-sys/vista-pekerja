@@ -1879,7 +1879,17 @@ function OperatorView({user,viewMode}:any){
       }
     }
   };
-  
+
+  // Khusus POTONG: simpan checkpoint progress buat SEMUA komponen terkumpul sekaligus
+  // (skip yang masih 0% - biar gak keluar alert berulang per baris).
+  const lockBulkKomponen=async(proses:string,rows:any[])=>{
+    const eligible=rows.filter((r:any)=>r.pct>0);
+    if(eligible.length===0){alert("Belum ada progress yang bisa disimpan.");return;}
+    for(const r of eligible){
+      await lockSingleKomponen(r.panelId,r.kode,proses);
+    }
+  };
+
   const lockProgress=async()=>{
     let count=0;
     const newLocked={...lockedCells};
@@ -2468,7 +2478,19 @@ function OperatorView({user,viewMode}:any){
         </div>
       );
     }
-    return groups.map(group=>{
+    const bulkToolbarPotong=proses==="POTONG"?(
+      <div key="bulk-toolbar-potong" style={{display:"flex",gap:8}}>
+        <button onClick={()=>startUntukUserSendiri(proses,visibleRows)}
+          style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"#16a34a",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+          ▶ Mulai Semua ({visibleRows.length} komponen)
+        </button>
+        <button onClick={()=>lockBulkKomponen(proses,visibleRows)}
+          style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+          💾 Simpan Semua Progress
+        </button>
+      </div>
+    ):null;
+    return[bulkToolbarPotong,...groups.map(group=>{
       const groupKey=group.namaKomponen;
       const isOpen=expandedPanel[proses]===groupKey;
       const panelCount=new Set(group.rows.map((r:any)=>r.panelId)).size;
@@ -2485,14 +2507,7 @@ function OperatorView({user,viewMode}:any){
           </div>
           {isOpen&&(
             <div style={{padding:"0 14px 14px 14px",display:"flex",flexDirection:"column",gap:10}}>
-              {proses==="POTONG"?(
-                belumAdaOperatorCount>0&&(
-                  <button onClick={()=>startUntukUserSendiri(proses,group.rows)}
-                    style={{padding:"10px",borderRadius:10,border:"none",background:"#16a34a",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
-                    ▶ Mulai ({group.rows.length} komponen)
-                  </button>
-                )
-              ):(
+              {proses!=="POTONG"&&(
                 <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);}}
                   style={{padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
                   Pilih Operator ({group.rows.length} komponen)
@@ -2549,7 +2564,7 @@ function OperatorView({user,viewMode}:any){
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {workers.length===0&&(
                         <div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",padding:"6px 0"}}>
-                          {proses==="POTONG"?'Belum dimulai - klik "▶ Mulai" di atas.':'Belum ada operator - klik "Pilih Operator" di atas.'}
+                          {proses==="POTONG"?'Belum dimulai - klik "▶ Mulai Semua" di atas.':'Belum ada operator - klik "Pilih Operator" di atas.'}
                         </div>
                       )}
                       {workers.length>0&&(()=>{
@@ -2595,12 +2610,14 @@ function OperatorView({user,viewMode}:any){
                           </div>
                         );
                       })()}
-                      <button disabled={r.pct===0} onClick={()=>lockSingleKomponen(r.panelId,r.kode,proses)}
-                        style={{fontSize:11,fontWeight:700,border:"none",borderRadius:10,padding:"7px 10px",
-                          cursor:r.pct===0?"not-allowed":"pointer",
-                          background:"#eff6ff",color:"#1d4ed8"}}>
-                        💾 Simpan Progress
-                      </button>
+                      {proses!=="POTONG"&&(
+                        <button disabled={r.pct===0} onClick={()=>lockSingleKomponen(r.panelId,r.kode,proses)}
+                          style={{fontSize:11,fontWeight:700,border:"none",borderRadius:10,padding:"7px 10px",
+                            cursor:r.pct===0?"not-allowed":"pointer",
+                            background:"#eff6ff",color:"#1d4ed8"}}>
+                          💾 Simpan Progress
+                        </button>
+                      )}
                     </div>
 
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
@@ -2685,7 +2702,7 @@ function OperatorView({user,viewMode}:any){
           )}
         </div>
       );
-    });
+    })];
   })()}
 </div>
             ):(
