@@ -2483,11 +2483,16 @@ function OperatorView({user,viewMode}:any){
         </div>
       );
     }
+    const adaTimerJalanPotong=proses==="POTONG"&&visibleRows.some((r:any)=>{
+      const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
+      return idsKomp.some((pid:number)=>!!timerAktif[`${r.panelId}_${r.kode}_${proses}_${pid}`]);
+    });
     const bulkToolbarPotong=proses==="POTONG"?(
       <div key="bulk-toolbar-potong" style={{display:"flex",gap:8}}>
-        <button onClick={()=>startUntukUserSendiri(proses,visibleRows)}
-          style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-          ▶ Mulai Semua ({visibleRows.length} komponen)
+        <button onClick={()=>adaTimerJalanPotong?bulkStopDesktop(proses,visibleRows):startUntukUserSendiri(proses,visibleRows)}
+          style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",
+            background:adaTimerJalanPotong?"#dc2626":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+          {adaTimerJalanPotong?`⏹ Selesai Semua (${visibleRows.length} komponen)`:`▶ Mulai Semua (${visibleRows.length} komponen)`}
         </button>
         <button onClick={()=>lockBulkKomponen(proses,visibleRows)}
           style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
@@ -2588,7 +2593,7 @@ function OperatorView({user,viewMode}:any){
                         }
                         return(
                           <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                            <div style={{display:"flex",flexWrap:"wrap",gap:6}}>
+                            <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
                               {workers.map((w:any)=>(
                                 <span key={w.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,
                                   color:DIVISI_CONFIG[w.divisi]?.color||"#64748b",background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
@@ -2597,21 +2602,23 @@ function OperatorView({user,viewMode}:any){
                                 </span>
                               ))}
                             </div>
-                            <button disabled={anyLoading}
-                              onClick={()=>{
-                                if(anyTimerRunning){
-                                  workers.forEach((w:any)=>{
-                                    const k=`${r.panelId}_${r.kode}_${proses}_${w.id}`;
-                                    if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,proses);
-                                  });
-                                } else {
-                                  workers.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,proses,viewDate));
-                                }
-                              }}
-                              style={{fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,cursor:anyLoading?"not-allowed":"pointer",
-                                background:anyTimerRunning?"#fef2f2":"#f0fdf4",color:anyTimerRunning?"#dc2626":"#16a34a"}}>
-                              {anyLoading?"...":anyTimerRunning?`⏹ Selesai ${durasiLabel}`:"▶ Mulai"}
-                            </button>
+                            {proses!=="POTONG"&&(
+                              <button disabled={anyLoading}
+                                onClick={()=>{
+                                  if(anyTimerRunning){
+                                    workers.forEach((w:any)=>{
+                                      const k=`${r.panelId}_${r.kode}_${proses}_${w.id}`;
+                                      if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,proses);
+                                    });
+                                  } else {
+                                    workers.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,proses,viewDate));
+                                  }
+                                }}
+                                style={{fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,cursor:anyLoading?"not-allowed":"pointer",
+                                  background:anyTimerRunning?"#fef2f2":"#f0fdf4",color:anyTimerRunning?"#dc2626":"#16a34a"}}>
+                                {anyLoading?"...":anyTimerRunning?`⏹ Selesai ${durasiLabel}`:"▶ Mulai"}
+                              </button>
+                            )}
                           </div>
                         );
                       })()}
