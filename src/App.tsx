@@ -2602,23 +2602,21 @@ function OperatorView({user,viewMode}:any){
                                 </span>
                               ))}
                             </div>
-                            {proses!=="POTONG"&&(
-                              <button disabled={anyLoading}
-                                onClick={()=>{
-                                  if(anyTimerRunning){
-                                    workers.forEach((w:any)=>{
-                                      const k=`${r.panelId}_${r.kode}_${proses}_${w.id}`;
-                                      if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,proses);
-                                    });
-                                  } else {
-                                    workers.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,proses,viewDate));
-                                  }
-                                }}
-                                style={{fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,cursor:anyLoading?"not-allowed":"pointer",
-                                  background:anyTimerRunning?"#fef2f2":"#f0fdf4",color:anyTimerRunning?"#dc2626":"#16a34a"}}>
-                                {anyLoading?"...":anyTimerRunning?`⏹ Selesai ${durasiLabel}`:"▶ Mulai"}
-                              </button>
-                            )}
+                            <button disabled={anyLoading}
+                              onClick={()=>{
+                                if(anyTimerRunning){
+                                  workers.forEach((w:any)=>{
+                                    const k=`${r.panelId}_${r.kode}_${proses}_${w.id}`;
+                                    if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,proses);
+                                  });
+                                } else {
+                                  workers.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,proses,viewDate));
+                                }
+                              }}
+                              style={{fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,cursor:anyLoading?"not-allowed":"pointer",
+                                background:anyTimerRunning?"#fef2f2":"#f0fdf4",color:anyTimerRunning?"#dc2626":"#16a34a"}}>
+                              {anyLoading?"...":anyTimerRunning?`⏹ Selesai ${durasiLabel}`:"▶ Mulai"}
+                            </button>
                           </div>
                         );
                       })()}
