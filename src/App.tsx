@@ -144,7 +144,7 @@ function fmtShort(s:string){ return new Date(s).toLocaleDateString("id-ID",{day:
 // ─────────────────────────────────────────────────────────────────────────────
 const GCss=`
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
-*{box-sizing:border-box;margin:0;padding:0}html,body,#root{width:100%;height:100%;overflow-x:hidden}html,body,#root{width:100%;height:100%;overflow-x:hidden}
+*{box-sizing:border-box;margin:0;padding:0}html,body,#root{width:100%;height:100%;overflow-x:hidden;overflow-y:auto}
 body{background:#f1f5f9;color:#1e293b;font-family:'Plus Jakarta Sans',sans-serif}
 ::-webkit-scrollbar{width:5px;height:5px}
 ::-webkit-scrollbar-track{background:#f1f5f9}
@@ -300,10 +300,10 @@ function Login({onLogin}:any){
     @keyframes lgFadeIn{from{opacity:0;transform:translateY(16px)}to{opacity:1;transform:translateY(0)}}
     @keyframes lgSpin{to{transform:rotate(360deg)}}
     .lg-card{animation:lgFadeIn .5s cubic-bezier(.22,1,.36,1) forwards}
-    .lg-inp{width:100%;height:48px;padding:0 16px 0 46px;border-radius:10px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#0f172a;font-size:14px;font-family:inherit;outline:none;transition:border .2s,box-shadow .2s}
+    .lg-inp{width:100%;height:48px;padding:0 16px 0 46px;border-radius:10px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#0f172a;font-size:16px;font-family:inherit;outline:none;transition:border .2s,box-shadow .2s}
     .lg-inp:focus{border-color:#2563eb;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
     .lg-inp.err{border-color:#f87171}
-    .lg-sel{width:100%;height:48px;padding:0 16px 0 46px;border-radius:10px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#0f172a;font-size:14px;font-family:inherit;outline:none;cursor:pointer;appearance:none}
+    .lg-sel{width:100%;height:48px;padding:0 16px 0 46px;border-radius:10px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#0f172a;font-size:16px;font-family:inherit;outline:none;cursor:pointer;appearance:none}
     .lg-sel:focus{border-color:#2563eb;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
     .lg-btn{width:100%;height:50px;border-radius:10px;border:none;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(37,99,235,.3)}
     .lg-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 24px rgba(37,99,235,.4)}
@@ -315,13 +315,19 @@ function Login({onLogin}:any){
     .lg-eye{position:absolute;right:12px;top:50%;transform:translateY(-50%);background:none;border:none;cursor:pointer;color:#94a3b8;font-size:14px;padding:4px}
     .lg-err{background:#fef2f2;border:1px solid #fecaca;color:#dc2626;border-radius:10px;padding:11px 14px;font-size:13px;display:flex;align-items:center;gap:8px;margin-top:12px}
     .lg-success-overlay{position:fixed;inset:0;background:rgba(255,255,255,.92);display:flex;align-items:center;justify-content:center;z-index:9999}
-    .div-tab{flex:1;padding:10px 8px;border:none;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit;transition:all .15s;border-radius:8px;display:flex;flex-direction:column;align-items:center;gap:3px}
-    @media(max-width:700px){.lg-left{display:none!important}.lg-right{width:100%!important;padding:20px!important}}
+    .div-tab{flex:1;padding:10px 8px;min-height:48px;border:none;cursor:pointer;font-size:11px;font-weight:700;font-family:inherit;transition:all .15s;border-radius:8px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px}
+    .subbagian-btn{flex:1;min-width:90px;min-height:44px;padding:10px 8px;border-radius:8px;cursor:pointer;font-weight:700;font-size:12px;font-family:inherit}
+    .lg-outer{min-height:100vh;min-height:100dvh;}
+    @media(max-width:700px){
+      .lg-left{display:none!important}
+      .lg-right{width:100%!important;align-items:flex-start!important;overflow-y:auto!important;
+        padding:max(24px,calc(env(safe-area-inset-top) + 12px)) 20px max(24px,calc(env(safe-area-inset-bottom) + 12px)) 20px!important;}
+    }
   `;
 
 
   return(
-    <div style={{minHeight:"100vh",width:"100%",display:"flex",background:"#f1f5f9"}}>
+    <div className="lg-outer" style={{width:"100%",display:"flex",background:"#f1f5f9"}}>
       <style>{GCss}</style>
       <style>{css}</style>
       {success&&(
@@ -394,12 +400,11 @@ function Login({onLogin}:any){
               <div className="lg-label">Sub-bagian</div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
                 {Object.keys(subBagianOptions).map((sb:string)=>(
-                  <button key={sb} type="button" onClick={()=>{setSubBagianTerpilih(sb);setErr("");}}
-                    style={{flex:1,minWidth:90,padding:"9px 8px",borderRadius:8,
+                  <button key={sb} type="button" className="subbagian-btn" onClick={()=>{setSubBagianTerpilih(sb);setErr("");}}
+                    style={{
                       border:`1.5px solid ${subBagianTerpilih===sb?"#0d9488":"#e2e8f0"}`,
                       background:subBagianTerpilih===sb?"#0d948818":"#f8fafc",
-                      color:subBagianTerpilih===sb?"#0d9488":"#64748b",
-                      cursor:"pointer",fontWeight:700,fontSize:12}}>
+                      color:subBagianTerpilih===sb?"#0d9488":"#64748b"}}>
                     {sb}
                   </button>
                 ))}
@@ -2481,11 +2486,11 @@ function OperatorView({user,viewMode}:any){
     const bulkToolbarPotong=proses==="POTONG"?(
       <div key="bulk-toolbar-potong" style={{display:"flex",gap:8}}>
         <button onClick={()=>startUntukUserSendiri(proses,visibleRows)}
-          style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"#16a34a",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+          style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
           ▶ Mulai Semua ({visibleRows.length} komponen)
         </button>
         <button onClick={()=>lockBulkKomponen(proses,visibleRows)}
-          style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+          style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
           💾 Simpan Semua Progress
         </button>
       </div>
@@ -2509,7 +2514,7 @@ function OperatorView({user,viewMode}:any){
             <div style={{padding:"0 14px 14px 14px",display:"flex",flexDirection:"column",gap:10}}>
               {proses!=="POTONG"&&(
                 <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);}}
-                  style={{padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                  style={{padding:"10px",minHeight:44,borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                   Pilih Operator ({group.rows.length} komponen)
                 </button>
               )}
@@ -2534,14 +2539,14 @@ function OperatorView({user,viewMode}:any){
                     </div>
                     <div style={{display:"flex",gap:8}}>
                       <button onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);}}
-                        style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
+                        style={{flex:1,minHeight:44,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
                       <button disabled={tempBulkPekerjaIds.length===0}
                         onClick={async()=>{
                           await bulkAssignAndStart(proses,group.rows,tempBulkPekerjaIds);
                           setBulkAssignProses(null);
                           setBulkAssignGroupKey(null);
                         }}
-                        style={{flex:1,padding:"10px",borderRadius:10,border:"none",
+                        style={{flex:1,minHeight:44,padding:"10px",borderRadius:10,border:"none",
                           background:tempBulkPekerjaIds.length===0?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
                           cursor:tempBulkPekerjaIds.length===0?"not-allowed":"pointer"}}>
                         Simpan ({tempBulkPekerjaIds.length})
@@ -2603,7 +2608,7 @@ function OperatorView({user,viewMode}:any){
                                   workers.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,proses,viewDate));
                                 }
                               }}
-                              style={{fontSize:12,fontWeight:700,border:"none",borderRadius:10,padding:"8px 10px",cursor:anyLoading?"not-allowed":"pointer",
+                              style={{fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,cursor:anyLoading?"not-allowed":"pointer",
                                 background:anyTimerRunning?"#fef2f2":"#f0fdf4",color:anyTimerRunning?"#dc2626":"#16a34a"}}>
                               {anyLoading?"...":anyTimerRunning?`⏹ Selesai ${durasiLabel}`:"▶ Mulai"}
                             </button>
@@ -2612,7 +2617,7 @@ function OperatorView({user,viewMode}:any){
                       })()}
                       {proses!=="POTONG"&&(
                         <button disabled={r.pct===0} onClick={()=>lockSingleKomponen(r.panelId,r.kode,proses)}
-                          style={{fontSize:11,fontWeight:700,border:"none",borderRadius:10,padding:"7px 10px",
+                          style={{fontSize:12,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,
                             cursor:r.pct===0?"not-allowed":"pointer",
                             background:"#eff6ff",color:"#1d4ed8"}}>
                           💾 Simpan Progress
@@ -2663,10 +2668,10 @@ function OperatorView({user,viewMode}:any){
                             <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
                               onChange={(e:any)=>updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value))}
                               disabled={r.qtyKomp===0}
-                              style={{width:70,padding:"8px",borderRadius:8,
+                              style={{width:78,minHeight:44,padding:"8px",borderRadius:8,
                                 border:`1.5px solid ${r.qtyKomp===0?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
                                 background:r.qtyKomp===0?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
-                                fontSize:14,textAlign:"center",fontWeight:700,fontFamily:"'DM Mono',monospace",
+                                fontSize:16,textAlign:"center",fontWeight:700,fontFamily:"'DM Mono',monospace",
                                 color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
                           )}
                           <div style={{flex:1,background:"#e2e8f0",borderRadius:99,height:8,overflow:"hidden"}}>
@@ -3086,7 +3091,7 @@ export default function App(){
       <style>{GCss}</style>
       <div style={{display:"flex",flexDirection:"column",minHeight:"100vh"}}>
         <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",padding:"0 16px",
-          height:52,display:"flex",alignItems:"center",justifyContent:"space-between",
+          minHeight:52,paddingTop:"max(0px, env(safe-area-inset-top))",display:"flex",alignItems:"center",justifyContent:"space-between",
           position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 4px #00000008"}}>
           <div style={{display:"flex",alignItems:"center",gap:8}}>
             <span style={{fontSize:18}}>⚡</span>
@@ -3097,28 +3102,28 @@ export default function App(){
               borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</span>
             {isOperatorDivisi&&(
               <button onClick={toggleViewMode} title={viewMode==="desktop"?"Ganti ke tampilan Mobile":"Ganti ke tampilan Desktop"}
-                style={{width:26,height:26,border:"1px solid #e2e8f0",borderRadius:8,
+                style={{width:40,height:40,border:"1px solid #e2e8f0",borderRadius:8,
                   background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",
-                  cursor:"pointer",fontSize:13,color:"#64748b"}}>
+                  cursor:"pointer",fontSize:15,color:"#64748b"}}>
                 {viewMode==="desktop"?"📱":"🖥️"}
               </button>
             )}
             <button onClick={()=>window.location.reload()} title="Refresh"
-              style={{width:26,height:26,border:"1px solid #e2e8f0",borderRadius:8,
+              style={{width:40,height:40,border:"1px solid #e2e8f0",borderRadius:8,
                 background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",
-                cursor:"pointer",fontSize:13,color:"#64748b"}}>
+                cursor:"pointer",fontSize:15,color:"#64748b"}}>
               🔄
             </button>
             <button onClick={()=>{setUser(null);try{localStorage.removeItem("vista_pekerja_session");}catch{}setPage("landing");}}
               style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#64748b",
-                borderRadius:8,padding:"4px 10px",cursor:"pointer",fontSize:11,fontWeight:600}}>Keluar</button>
+                borderRadius:8,padding:"10px 14px",minHeight:40,cursor:"pointer",fontSize:12,fontWeight:600}}>Keluar</button>
           </div>
         </div>
         <div style={{flex:1,overflowY:"auto"}}>
           {user.divisi==="nameplate"?<NameplateView user={user}/>:user.divisi==="qc"?<QCChecklistTab user={user}/>:user.divisi==="komponen"?<TrackingKomponenView user={user}/>:<OperatorView user={user} viewMode={viewMode}/>}
         </div>
         <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",
-          display:"flex",height:52,zIndex:100,boxShadow:"0 -2px 10px #00000010"}}>
+          display:"flex",minHeight:52,paddingBottom:"env(safe-area-inset-bottom)",zIndex:100,boxShadow:"0 -2px 10px #00000010"}}>
           <button style={{flex:1,border:"none",background:"none",cursor:"pointer",
             display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
             gap:2,color:cfg?.color}}>
