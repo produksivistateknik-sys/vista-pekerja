@@ -229,6 +229,8 @@ function Login({onLogin}:any){
   const [div,setDiv]=useState("mekanik");
   const [username,setUsername]=useState("");
   const [userList,setUserList]=useState<any[]>([]);
+  const [pekerjaOptions,setPekerjaOptions]=useState<any[]>([]);
+  const [pekerjaTerpilihId,setPekerjaTerpilihId]=useState("");
   const [pwd,setPwd]=useState("");
   const [err,setErr]=useState("");
   const [show,setShow]=useState(false);
@@ -243,6 +245,8 @@ function Login({onLogin}:any){
     if(div){
       supabase.from("operator_users").select("id,nama,username").eq("divisi",div).eq("is_active",true)
         .then(({data})=>{setUserList(data??[]);setUsername("");});
+      supabase.from("pekerja").select("id,nama,divisi").eq("divisi",div)
+        .then(({data})=>{setPekerjaOptions(data??[]);setPekerjaTerpilihId("");});
       setSubBagianTerpilih(null);
     }
   },[div]);
@@ -254,25 +258,29 @@ function Login({onLogin}:any){
   const go=async()=>{
     if(isManualName&&subBagianOptions){
       if(!subBagianTerpilih){setErr("Pilih sub-bagian dulu!");return;}
-      if(!username.trim()){setErr("Tulis nama kamu!");return;}
+      if(!pekerjaTerpilihId){setErr("Pilih nama kamu!");return;}
       if(!pwd){setErr("Masukkan password!");return;}
       setLoading(true);
       const{data:pwRow,error:pwErr}=await supabase.from("fcs_sub_bagian_password").select("password").eq("sub_bagian",subBagianTerpilih).single();
       const expectedPwd=pwErr?subBagianOptions[subBagianTerpilih]:pwRow?.password;
       if(pwd!==expectedPwd){setErr("Password salah!");setLoading(false);return;}
+      const pekerjaTerpilih=pekerjaOptions.find((p:any)=>String(p.id)===pekerjaTerpilihId);
+      if(!pekerjaTerpilih){setErr("Data pekerja gak valid, coba pilih ulang.");setLoading(false);return;}
       setSuccess(true);
-      setTimeout(()=>onLogin({id:0,nama:username.trim(),name:username.trim(),divisi:div,sub_bagian:subBagianTerpilih}),800);
+      setTimeout(()=>onLogin({id:pekerjaTerpilih.id,nama:pekerjaTerpilih.nama,name:pekerjaTerpilih.nama,divisi:div,sub_bagian:subBagianTerpilih}),800);
       setLoading(false);
       return;
     }
     if(isManualName){
-      if(!username.trim()){setErr("Tulis nama kamu!");return;}
+      if(!pekerjaTerpilihId){setErr("Pilih nama kamu!");return;}
       if(!pwd){setErr("Masukkan password!");return;}
       setLoading(true);
       const expectedPwd=(DIVISI_CONFIG as any)[div]?.password;
       if(pwd!==expectedPwd){setErr("Password salah!");setLoading(false);return;}
+      const pekerjaTerpilih=pekerjaOptions.find((p:any)=>String(p.id)===pekerjaTerpilihId);
+      if(!pekerjaTerpilih){setErr("Data pekerja gak valid, coba pilih ulang.");setLoading(false);return;}
       setSuccess(true);
-      setTimeout(()=>onLogin({id:0,nama:username.trim(),name:username.trim(),divisi:div}),800);
+      setTimeout(()=>onLogin({id:pekerjaTerpilih.id,nama:pekerjaTerpilih.nama,name:pekerjaTerpilih.nama,divisi:div}),800);
       setLoading(false);
       return;
     }
@@ -404,8 +412,13 @@ function Login({onLogin}:any){
             <div style={{position:"relative"}}>
               <span className="lg-icon">👤</span>
               {isManualName?(
-                <input className="lg-sel" value={username} onChange={(e:any)=>{setUsername(e.target.value);setErr("");}}
-                  placeholder="Tulis nama kamu..."/>
+                <>
+                  <select className="lg-sel" value={pekerjaTerpilihId} onChange={(e:any)=>{setPekerjaTerpilihId(e.target.value);setErr("");}}>
+                    <option value="">-- Pilih Nama --</option>
+                    {pekerjaOptions.map((p:any)=><option key={p.id} value={p.id}>{p.nama}</option>)}
+                  </select>
+                  <span style={{position:"absolute",right:14,top:"50%",transform:"translateY(-50%)",fontSize:11,color:"#94a3b8",pointerEvents:"none"}}>▼</span>
+                </>
               ):(
                 <>
                   <select className="lg-sel" value={username} onChange={(e:any)=>{setUsername(e.target.value);setErr("");}}>
@@ -1786,6 +1799,16 @@ function OperatorView({user,viewMode}:any){
       }
     };
 
+    // Khusus POTONG: operator = pekerja yang lagi login (gak ada picker), assign + start timer sekaligus.
+    const startUntukUserSendiri=async(proses:string,rowsToAssign:any[])=>{
+      for(const r of rowsToAssign){
+        await updatePekerjaPerKomponen(r.task.id,r.kode,[user.id]);
+      }
+      for(const r of rowsToAssign){
+        await startTimer(user.id,r.panelId,r.kode,proses,viewDate);
+      }
+    };
+
   const updatePctManual=async(panelId:number,kode:string,proses:string,pct:number)=>{
     const panel=panelsMap[panelId];
     if(!panel)return;
@@ -2366,10 +2389,17 @@ function OperatorView({user,viewMode}:any){
             })()}
             {viewMode==='desktop'&&PROSES_KUMPUL_DULU_DESKTOP.includes(proses)&&visibleRows.length>0&&(
               <div style={{padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
-                <button onClick={()=>{setBulkAssignProses(proses);setTempBulkPekerjaIds([]);}}
-                  style={{padding:"8px 16px",borderRadius:8,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
-                  Pilih Operator & Mulai ({visibleRows.length} komponen)
-                </button>
+                {proses==="POTONG"?(
+                  <button onClick={()=>startUntukUserSendiri(proses,visibleRows)}
+                    style={{padding:"8px 16px",borderRadius:8,border:"none",background:"#16a34a",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                    ▶ Mulai ({visibleRows.length} komponen)
+                  </button>
+                ):(
+                  <button onClick={()=>{setBulkAssignProses(proses);setTempBulkPekerjaIds([]);}}
+                    style={{padding:"8px 16px",borderRadius:8,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                    Pilih Operator & Mulai ({visibleRows.length} komponen)
+                  </button>
+                )}
                 {(()=>{
                   const adaTimerJalan=visibleRows.some((r:any)=>{
                     const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
@@ -2383,7 +2413,7 @@ function OperatorView({user,viewMode}:any){
                     </button>
                   );
                 })()}
-                {bulkAssignProses===proses&&viewMode==='desktop'&&(
+                {proses!=="POTONG"&&bulkAssignProses===proses&&viewMode==='desktop'&&(
                   <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
                     onClick={()=>setBulkAssignProses(null)}>
                     <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
@@ -2455,11 +2485,20 @@ function OperatorView({user,viewMode}:any){
           </div>
           {isOpen&&(
             <div style={{padding:"0 14px 14px 14px",display:"flex",flexDirection:"column",gap:10}}>
-              <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);}}
-                style={{padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
-                Pilih Operator ({group.rows.length} komponen)
-              </button>
-              {bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
+              {proses==="POTONG"?(
+                belumAdaOperatorCount>0&&(
+                  <button onClick={()=>startUntukUserSendiri(proses,group.rows)}
+                    style={{padding:"10px",borderRadius:10,border:"none",background:"#16a34a",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                    ▶ Mulai ({group.rows.length} komponen)
+                  </button>
+                )
+              ):(
+                <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);}}
+                  style={{padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                  Pilih Operator ({group.rows.length} komponen)
+                </button>
+              )}
+              {proses!=="POTONG"&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
                   onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);}}>
                   <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
@@ -2509,7 +2548,9 @@ function OperatorView({user,viewMode}:any){
                     display:"flex",flexDirection:"column",gap:10}}>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {workers.length===0&&(
-                        <div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",padding:"6px 0"}}>Belum ada operator - klik "Pilih Operator" di atas.</div>
+                        <div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",padding:"6px 0"}}>
+                          {proses==="POTONG"?'Belum dimulai - klik "▶ Mulai" di atas.':'Belum ada operator - klik "Pilih Operator" di atas.'}
+                        </div>
                       )}
                       {workers.length>0&&(()=>{
                         const timerKeys=workers.map((w:any)=>`${r.panelId}_${r.kode}_${proses}_${w.id}`);
@@ -2861,10 +2902,12 @@ function OperatorView({user,viewMode}:any){
                                     </div>
                                   );
                                 })}
-                                <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
-                                  style={{fontSize:9,color:"#94a3b8",fontWeight:600,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"2px 6px",cursor:"pointer"}}>
-                                  {workers.length>0?"+ Edit":"+ Pilih Operator"}
-                                </button>
+                                {proses!=="POTONG"&&(
+                                  <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
+                                    style={{fontSize:9,color:"#94a3b8",fontWeight:600,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"2px 6px",cursor:"pointer"}}>
+                                    {workers.length>0?"+ Edit":"+ Pilih Operator"}
+                                  </button>
+                                )}
                               </div>
                             );
                           })()}
