@@ -1720,6 +1720,16 @@ function OperatorView({user,viewMode}:any){
   const startTimer=async(pekerjaId:number,panelId:number,kode:string,proses:string,tanggal:string)=>{
     const key=`${panelId}_${kode}_${proses}_${pekerjaId}`;
     setTimerLoading(key);
+    const{data:existing}=await supabase.from("fcs_timer_kerja")
+      .select("*").eq("pekerja_id",pekerjaId).eq("panel_id",panelId)
+      .eq("kode_komponen",kode).eq("proses",proses).is("selesai",null)
+      .order("mulai",{ascending:false}).limit(1).maybeSingle();
+    if(existing){
+      setTimerLoading(null);
+      setTimerAktif(prev=>({...prev,[key]:existing}));
+      setTimerPernahMulai(prev=>({...prev,[key]:true}));
+      return;
+    }
     const{data,error}=await supabase.from("fcs_timer_kerja").insert({
       pekerja_id:pekerjaId,panel_id:panelId,kode_komponen:kode,proses,tanggal,mulai:new Date().toISOString()
     }).select().single();
