@@ -2312,15 +2312,22 @@ function OperatorView({user,viewMode}:any){
                     const dikerjakanCount=dikerjakanRows.length;
                     const dikerjakanPcs=dikerjakanRows.reduce((s:number,r:any)=>s+(r.qtyProses||0),0);
                     const selesaiCount=selRows.filter((r:any)=>(r.pct||0)>=100).length;
+                    // Khusus POTONG/BENDING/STEL: panel di-disable kalau SEMUA komponen relevannya
+                    // (qtyKomp>0) di proses ini udah 100% DAN sudah disimpan - gak ada kerjaan tersisa.
+                    const panelAllRows=["POTONG","BENDING","STEL"].includes(proses)?rows.filter((r:any)=>r.panelId===pg.panelId&&r.qtyKomp>0):[];
+                    const panelSudahTuntas=panelAllRows.length>0&&panelAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
                     return(
-                      <button key={pg.panelId}
+                      <button key={pg.panelId} disabled={panelSudahTuntas}
                         onClick={()=>{setKomponenPopup({proses,panelId:pg.panelId});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
                         style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
-                          padding:"6px 12px",borderRadius:8,border:selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
-                          background:selCount>0?"#eef2ff":"#fff",cursor:"pointer",textAlign:"left"}}>
+                          padding:"6px 12px",borderRadius:8,border:panelSudahTuntas?"1px solid #e2e8f0":selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
+                          background:panelSudahTuntas?"#f8fafc":selCount>0?"#eef2ff":"#fff",
+                          cursor:panelSudahTuntas?"not-allowed":"pointer",textAlign:"left",opacity:panelSudahTuntas?0.5:1}}>
                         <span style={{fontSize:9,color:"#94a3b8"}}>{pg.proyek}</span>
                         <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{pg.panel.nama}</span>
-                        {selCount>0?(
+                        {panelSudahTuntas?(
+                          <span style={{fontSize:9,color:"#16a34a",fontWeight:600}}>✅ Selesai semua</span>
+                        ):selCount>0?(
                           <span style={{fontSize:9,color:"#4f46e5",fontWeight:600,display:"flex",gap:6,flexWrap:"wrap" as const}}>
                             {belumDikerjakanCount>0&&<span>{belumDikerjakanCount} belum</span>}
                             {dikerjakanCount>0&&<span>{dikerjakanCount} dikerjakan{dikerjakanPcs>0?` (${dikerjakanPcs}pcs)`:""}</span>}
