@@ -1576,8 +1576,11 @@ function OperatorView({user,viewMode}:any){
   };
 
   // ── Realtime listener untuk panels (qty update dari Vista Teknik) ──
+  // Depend ke renhar (bukan panelsMap!) - panelsMap berubah tiap qty diketik lokal,
+  // kalau jadi dependency effect ini bakal resubscribe terus-menerus dan bikin race
+  // condition antara update lokal vs echo dari server (progress bisa "balik" gak 100%).
   useEffect(()=>{
-    const panelIds=Object.keys(panelsMap).map(Number).filter(Boolean);
+    const panelIds=[...new Set(renhar.map((t:any)=>t.panel_id||t.panelId).filter(Boolean))];
     if(!panelIds.length) return;
 
     const channel=supabase.channel('realtime-panels-pekerja')
@@ -1610,7 +1613,7 @@ function OperatorView({user,viewMode}:any){
       )
       .subscribe();
     return()=>{supabase.removeChannel(channel);};
-  },[panelsMap]);
+  },[renhar]);
 
   const todayTasks=useMemo(()=>{
     const urutanLevel:Record<string,number>={telat:0,mendesak:1,perhatian:2,normal:3};
