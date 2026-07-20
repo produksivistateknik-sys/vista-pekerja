@@ -2681,7 +2681,12 @@ function OperatorView({user,viewMode}:any){
                             <span style={{padding:"7px 10px",borderRadius:8,border:"1.5px solid #16a34a",background:"#f0fdf4",fontSize:13,fontWeight:700,color:"#16a34a"}}>{r.qtyProses} 🔒</span>
                           ):(
                             <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
-                              onChange={(e:any)=>updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value))}
+                              onChange={(e:any)=>{
+                                if(["POTONG","BENDING","STEL"].includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
+                                  startUntukUserSendiri(proses,[r]);
+                                }
+                                updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value));
+                              }}
                               disabled={r.qtyKomp===0}
                               style={{width:78,minHeight:44,padding:"8px",borderRadius:8,
                                 border:`1.5px solid ${r.qtyKomp===0?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
@@ -2869,7 +2874,12 @@ function OperatorView({user,viewMode}:any){
                                       ):(
                                         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                                           <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
-                                            onChange={e=>updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value))}
+                                            onChange={e=>{
+                                              if(["POTONG","BENDING","STEL"].includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
+                                                startUntukUserSendiri(proses,[r]);
+                                              }
+                                              updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value));
+                                            }}
                                             disabled={r.qtyKomp===0}
                                             style={{width:60,padding:"4px 6px",borderRadius:7,
                                               border:`1.5px solid ${r.qtyKomp===0?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
