@@ -1383,7 +1383,7 @@ function OperatorView({user,viewMode}:any){
       });
   },[operatorModal]);
   const [timerAktif,setTimerAktif]=useState<Record<string,any>>({});
-  const [,setTimerPernahMulai]=useState<Record<string,boolean>>({});
+  const [timerPernahMulai,setTimerPernahMulai]=useState<Record<string,boolean>>({});
   const [timerSelesaiHariIni,setTimerSelesaiHariIni]=useState<Record<string,boolean>>({});
   const [timerDurasiSelesai,setTimerDurasiSelesai]=useState<Record<string,number>>({});
   const [timerLoading,setTimerLoading]=useState<string|null>(null);
@@ -2267,9 +2267,12 @@ function OperatorView({user,viewMode}:any){
             const wiringBadge=wInfoLookup&&wInfoLookup.bobot?wInfoLookup:null;
             // Sudah disimpan (klik "Simpan Progress") hari ini dengan pct 100 - bukan cuma qty kebetulan penuh.
             const sudahDisimpan100=(cl.history?.[proses]||[]).some((h:any)=>h.tanggal===viewDate&&h.pct===100);
+            // Timer pernah dimulai (walau udah di-stop lagi) - buat gating input qty di POTONG/BENDING/STEL/FINISHING.
+            const idsKompRow=(task.pekerja_per_komponen||{})[kode]||[];
+            const sudahPernahMulai=idsKompRow.some((pid:number)=>!!timerPernahMulai[`${panelId}_${kode}_${proses}_${pid}`]);
             rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
               isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp,
-              aktualSelesai:getFirstCompletionDate(cl,proses),wiringBadge,sudahDisimpan100});
+              aktualSelesai:getFirstCompletionDate(cl,proses),wiringBadge,sudahDisimpan100,sudahPernahMulai});
           });
         });
 
@@ -2696,24 +2699,29 @@ function OperatorView({user,viewMode}:any){
                     {cardMode==='qty'?(()=>{
                       const locked=isCellLocked(r.panelId,r.kode,proses);
                       const floor=getLockedFloor(r.panelId,r.kode,proses);
+                      const qtyLocked=["POTONG","BENDING","STEL","FINISHING"].includes(proses)&&!r.sudahPernahMulai;
                       return(
                         <div style={{display:"flex",alignItems:"center",gap:10}}>
                           {locked?(
                             <span style={{padding:"7px 10px",borderRadius:8,border:"1.5px solid #16a34a",background:"#f0fdf4",fontSize:13,fontWeight:700,color:"#16a34a"}}>{r.qtyProses} 🔒</span>
                           ):(
-                            <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
-                              onChange={(e:any)=>{
-                                if(["POTONG","BENDING","STEL"].includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
-                                  startUntukUserSendiri(proses,[r]);
-                                }
-                                updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value));
-                              }}
-                              disabled={r.qtyKomp===0}
-                              style={{width:78,minHeight:44,padding:"8px",borderRadius:8,
-                                border:`1.5px solid ${r.qtyKomp===0?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
-                                background:r.qtyKomp===0?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
-                                fontSize:16,textAlign:"center",fontWeight:700,fontFamily:"'DM Mono',monospace",
-                                color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
+                            <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
+                              <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
+                                onChange={(e:any)=>{
+                                  if(["POTONG","BENDING","STEL"].includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
+                                    startUntukUserSendiri(proses,[r]);
+                                  }
+                                  updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value));
+                                }}
+                                disabled={r.qtyKomp===0||qtyLocked}
+                                placeholder={qtyLocked?"–":undefined}
+                                style={{width:78,minHeight:44,padding:"8px",borderRadius:8,
+                                  border:`1.5px solid ${r.qtyKomp===0||qtyLocked?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
+                                  background:r.qtyKomp===0||qtyLocked?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
+                                  fontSize:16,textAlign:"center",fontWeight:700,fontFamily:"'DM Mono',monospace",
+                                  color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
+                              {qtyLocked&&<span style={{fontSize:9,color:"#94a3b8",fontWeight:600,whiteSpace:"nowrap"}}>Klik Mulai dulu</span>}
+                            </div>
                           )}
                           <div style={{flex:1,background:"#e2e8f0",borderRadius:99,height:8,overflow:"hidden"}}>
                             <div style={{width:`${r.pct}%`,height:"100%",background:pColor(r.pct),borderRadius:99}}/>
@@ -2882,6 +2890,7 @@ function OperatorView({user,viewMode}:any){
                               const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"–";
                               const locked=isCellLocked(r.panelId,r.kode,proses);
                               const floor=getLockedFloor(r.panelId,r.kode,proses);
+                              const qtyLocked=["POTONG","BENDING","STEL","FINISHING"].includes(proses)&&!r.sudahPernahMulai;
                               return(
                                 <>
                                   {isQtyBased&&(
@@ -2901,14 +2910,17 @@ function OperatorView({user,viewMode}:any){
                                               }
                                               updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value));
                                             }}
-                                            disabled={r.qtyKomp===0}
+                                            disabled={r.qtyKomp===0||qtyLocked}
+                                            placeholder={qtyLocked?"–":undefined}
                                             style={{width:60,padding:"4px 6px",borderRadius:7,
-                                              border:`1.5px solid ${r.qtyKomp===0?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
-                                              background:r.qtyKomp===0?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
+                                              border:`1.5px solid ${r.qtyKomp===0||qtyLocked?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,
+                                              background:r.qtyKomp===0||qtyLocked?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
                                               fontSize:12,textAlign:"center",fontWeight:700,
                                               fontFamily:"'DM Mono',monospace",
                                               color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
-                                          {floor>0&&<span style={{fontSize:9,color:"#f59e0b",fontWeight:700}}>min {floor} 🔒</span>}
+                                          {qtyLocked?(
+                                            <span style={{fontSize:9,color:"#94a3b8",fontWeight:600,whiteSpace:"nowrap"}}>Klik Mulai dulu</span>
+                                          ):floor>0&&<span style={{fontSize:9,color:"#f59e0b",fontWeight:700}}>min {floor} 🔒</span>}
                                         </div>
                                       )}
                                     </td>
