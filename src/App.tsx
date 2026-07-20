@@ -2469,17 +2469,24 @@ function OperatorView({user,viewMode}:any){
             {viewMode==='mobile'?(
               <div style={{display:"flex",flexDirection:"column",gap:10,padding:"4px 2px"}}>
   {(()=>{
+    // Khusus POTONG/BENDING/STEL: kartu detail komponen yang udah 100% disembunyikan dari
+    // daftar (biar operator fokus ke yang masih perlu dikerjakan). Cuma soal tampilan kartu -
+    // visibleRows (buat header counter) & rows (buat ringkasan chip panel) TIDAK ikut difilter.
+    const cardListRows=["POTONG","BENDING","STEL"].includes(proses)?visibleRows.filter((r:any)=>!isDone(r)):visibleRows;
     const komponenGroups:Record<string,{namaKomponen:string,rows:any[]}> = {};
-    visibleRows.forEach((r:any)=>{
+    cardListRows.forEach((r:any)=>{
       const key=r.item?.nama||r.kode;
       if(!komponenGroups[key])komponenGroups[key]={namaKomponen:r.item?.nama||r.kode,rows:[]};
       komponenGroups[key].rows.push(r);
     });
     const groups=Object.values(komponenGroups);
     if(groups.length===0){
+      const semuaSudahSelesai=visibleRows.length>0&&cardListRows.length===0;
       return(
-        <div style={{textAlign:"center",padding:"24px 10px",color:"#94a3b8",fontSize:12}}>
-          Belum ada komponen dikumpulkan.<br/>Tap panel di atas untuk pilih komponen.
+        <div style={{textAlign:"center",padding:"24px 10px",color:semuaSudahSelesai?"#16a34a":"#94a3b8",fontSize:12}}>
+          {semuaSudahSelesai?"✅ Semua komponen di proses ini sudah selesai.":(
+            <>Belum ada komponen dikumpulkan.<br/>Tap panel di atas untuk pilih komponen.</>
+          )}
         </div>
       );
     }
