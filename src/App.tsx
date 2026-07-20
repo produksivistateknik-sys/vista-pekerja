@@ -1796,19 +1796,35 @@ function OperatorView({user,viewMode}:any){
     }
   };
 
+    // Gabungin semua kode per taskId jadi SATU map sebelum ditulis, biar gak saling
+    // overwrite (renhar state di closure gak ke-refresh di tengah loop await berturut-turut).
+    const updatePekerjaPerKomponenBatch=async(rowsToAssign:any[],getPekerjaIds:(r:any)=>number[])=>{
+      const byTask=new Map<number,any[]>();
+      rowsToAssign.forEach(r=>{
+        if(!byTask.has(r.task.id))byTask.set(r.task.id,[]);
+        byTask.get(r.task.id)!.push(r);
+      });
+      for(const[taskId,rowsSatuTask] of byTask){
+        const task=renhar.find((t:any)=>t.id===taskId);
+        if(!task)continue;
+        const newMap={...(task.pekerja_per_komponen||{})};
+        rowsSatuTask.forEach(r=>{newMap[r.kode]=getPekerjaIds(r);});
+        const{error}=await supabase.from("renhar").update({pekerja_per_komponen:newMap}).eq("id",taskId);
+        if(!error){
+          setRenhar(prev=>prev.map((t:any)=>t.id===taskId?{...t,pekerja_per_komponen:newMap}:t));
+        }
+      }
+    };
+
     const bulkAssignAndStart=async(_proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
       // Cuma assign operator, TIDAK auto-start timer.
       // Operator klik tombol Mulai manual satu-satu per komponen.
-      for(const r of rowsToAssign){
-        await updatePekerjaPerKomponen(r.task.id,r.kode,pekerjaIds);
-      }
+      await updatePekerjaPerKomponenBatch(rowsToAssign,()=>pekerjaIds);
     };
 
     const bulkAssignAndStartDesktop=async(proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
       // Khusus desktop: assign operator SEKALIGUS start timer buat semua baris terkumpul.
-      for(const r of rowsToAssign){
-        await updatePekerjaPerKomponen(r.task.id,r.kode,pekerjaIds);
-      }
+      await updatePekerjaPerKomponenBatch(rowsToAssign,()=>pekerjaIds);
       for(const r of rowsToAssign){
         for(const pid of pekerjaIds){
           await startTimer(pid,r.panelId,r.kode,proses,viewDate);
@@ -1830,9 +1846,7 @@ function OperatorView({user,viewMode}:any){
 
     // Khusus POTONG: operator = pekerja yang lagi login (gak ada picker), assign + start timer sekaligus.
     const startUntukUserSendiri=async(proses:string,rowsToAssign:any[])=>{
-      for(const r of rowsToAssign){
-        await updatePekerjaPerKomponen(r.task.id,r.kode,[user.id]);
-      }
+      await updatePekerjaPerKomponenBatch(rowsToAssign,()=>[user.id]);
       for(const r of rowsToAssign){
         await startTimer(user.id,r.panelId,r.kode,proses,viewDate);
       }
