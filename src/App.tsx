@@ -1358,6 +1358,10 @@ function OperatorView({user,viewMode}:any){
   },[selectedKomponen,wsKey]);
   const [komponenPopup,setKomponenPopup]=useState<{proses:string,panelId:number}|null>(null);
   const [tempSelectedKomponen,setTempSelectedKomponen]=useState<string[]>([]);
+  // Khusus BENDING/STEL mobile: titik awal pilih komponen dibalik jadi Jenis Komponen -> Panel
+  // (bukan Panel -> Komponen). Sumber datanya tetap selectedKomponen yang sama persis.
+  const [komponenPopupJenis,setKomponenPopupJenis]=useState<{proses:string,namaKomponen:string}|null>(null);
+  const [tempSelectedPanelJenis,setTempSelectedPanelJenis]=useState<number[]>([]);
 
   const getUrgensi=(woId:number)=>{
     const target=woTargetMap[woId];
@@ -2330,6 +2334,57 @@ function OperatorView({user,viewMode}:any){
               </div>
             </div>
             {(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))&&(
+              viewMode==='mobile'&&["BENDING","STEL"].includes(proses)?(
+              <div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+                {(()=>{
+                  const seenNama=new Set();
+                  const jenisList:any[]=[];
+                  rows.forEach((r:any)=>{
+                    const nama=r.item?.nama||r.kode;
+                    if(!seenNama.has(nama)){
+                      seenNama.add(nama);
+                      jenisList.push({namaKomponen:nama});
+                    }
+                  });
+                  return jenisList.map((jg:any)=>{
+                    const groupRows=rows.filter((r:any)=>(r.item?.nama||r.kode)===jg.namaKomponen);
+                    const panelCount=new Set(groupRows.map((r:any)=>r.panelId)).size;
+                    const selRows=groupRows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode));
+                    const selCount=selRows.length;
+                    const belumDikerjakanCount=selRows.filter((r:any)=>(r.pct||0)===0).length;
+                    const dikerjakanRows=selRows.filter((r:any)=>(r.pct||0)>0&&(r.pct||0)<100);
+                    const dikerjakanCount=dikerjakanRows.length;
+                    const dikerjakanPcs=dikerjakanRows.reduce((s:number,r:any)=>s+(r.qtyProses||0),0);
+                    const selesaiCount=selRows.filter((r:any)=>(r.pct||0)>=100).length;
+                    // Sama kayak panelSudahTuntas versi lama, cuma sekarang di-agregat per jenis komponen.
+                    const groupAllRows=groupRows.filter((r:any)=>r.qtyKomp>0);
+                    const groupSudahTuntas=groupAllRows.length>0&&groupAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
+                    return(
+                      <button key={jg.namaKomponen} disabled={groupSudahTuntas}
+                        onClick={()=>{setKomponenPopupJenis({proses,namaKomponen:jg.namaKomponen});setTempSelectedPanelJenis(selRows.map((r:any)=>r.panelId));}}
+                        style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
+                          padding:"6px 12px",borderRadius:8,border:groupSudahTuntas?"1px solid #e2e8f0":selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
+                          background:groupSudahTuntas?"#f8fafc":selCount>0?"#eef2ff":"#fff",
+                          cursor:groupSudahTuntas?"not-allowed":"pointer",textAlign:"left",opacity:groupSudahTuntas?0.5:1}}>
+                        <span style={{fontSize:9,color:"#94a3b8"}}>{panelCount} panel</span>
+                        <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{jg.namaKomponen}</span>
+                        {groupSudahTuntas?(
+                          <span style={{fontSize:9,color:"#16a34a",fontWeight:600}}>✅ Selesai semua</span>
+                        ):selCount>0?(
+                          <span style={{fontSize:9,color:"#4f46e5",fontWeight:600,display:"flex",gap:6,flexWrap:"wrap" as const}}>
+                            {belumDikerjakanCount>0&&<span>{belumDikerjakanCount} belum</span>}
+                            {dikerjakanCount>0&&<span>{dikerjakanCount} dikerjakan{dikerjakanPcs>0?` (${dikerjakanPcs}pcs)`:""}</span>}
+                            {selesaiCount>0&&<span style={{color:"#16a34a"}}>{selesaiCount} selesai</span>}
+                          </span>
+                        ):(
+                          <span style={{fontSize:9,color:"#94a3b8",fontWeight:600}}>+ Pilih Panel</span>
+                        )}
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+              ):(
               <div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
                 {(()=>{
                   const seenPanel=new Set();
@@ -2379,6 +2434,7 @@ function OperatorView({user,viewMode}:any){
                   });
                 })()}
               </div>
+              )
             )}
             {komponenPopup&&komponenPopup.proses===proses&&(()=>{
               const panelRows=rows.filter((r:any)=>r.panelId===komponenPopup.panelId);
@@ -2446,6 +2502,87 @@ function OperatorView({user,viewMode}:any){
                         }}
                         style={{padding:"8px 14px",borderRadius:8,border:"none",background:"#4f46e5",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
                         Konfirmasi ({tempSelectedKomponen.length})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            {komponenPopupJenis&&komponenPopupJenis.proses===proses&&(()=>{
+              const groupRows=rows.filter((r:any)=>(r.item?.nama||r.kode)===komponenPopupJenis.namaKomponen);
+              return(
+                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
+                  onClick={()=>setKomponenPopupJenis(null)}>
+                  <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                    <div style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
+                      <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{komponenPopupJenis.namaKomponen}</div>
+                      <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Pilih panel yang mau dikerjakan</div>
+                    </div>
+                    <div style={{overflowY:"auto",padding:"8px 16px",flex:1}}>
+                      {groupRows.map((r:any)=>{
+                        const checked=tempSelectedPanelJenis.includes(r.panelId);
+                        const panelKeyPopup=`${proses}_${r.panelId}`;
+                        const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
+                        return(
+                          <label key={r.panelId} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
+                            cursor:alreadyConfirmed?"not-allowed":"pointer",opacity:alreadyConfirmed?0.55:1}}>
+                            <input type="checkbox" checked={checked} disabled={alreadyConfirmed}
+                              onChange={()=>{
+                                if(alreadyConfirmed)return;
+                                setTempSelectedPanelJenis((prev:number[])=>checked?prev.filter(id=>id!==r.panelId):[...prev,r.panelId]);
+                              }}
+                              style={{width:16,height:16}}/>
+                            <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{r.panel.nama}</span>
+                                {r.wiringBadge&&(
+                                  <span style={{fontSize:9,fontWeight:700,background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px"}}>
+                                    ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
+                                  </span>
+                                )}
+                                {alreadyConfirmed&&(()=>{
+                                  const pct=r.pct||0;
+                                  const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
+                                  const statusBadgeColor=pct>=100?"#16a34a":pct>0?"#2563eb":"#94a3b8";
+                                  const statusBadgeBg=pct>=100?"#dcfce7":pct>0?"#dbeafe":"#f1f5f9";
+                                  return(
+                                    <span style={{fontSize:9,fontWeight:700,background:statusBadgeBg,color:statusBadgeColor,borderRadius:6,padding:"1px 6px"}}>
+                                      {statusBadgeLabel}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                              <span style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek}</span>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:"1px solid #f1f5f9"}}>
+                      <button onClick={()=>setTempSelectedPanelJenis(groupRows.map((r:any)=>r.panelId))}
+                        style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
+                      <button onClick={()=>setTempSelectedPanelJenis([])}
+                        style={{fontSize:11,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
+                      <div style={{flex:1}}/>
+                      <button onClick={()=>setKomponenPopupJenis(null)}
+                        style={{padding:"8px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",cursor:"pointer"}}>Batal</button>
+                      <button onClick={()=>{
+                          setSelectedKomponen((prev:any)=>{
+                            const next={...prev};
+                            groupRows.forEach((r:any)=>{
+                              const key=`${proses}_${r.panelId}`;
+                              const existing=next[key]||[];
+                              const isSel=tempSelectedPanelJenis.includes(r.panelId);
+                              const already=existing.includes(r.kode);
+                              if(isSel&&!already)next[key]=[...existing,r.kode];
+                              else if(!isSel&&already)next[key]=existing.filter((k:string)=>k!==r.kode);
+                            });
+                            return next;
+                          });
+                          setKomponenPopupJenis(null);
+                        }}
+                        style={{padding:"8px 14px",borderRadius:8,border:"none",background:"#4f46e5",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
+                        Konfirmasi ({tempSelectedPanelJenis.length})
                       </button>
                     </div>
                   </div>
