@@ -1423,7 +1423,7 @@ function OperatorView({user,viewMode}:any){
       const mapDurasiSelesai:Record<string,number>={};
       (data??[]).forEach((t:any)=>{
         const key=`${t.panel_id}_${t.kode_komponen}_${t.proses}_${t.pekerja_id}`;
-        if(!t.selesai)mapAktif[key]=t;
+        if(!t.selesai&&t.tanggal===viewDate)mapAktif[key]=t;
         mapPernahMulai[key]=true;
         if(t.tanggal===viewDate&&t.selesai){
           mapSelesaiHariIni[key]=true;
@@ -1456,7 +1456,7 @@ function OperatorView({user,viewMode}:any){
         const mapDurasiSelesai:Record<string,number>={};
         (data??[]).forEach((t:any)=>{
           const key=`${t.panel_id}_${t.kode_komponen}_${t.proses}_${t.pekerja_id}`;
-          if(!t.selesai)mapAktif[key]=t;
+          if(!t.selesai&&t.tanggal===viewDate)mapAktif[key]=t;
           mapPernahMulai[key]=true;
           if(t.tanggal===viewDate&&t.selesai){
             mapSelesaiHariIni[key]=true;
