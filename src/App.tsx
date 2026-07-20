@@ -1,4 +1,4 @@
-﻿import { useState, useMemo, useEffect } from "react";
+﻿import { useState, useMemo, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabase";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -1654,8 +1654,12 @@ function OperatorView({user,viewMode}:any){
     return Math.max(...pastDates.map((d:string)=>qtyByDate[d]||0));
   };
 
-  // Update qty proses ke local state + Supabase
-  const updateQtyProses=async(panelId:number,kode:string,proses:string,val:number)=>{
+  // Debounce penulisan qty ke Supabase per (panelId_kode_proses) - biar gak nembak 1 request
+  // per keystroke yang bisa race sama echo realtime dan bikin input kerasa "reset".
+  const qtyWriteTimers=useRef<Record<string,any>>({});
+
+  // Update qty proses ke local state (instan) + Supabase (di-debounce di background)
+  const updateQtyProses=(panelId:number,kode:string,proses:string,val:number)=>{
     if(isCellLocked(panelId,kode,proses))return;
     const floor=getLockedFloor(panelId,kode,proses);
     const panel=panelsMap[panelId];
@@ -1680,9 +1684,16 @@ function OperatorView({user,viewMode}:any){
         progress:{...(cl.progress||{}),[proses]:pct},
       }
     };
-    // update local + realtime ke Supabase
+    // update local instan - responsif tanpa jeda, gak nunggu network
     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
-    await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
+
+    // penulisan ke Supabase di-debounce - cuma 1 request yang akhirnya dikirim per jeda ngetik
+    const debounceKey=`${panelId}_${kode}_${proses}`;
+    if(qtyWriteTimers.current[debounceKey])clearTimeout(qtyWriteTimers.current[debounceKey]);
+    qtyWriteTimers.current[debounceKey]=setTimeout(()=>{
+      delete qtyWriteTimers.current[debounceKey];
+      supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
+    },600);
   };
 
   const isWiringProses=(pr:string)=>pr==="WIRING CONTROL"||pr==="WIRING POWER";
