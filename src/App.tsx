@@ -2265,9 +2265,11 @@ function OperatorView({user,viewMode}:any){
             const wpDef=isBusbarKomp?null:panelCfg.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
             const wInfoLookup=wiringInfoMap[`${panelId}_${proses}`];
             const wiringBadge=wInfoLookup&&wInfoLookup.bobot?wInfoLookup:null;
+            // Sudah disimpan (klik "Simpan Progress") hari ini dengan pct 100 - bukan cuma qty kebetulan penuh.
+            const sudahDisimpan100=(cl.history?.[proses]||[]).some((h:any)=>h.tanggal===viewDate&&h.pct===100);
             rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
               isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp,
-              aktualSelesai:getFirstCompletionDate(cl,proses),wiringBadge});
+              aktualSelesai:getFirstCompletionDate(cl,proses),wiringBadge,sudahDisimpan100});
           });
         });
 
@@ -2472,10 +2474,11 @@ function OperatorView({user,viewMode}:any){
             {viewMode==='mobile'?(
               <div style={{display:"flex",flexDirection:"column",gap:10,padding:"4px 2px"}}>
   {(()=>{
-    // Khusus POTONG/BENDING/STEL: kartu detail komponen yang udah 100% disembunyikan dari
-    // daftar (biar operator fokus ke yang masih perlu dikerjakan). Cuma soal tampilan kartu -
-    // visibleRows (buat header counter) & rows (buat ringkasan chip panel) TIDAK ikut difilter.
-    const cardListRows=["POTONG","BENDING","STEL"].includes(proses)?visibleRows.filter((r:any)=>!isDone(r)):visibleRows;
+    // Khusus POTONG/BENDING/STEL: kartu detail komponen disembunyikan dari daftar HANYA
+    // setelah qty 100% DAN "Simpan Progress" sudah diklik (sudahDisimpan100) - bukan cuma
+    // begitu qty kebetulan penuh. visibleRows (header counter) & rows (chip panel) tetap
+    // gak ikut difilter, cuma soal tampilan kartu detail ini aja.
+    const cardListRows=["POTONG","BENDING","STEL"].includes(proses)?visibleRows.filter((r:any)=>!(isDone(r)&&r.sudahDisimpan100)):visibleRows;
     const komponenGroups:Record<string,{namaKomponen:string,rows:any[]}> = {};
     cardListRows.forEach((r:any)=>{
       const key=r.item?.nama||r.kode;
@@ -2502,7 +2505,7 @@ function OperatorView({user,viewMode}:any){
         <button onClick={()=>adaTimerJalanPotong?bulkStopDesktop(proses,visibleRows):startUntukUserSendiri(proses,visibleRows)}
           style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",
             background:adaTimerJalanPotong?"#dc2626":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-          {adaTimerJalanPotong?`⏹ Selesai Semua (${visibleRows.length} komponen)`:`▶ Mulai Semua (${visibleRows.length} komponen)`}
+          {adaTimerJalanPotong?"⏹ Selesai":"▶ Mulai"}
         </button>
         <button onClick={()=>lockBulkKomponen(proses,visibleRows)}
           style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
