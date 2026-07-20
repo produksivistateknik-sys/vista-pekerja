@@ -2597,7 +2597,18 @@ function OperatorView({user,viewMode}:any){
                           {proses==="POTONG"?'Belum dimulai - klik "▶ Mulai Semua" di atas.':'Belum ada operator - klik "Pilih Operator" di atas.'}
                         </div>
                       )}
-                      {workers.length>0&&(()=>{
+                      {workers.length>0&&proses==="POTONG"&&(
+                        <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
+                          {workers.map((w:any)=>(
+                            <span key={w.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,
+                              color:DIVISI_CONFIG[w.divisi]?.color||"#64748b",background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
+                              borderRadius:20,padding:"4px 10px"}}>
+                              {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                      {workers.length>0&&proses!=="POTONG"&&(()=>{
                         const timerKeys=workers.map((w:any)=>`${r.panelId}_${r.kode}_${proses}_${w.id}`);
                         const anyTimerRunning=timerKeys.some((k:string)=>!!timerAktif[k]);
                         const anyLoading=timerKeys.some((k:string)=>timerLoading===k);
