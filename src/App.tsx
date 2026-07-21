@@ -1711,7 +1711,9 @@ function OperatorView({user,viewMode}:any){
     if(!isWiringProses(proses))return true;
     const ids=(task?.pekerja_per_komponen||{})[kode]||[];
     if(ids.length===0)return false;
-    return ids.some((pid:number)=>!!timerAktif[`${panelId}_${kode}_${proses}_${pid}`]);
+    // Boleh ubah persentase selama timer lagi aktif ATAU udah pernah di-Selesai-in hari ini -
+    // biar operator yang udah stop timer duluan tetap bisa catat progress, bukan cuma pas timer jalan.
+    return ids.some((pid:number)=>!!timerAktif[`${panelId}_${kode}_${proses}_${pid}`]||!!timerSelesaiHariIni[`${panelId}_${kode}_${proses}_${pid}`]);
   };
 
   const canLockKomponen=(task:any,kode:string,panelId:number,proses:string):boolean=>{
@@ -2658,11 +2660,11 @@ function OperatorView({user,viewMode}:any){
             {viewMode==='mobile'?(
               <div style={{display:"flex",flexDirection:"column",gap:10,padding:"4px 2px"}}>
   {(()=>{
-    // Khusus POTONG/BENDING/STEL: kartu detail komponen disembunyikan dari daftar HANYA
-    // setelah qty 100% DAN "Simpan Progress" sudah diklik (sudahDisimpan100) - bukan cuma
-    // begitu qty kebetulan penuh. visibleRows (header counter) & rows (chip panel) tetap
-    // gak ikut difilter, cuma soal tampilan kartu detail ini aja.
-    const cardListRows=["POTONG","BENDING","STEL"].includes(proses)?visibleRows.filter((r:any)=>!(isDone(r)&&r.sudahDisimpan100)):visibleRows;
+    // Khusus POTONG/BENDING/STEL/WIRING CONTROL/WIRING POWER: kartu detail komponen
+    // disembunyikan dari daftar HANYA setelah progress 100% DAN "Simpan Progress" sudah
+    // diklik (sudahDisimpan100) - bukan cuma begitu progress kebetulan penuh. visibleRows
+    // (header counter) & rows (chip panel) tetap gak ikut difilter, cuma tampilan kartu ini aja.
+    const cardListRows=["POTONG","BENDING","STEL","WIRING CONTROL","WIRING POWER"].includes(proses)?visibleRows.filter((r:any)=>!(isDone(r)&&r.sudahDisimpan100)):visibleRows;
     const komponenGroups:Record<string,{namaKomponen:string,rows:any[]}> = {};
     cardListRows.forEach((r:any)=>{
       const key=r.item?.nama||r.kode;
