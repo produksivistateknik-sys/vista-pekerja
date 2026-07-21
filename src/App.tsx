@@ -2318,6 +2318,8 @@ function OperatorView({user,viewMode}:any){
         const isDone=(r:any)=>r.pct===100;
         const isDrilldownProses=["WIRING CONTROL","WIRING POWER","BUSBAR"].includes(proses);
         const PROSES_KUMPUL_DULU_DESKTOP=["POTONG","RENDAM","PAINTING"];
+        // Mobile: titik awal pilih komponen dibalik jadi Jenis Komponen -> Panel buat proses ini.
+        const PROSES_PILIH_PER_KOMPONEN=["BENDING","STEL","FINISHING","RENDAM","PAINTING"];
         const visibleRows=(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
       const isWiringProses=["WIRING CONTROL","WIRING POWER"].includes(proses);
       const cardMode=PROSES_CARD_MODE[proses]||'qty';
@@ -2334,7 +2336,7 @@ function OperatorView({user,viewMode}:any){
               </div>
             </div>
             {(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))&&(
-              viewMode==='mobile'&&["BENDING","STEL"].includes(proses)?(
+              viewMode==='mobile'&&PROSES_PILIH_PER_KOMPONEN.includes(proses)?(
               <div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
                 {(()=>{
                   const seenNama=new Set();
