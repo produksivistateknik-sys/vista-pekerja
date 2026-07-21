@@ -2527,12 +2527,14 @@ function OperatorView({user,viewMode}:any){
                         const checked=tempSelectedPanelJenis.includes(r.panelId);
                         const panelKeyPopup=`${proses}_${r.panelId}`;
                         const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
+                        const sudahSelesai=r.qtyKomp>0&&r.pct===100&&r.sudahDisimpan100;
+                        const isDisabled=alreadyConfirmed||sudahSelesai;
                         return(
                           <label key={r.panelId} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
-                            cursor:alreadyConfirmed?"not-allowed":"pointer",opacity:alreadyConfirmed?0.55:1}}>
-                            <input type="checkbox" checked={checked} disabled={alreadyConfirmed}
+                            cursor:isDisabled?"not-allowed":"pointer",opacity:isDisabled?0.55:1}}>
+                            <input type="checkbox" checked={checked} disabled={isDisabled}
                               onChange={()=>{
-                                if(alreadyConfirmed)return;
+                                if(isDisabled)return;
                                 setTempSelectedPanelJenis((prev:number[])=>checked?prev.filter(id=>id!==r.panelId):[...prev,r.panelId]);
                               }}
                               style={{width:16,height:16}}/>
@@ -2544,7 +2546,7 @@ function OperatorView({user,viewMode}:any){
                                     ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
                                   </span>
                                 )}
-                                {alreadyConfirmed&&(()=>{
+                                {isDisabled&&(()=>{
                                   const pct=r.pct||0;
                                   const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
                                   const statusBadgeColor=pct>=100?"#16a34a":pct>0?"#2563eb":"#94a3b8";
@@ -2563,7 +2565,11 @@ function OperatorView({user,viewMode}:any){
                       })}
                     </div>
                     <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:"1px solid #f1f5f9"}}>
-                      <button onClick={()=>setTempSelectedPanelJenis(groupRows.map((r:any)=>r.panelId))}
+                      <button onClick={()=>setTempSelectedPanelJenis(groupRows.filter((r:any)=>{
+                          const alreadyConfirmed=(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode);
+                          const sudahSelesai=r.qtyKomp>0&&r.pct===100&&r.sudahDisimpan100;
+                          return !alreadyConfirmed&&!sudahSelesai;
+                        }).map((r:any)=>r.panelId))}
                         style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
                       <button onClick={()=>setTempSelectedPanelJenis([])}
                         style={{fontSize:11,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
