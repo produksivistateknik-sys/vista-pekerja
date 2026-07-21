@@ -1362,6 +1362,9 @@ function OperatorView({user,viewMode}:any){
   // (bukan Panel -> Komponen). Sumber datanya tetap selectedKomponen yang sama persis.
   const [komponenPopupJenis,setKomponenPopupJenis]=useState<{proses:string,namaKomponen:string}|null>(null);
   const [tempSelectedPanelJenis,setTempSelectedPanelJenis]=useState<number[]>([]);
+  // Flash "Tersimpan" sesaat di tombol Simpan Progress buat proses yg blm ada feedback visual saat disimpan <100%.
+  const [savedFlash,setSavedFlash]=useState<Record<string,boolean>>({});
+  const PROSES_FLASH_TERSIMPAN=["RENDAM","PAINTING","WIRING CONTROL","WIRING POWER","RAKIT","PASANG KOMPONEN","BUSBAR"];
 
   const getUrgensi=(woId:number)=>{
     const target=woTargetMap[woId];
@@ -1408,8 +1411,8 @@ function OperatorView({user,viewMode}:any){
   const isQtyBased=QTY_DIVISI.includes(user.divisi);
   const PROSES_CARD_MODE:Record<string,string>={
     POTONG:'qty',RENDAM:'qty',PAINTING:'qty',
-    BENDING:'qty',STEL:'qty',FINISHING:'qty',RAKIT:'qty',"PASANG KOMPONEN":'qty',BUSBAR:'qty',
-    "WIRING CONTROL":'timer',"WIRING POWER":'timer',
+    BENDING:'qty',STEL:'qty',FINISHING:'qty',RAKIT:'qty',"PASANG KOMPONEN":'qty',
+    "WIRING CONTROL":'timer',"WIRING POWER":'timer',BUSBAR:'timer',
   };
   const myProses:string[]=(user.sub_bagian&&cfg.subBagianProses?.[user.sub_bagian])||cfg.proses||[];
 
@@ -1879,16 +1882,16 @@ function OperatorView({user,viewMode}:any){
 
   // Kunci progress — simpan ke Supabase
   // Kunci progress SATU komponen aja (dipanggil dari tombol per kartu di mobile)
-  const lockSingleKomponen=async(panelId:number,kode:string,proses:string)=>{
+  const lockSingleKomponen=async(panelId:number,kode:string,proses:string):Promise<boolean>=>{
     const panel=panelsMap[panelId];
-    if(!panel)return;
+    if(!panel)return false;
     const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses===proses&&(t.komponen||[]).includes(kode));
-    if(!task)return;
-    if(!canLockKomponen(task,kode,panelId,proses)){alert('Belum bisa dikunci - pastikan timer sudah pernah dijalankan hari ini.');return;}
+    if(!task)return false;
+    if(!canLockKomponen(task,kode,panelId,proses)){alert('Belum bisa dikunci - pastikan timer sudah pernah dijalankan hari ini.');return false;}
     const cl=panel.checklist?.[kode];
-    if(!cl||cl.qty===0)return;
+    if(!cl||cl.qty===0)return false;
     const pct=getProgressOnDate(cl,proses,viewDate);
-    if(pct===0){alert('Progress masih 0%, belum ada yang bisa dikunci.');return;}
+    if(pct===0){alert('Progress masih 0%, belum ada yang bisa dikunci.');return false;}
     const newChecklist={...panel.checklist};
     const prevHist=cl.history?.[proses]||[];
     const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
@@ -1897,7 +1900,7 @@ function OperatorView({user,viewMode}:any){
     const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
     const checkpointEntry={panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate};
     if(existIdx>=0){
-      if(prevHist[existIdx].pct===pct)return;
+      if(prevHist[existIdx].pct===pct)return true;
       const updatedHist=[...prevHist];
       updatedHist[existIdx]={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
       newChecklist[kode]={...cl,history:{...(cl.history||{}),[proses]:updatedHist}};
@@ -1927,6 +1930,7 @@ function OperatorView({user,viewMode}:any){
         }
       }
     }
+    return true;
   };
 
   // Khusus POTONG: simpan checkpoint progress buat SEMUA komponen terkumpul sekaligus
@@ -2670,7 +2674,7 @@ function OperatorView({user,viewMode}:any){
     // disembunyikan dari daftar HANYA setelah progress 100% DAN "Simpan Progress" sudah
     // diklik (sudahDisimpan100) - bukan cuma begitu progress kebetulan penuh. visibleRows
     // (header counter) & rows (chip panel) tetap gak ikut difilter, cuma tampilan kartu ini aja.
-    const cardListRows=["POTONG","BENDING","STEL","WIRING CONTROL","WIRING POWER"].includes(proses)?visibleRows.filter((r:any)=>!(isDone(r)&&r.sudahDisimpan100)):visibleRows;
+    const cardListRows=["POTONG","BENDING","STEL","WIRING CONTROL","WIRING POWER","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR"].includes(proses)?visibleRows.filter((r:any)=>!(isDone(r)&&r.sudahDisimpan100)):visibleRows;
     const komponenGroups:Record<string,{namaKomponen:string,rows:any[]}> = {};
     cardListRows.forEach((r:any)=>{
       const key=r.item?.nama||r.kode;
@@ -2837,14 +2841,24 @@ function OperatorView({user,viewMode}:any){
                           </div>
                         );
                       })()}
-                      {proses!=="POTONG"&&(
-                        <button disabled={r.pct===0} onClick={()=>lockSingleKomponen(r.panelId,r.kode,proses)}
+                      {proses!=="POTONG"&&(()=>{
+                        const flashKey=`${r.panelId}_${r.kode}_${proses}`;
+                        const flashing=!!savedFlash[flashKey];
+                        return(
+                        <button disabled={r.pct===0} onClick={async()=>{
+                            const berhasil=await lockSingleKomponen(r.panelId,r.kode,proses);
+                            if(berhasil&&r.pct<100&&PROSES_FLASH_TERSIMPAN.includes(proses)){
+                              setSavedFlash(prev=>({...prev,[flashKey]:true}));
+                              setTimeout(()=>setSavedFlash(prev=>({...prev,[flashKey]:false})),1500);
+                            }
+                          }}
                           style={{fontSize:12,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,
                             cursor:r.pct===0?"not-allowed":"pointer",
-                            background:"#eff6ff",color:"#1d4ed8"}}>
-                          💾 Simpan Progress
+                            background:flashing?"#16a34a":"#eff6ff",color:flashing?"#fff":"#1d4ed8"}}>
+                          {flashing?"✅ Tersimpan":"💾 Simpan Progress"}
                         </button>
-                      )}
+                        );
+                      })()}
                     </div>
 
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
