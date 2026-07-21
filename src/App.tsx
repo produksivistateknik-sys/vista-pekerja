@@ -2805,7 +2805,8 @@ function OperatorView({user,viewMode}:any){
                           const totalMenit=(timerDurasiSelesai[runningKey]||0)+menitBerjalan;
                           const jam=Math.floor(totalMenit/60);
                           const menit=Math.round(totalMenit%60);
-                          durasiLabel=jam>0?`${jam}j ${menit}m`:`${menit}m`;
+                          const detik=Math.max(0,Math.round(totalMenit*60));
+                          durasiLabel=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
                         }
                         return(
                           <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -3147,7 +3148,8 @@ function OperatorView({user,viewMode}:any){
                                     const totalMenit=(timerDurasiSelesai[key]||0)+menitBerjalan;
                                     const jam=Math.floor(totalMenit/60);
                                     const menit=Math.round(totalMenit%60);
-                                    durasiLabel=jam>0?`${jam}j ${menit}m`:`${menit}m`;
+                                    const detik=Math.max(0,Math.round(totalMenit*60));
+                                    durasiLabel=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
                                   }
                                   return(
                                     <div key={w.id} style={{display:"flex",alignItems:"center",gap:5,
