@@ -106,6 +106,13 @@ const TODAY = getLocalDateStr();
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
 // ─────────────────────────────────────────────────────────────────────────────
+const TIMER_REQUEST_TIMEOUT_MS=15000;
+function withTimeout<T>(promise:PromiseLike<T>, ms:number):Promise<T>{
+  return Promise.race([
+    Promise.resolve(promise),
+    new Promise<T>((_,reject)=>setTimeout(()=>reject(new Error("Request timeout - koneksi lambat")),ms)),
+  ]);
+}
 function getProgressOnDate(cl:any, proses:string, date:string){
   const byDate=cl?.progressByDate?.[proses];
   if(byDate&&byDate[date]!==undefined) return byDate[date];
@@ -1733,23 +1740,31 @@ function OperatorView({user,viewMode}:any){
   const startTimer=async(pekerjaId:number,panelId:number,kode:string,proses:string,tanggal:string)=>{
     const key=`${panelId}_${kode}_${proses}_${pekerjaId}`;
     setTimerLoading(key);
-    const{data:existing}=await supabase.from("fcs_timer_kerja")
-      .select("*").eq("pekerja_id",pekerjaId).eq("panel_id",panelId)
-      .eq("kode_komponen",kode).eq("proses",proses).is("selesai",null)
-      .order("mulai",{ascending:false}).limit(1).maybeSingle();
-    if(existing){
+    try{
+      const{data:existing}=await withTimeout(supabase.from("fcs_timer_kerja")
+        .select("*").eq("pekerja_id",pekerjaId).eq("panel_id",panelId)
+        .eq("kode_komponen",kode).eq("proses",proses).is("selesai",null)
+        .order("mulai",{ascending:false}).limit(1).maybeSingle(),TIMER_REQUEST_TIMEOUT_MS);
+      if(existing){
+        setTimerAktif(prev=>({...prev,[key]:existing}));
+        setTimerPernahMulai(prev=>({...prev,[key]:true}));
+        return;
+      }
+      const{data,error}=await withTimeout(supabase.from("fcs_timer_kerja").insert({
+        pekerja_id:pekerjaId,panel_id:panelId,kode_komponen:kode,proses,tanggal,mulai:new Date().toISOString()
+      }).select().single(),TIMER_REQUEST_TIMEOUT_MS);
+      if(error){
+        alert("Gagal mulai timer: "+error.message);
+        return;
+      }
+      if(data){
+        setTimerAktif(prev=>({...prev,[key]:data}));
+        setTimerPernahMulai(prev=>({...prev,[key]:true}));
+      }
+    }catch(err:any){
+      alert("Gagal mulai timer - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+    }finally{
       setTimerLoading(null);
-      setTimerAktif(prev=>({...prev,[key]:existing}));
-      setTimerPernahMulai(prev=>({...prev,[key]:true}));
-      return;
-    }
-    const{data,error}=await supabase.from("fcs_timer_kerja").insert({
-      pekerja_id:pekerjaId,panel_id:panelId,kode_komponen:kode,proses,tanggal,mulai:new Date().toISOString()
-    }).select().single();
-    setTimerLoading(null);
-    if(!error&&data){
-      setTimerAktif(prev=>({...prev,[key]:data}));
-      setTimerPernahMulai(prev=>({...prev,[key]:true}));
     }
   };
 
@@ -1758,13 +1773,20 @@ function OperatorView({user,viewMode}:any){
     const timer=timerAktif[key];
     if(!timer)return;
     setTimerLoading(key);
-    const{error}=await supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id);
-    setTimerLoading(null);
-    if(!error){
+    try{
+      const{error}=await withTimeout(supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id),TIMER_REQUEST_TIMEOUT_MS);
+      if(error){
+        alert("Gagal selesai-in timer: "+error.message);
+        return;
+      }
       setTimerAktif(prev=>{const n={...prev};delete n[key];return n;});
       setTimerSelesaiHariIni(prev=>({...prev,[key]:true}));
       // Cek apakah progress sudah 100% dan lebih cepat dari rencana - kirim notifikasi
       await cekDanKirimNotifikasiAvailable(pekerjaId,panelId,kode,proses);
+    }catch(err:any){
+      alert("Gagal selesai-in timer - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+    }finally{
+      setTimerLoading(null);
     }
   };
 
