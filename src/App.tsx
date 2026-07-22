@@ -1371,7 +1371,7 @@ function OperatorView({user,viewMode}:any){
   const [tempSelectedPanelJenis,setTempSelectedPanelJenis]=useState<number[]>([]);
   // Flash "Tersimpan" sesaat di tombol Simpan Progress buat proses yg blm ada feedback visual saat disimpan <100%.
   const [savedFlash,setSavedFlash]=useState<Record<string,boolean>>({});
-  const PROSES_FLASH_TERSIMPAN=["RENDAM","PAINTING","WIRING CONTROL","WIRING POWER","RAKIT","PASANG KOMPONEN","BUSBAR"];
+  const PROSES_FLASH_TERSIMPAN=["FINISHING","RENDAM","PAINTING","WIRING CONTROL","WIRING POWER","RAKIT","PASANG KOMPONEN","BUSBAR"];
 
   const getUrgensi=(woId:number)=>{
     const target=woTargetMap[woId];
@@ -1421,6 +1421,13 @@ function OperatorView({user,viewMode}:any){
     BENDING:'qty',STEL:'qty',FINISHING:'qty',RAKIT:'qty',"PASANG KOMPONEN":'qty',
     "WIRING CONTROL":'timer',"WIRING POWER":'timer',BUSBAR:'timer',
   };
+  // Proses qty-mode yang qty-nya dikunci sampai operator klik Mulai (biar gak bisa keisi
+  // tanpa operator ter-assign). RENDAM/PAINTING/RAKIT/PASANG KOMPONEN dulu gak ada di sini -
+  // itu lubang yang sama persis kayak bug "operator kosong padahal 100%" yang udah diperbaiki
+  // buat POTONG/BENDING/STEL. FINISHING sengaja gak dikasih auto-assign (harus eksplisit Pilih
+  // Operator dulu baru bisa Mulai, baru qty kebuka) - itu udah aman by design.
+  const PROSES_QTY_LOCK_SEBELUM_MULAI=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN"];
+  const PROSES_AUTO_ASSIGN_SAAT_QTY=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN"];
   const myProses:string[]=(user.sub_bagian&&cfg.subBagianProses?.[user.sub_bagian])||cfg.proses||[];
 
   // Load data dari Supabase
@@ -1722,6 +1729,12 @@ function OperatorView({user,viewMode}:any){
       const cl=panel?.qc_checklist||{};
       return QC_ITEMS.every(item=>cl[item.key]?.status==="lolos");
     }
+    // BUSBAR pakai PCT_STEPS (cardMode 'timer') tapi bukan proses wiring - tetap butuh operator
+    // ter-assign dulu, biar gak bisa diubah tanpa siapapun ter-assign ke komponen itu.
+    if(proses==="BUSBAR"){
+      const ids=(task?.pekerja_per_komponen||{})[kode]||[];
+      return ids.length>0;
+    }
     if(!isWiringProses(proses))return true;
     const ids=(task?.pekerja_per_komponen||{})[kode]||[];
     if(ids.length===0)return false;
@@ -1731,6 +1744,10 @@ function OperatorView({user,viewMode}:any){
   };
 
   const canLockKomponen=(task:any,kode:string,panelId:number,proses:string):boolean=>{
+    if(proses==="BUSBAR"){
+      const ids=(task?.pekerja_per_komponen||{})[kode]||[];
+      return ids.length>0;
+    }
     if(!isWiringProses(proses))return true;
     const ids=(task?.pekerja_per_komponen||{})[kode]||[];
     if(ids.length===0)return false;
@@ -2448,9 +2465,12 @@ function OperatorView({user,viewMode}:any){
                     const dikerjakanCount=dikerjakanRows.length;
                     const dikerjakanPcs=dikerjakanRows.reduce((s:number,r:any)=>s+(r.qtyProses||0),0);
                     const selesaiCount=selRows.filter((r:any)=>(r.pct||0)>=100).length;
-                    // Khusus POTONG/BENDING/STEL: panel di-disable kalau SEMUA komponen relevannya
-                    // (qtyKomp>0) di proses ini udah 100% DAN sudah disimpan - gak ada kerjaan tersisa.
-                    const panelAllRows=["POTONG","BENDING","STEL"].includes(proses)?rows.filter((r:any)=>r.panelId===pg.panelId&&r.qtyKomp>0):[];
+                    // Panel di-disable kalau SEMUA komponen relevannya (qtyKomp>0) di proses ini
+                    // udah 100% DAN sudah disimpan - gak ada kerjaan tersisa. Berlaku semua
+                    // proses yang make popup ini (dulu cuma POTONG/BENDING/STEL, proses lain
+                    // yang lewat sini - RAKIT/PASANG KOMPONEN/WIRING CONTROL/WIRING POWER/BUSBAR -
+                    // gak pernah dapet efek ini).
+                    const panelAllRows=rows.filter((r:any)=>r.panelId===pg.panelId&&r.qtyKomp>0);
                     const panelSudahTuntas=panelAllRows.length>0&&panelAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
                     return(
                       <button key={pg.panelId} disabled={panelSudahTuntas}
@@ -2496,12 +2516,14 @@ function OperatorView({user,viewMode}:any){
                         const checked=tempSelectedKomponen.includes(r.kode);
                         const panelKeyPopup=`${proses}_${komponenPopup.panelId}`;
                         const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
+                        const sudahSelesai=r.qtyKomp>0&&r.pct===100&&r.sudahDisimpan100;
+                        const isDisabled=alreadyConfirmed||sudahSelesai;
                         return(
                           <label key={r.kode} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
-                            cursor:alreadyConfirmed?"not-allowed":"pointer",opacity:alreadyConfirmed?0.55:1}}>
-                            <input type="checkbox" checked={checked} disabled={alreadyConfirmed}
+                            cursor:isDisabled?"not-allowed":"pointer",opacity:isDisabled?0.55:1}}>
+                            <input type="checkbox" checked={checked} disabled={isDisabled}
                               onChange={()=>{
-                                if(alreadyConfirmed)return;
+                                if(isDisabled)return;
                                 setTempSelectedKomponen((prev:string[])=>checked?prev.filter(k=>k!==r.kode):[...prev,r.kode]);
                               }}
                               style={{width:16,height:16}}/>
@@ -2513,7 +2535,7 @@ function OperatorView({user,viewMode}:any){
                                     ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
                                   </span>
                                 )}
-                                {alreadyConfirmed&&(()=>{
+                                {isDisabled&&(()=>{
                                   const pct=r.pct||0;
                                   const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
                                   const statusBadgeColor=pct>=100?"#16a34a":pct>0?"#2563eb":"#94a3b8";
@@ -2532,7 +2554,11 @@ function OperatorView({user,viewMode}:any){
                       })}
                     </div>
                     <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:"1px solid #f1f5f9"}}>
-                      <button onClick={()=>setTempSelectedKomponen(panelRows.map((r:any)=>r.kode))}
+                      <button onClick={()=>setTempSelectedKomponen(panelRows.filter((r:any)=>{
+                          const alreadyConfirmed=(selectedKomponen[`${proses}_${komponenPopup.panelId}`]||[]).includes(r.kode);
+                          const sudahSelesai=r.qtyKomp>0&&r.pct===100&&r.sudahDisimpan100;
+                          return !alreadyConfirmed&&!sudahSelesai;
+                        }).map((r:any)=>r.kode))}
                         style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
                       <button onClick={()=>setTempSelectedKomponen([])}
                         style={{fontSize:11,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
@@ -2709,7 +2735,7 @@ function OperatorView({user,viewMode}:any){
     // disembunyikan dari daftar HANYA setelah progress 100% DAN "Simpan Progress" sudah
     // diklik (sudahDisimpan100) - bukan cuma begitu progress kebetulan penuh. visibleRows
     // (header counter) & rows (chip panel) tetap gak ikut difilter, cuma tampilan kartu ini aja.
-    const cardListRows=["POTONG","BENDING","STEL","WIRING CONTROL","WIRING POWER","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR"].includes(proses)?visibleRows.filter((r:any)=>!(isDone(r)&&r.sudahDisimpan100)):visibleRows;
+    const cardListRows=["POTONG","BENDING","STEL","FINISHING","WIRING CONTROL","WIRING POWER","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR"].includes(proses)?visibleRows.filter((r:any)=>!(isDone(r)&&r.sudahDisimpan100)):visibleRows;
     const komponenGroups:Record<string,{namaKomponen:string,rows:any[]}> = {};
     cardListRows.forEach((r:any)=>{
       const key=r.item?.nama||r.kode;
@@ -2947,7 +2973,7 @@ function OperatorView({user,viewMode}:any){
                     {cardMode==='qty'?(()=>{
                       const locked=isCellLocked(r.panelId,r.kode,proses);
                       const floor=getLockedFloor(r.panelId,r.kode,proses);
-                      const qtyLocked=["POTONG","BENDING","STEL","FINISHING"].includes(proses)&&!r.sudahPernahMulai;
+                      const qtyLocked=PROSES_QTY_LOCK_SEBELUM_MULAI.includes(proses)&&!r.sudahPernahMulai;
                       return(
                         <div style={{display:"flex",alignItems:"center",gap:10}}>
                           {locked?(
@@ -2956,7 +2982,7 @@ function OperatorView({user,viewMode}:any){
                             <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
                               <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
                                 onChange={(e:any)=>{
-                                  if(["POTONG","BENDING","STEL"].includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
+                                  if(PROSES_AUTO_ASSIGN_SAAT_QTY.includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
                                     startUntukUserSendiri(proses,[r]);
                                   }
                                   updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value));
@@ -3138,7 +3164,7 @@ function OperatorView({user,viewMode}:any){
                               const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"–";
                               const locked=isCellLocked(r.panelId,r.kode,proses);
                               const floor=getLockedFloor(r.panelId,r.kode,proses);
-                              const qtyLocked=["POTONG","BENDING","STEL","FINISHING"].includes(proses)&&!r.sudahPernahMulai;
+                              const qtyLocked=PROSES_QTY_LOCK_SEBELUM_MULAI.includes(proses)&&!r.sudahPernahMulai;
                               return(
                                 <>
                                   {isQtyBased&&(
@@ -3153,7 +3179,7 @@ function OperatorView({user,viewMode}:any){
                                         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
                                           <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
                                             onChange={e=>{
-                                              if(["POTONG","BENDING","STEL"].includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
+                                              if(PROSES_AUTO_ASSIGN_SAAT_QTY.includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
                                                 startUntukUserSendiri(proses,[r]);
                                               }
                                               updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value));
