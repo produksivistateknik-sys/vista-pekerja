@@ -1664,6 +1664,10 @@ function OperatorView({user,viewMode}:any){
   // Debounce penulisan qty ke Supabase per (panelId_kode_proses) - biar gak nembak 1 request
   // per keystroke yang bisa race sama echo realtime dan bikin input kerasa "reset".
   const qtyWriteTimers=useRef<Record<string,any>>({});
+  // Antrian promise per taskId - biar panggilan updatePekerjaPerKomponenBatch yang nembak
+  // nyaris bersamaan (misal ngetik qty komponen A lalu buru-buru ke komponen B sebelum React
+  // sempat re-render) gak jalan interleaved dan saling timpa, tapi antre satu-satu.
+  const pekerjaPerKomponenQueue=useRef<Record<number,Promise<any>>>({});
 
   // Update qty proses ke local state (instan) + Supabase (di-debounce di background)
   const updateQtyProses=(panelId:number,kode:string,proses:string,val:number)=>{
@@ -1805,8 +1809,12 @@ function OperatorView({user,viewMode}:any){
     }
   };
 
-    // Gabungin semua kode per taskId jadi SATU map sebelum ditulis, biar gak saling
-    // overwrite (renhar state di closure gak ke-refresh di tengah loop await berturut-turut).
+    // Gabungin semua kode per taskId jadi SATU map sebelum ditulis, biar gak saling overwrite.
+    // Dua lapis proteksi race:
+    // 1. Serialisasi per taskId lewat pekerjaPerKomponenQueue - panggilan yang nembak nyaris
+    //    bersamaan (bulk ATAU satu-satu dari qty onChange) diantre, gak jalan interleaved.
+    // 2. Base map buat merge diambil FRESH dari DB (bukan renhar di state lokal yang bisa
+    //    lag dari render), biar gak ketinggalan tulisan dari panggilan lain yang barusan lewat.
     const updatePekerjaPerKomponenBatch=async(rowsToAssign:any[],getPekerjaIds:(r:any)=>number[])=>{
       const byTask=new Map<number,any[]>();
       rowsToAssign.forEach(r=>{
@@ -1814,14 +1822,19 @@ function OperatorView({user,viewMode}:any){
         byTask.get(r.task.id)!.push(r);
       });
       for(const[taskId,rowsSatuTask] of byTask){
-        const task=renhar.find((t:any)=>t.id===taskId);
-        if(!task)continue;
-        const newMap={...(task.pekerja_per_komponen||{})};
-        rowsSatuTask.forEach(r=>{newMap[r.kode]=getPekerjaIds(r);});
-        const{error}=await supabase.from("renhar").update({pekerja_per_komponen:newMap}).eq("id",taskId);
-        if(!error){
-          setRenhar(prev=>prev.map((t:any)=>t.id===taskId?{...t,pekerja_per_komponen:newMap}:t));
-        }
+        const prevInQueue=pekerjaPerKomponenQueue.current[taskId]||Promise.resolve();
+        const thisWrite=prevInQueue.then(async()=>{
+          const{data:fresh}=await supabase.from("renhar").select("pekerja_per_komponen").eq("id",taskId).maybeSingle();
+          const baseMap=fresh?.pekerja_per_komponen||{};
+          const newMap={...baseMap};
+          rowsSatuTask.forEach(r=>{newMap[r.kode]=getPekerjaIds(r);});
+          const{error}=await supabase.from("renhar").update({pekerja_per_komponen:newMap}).eq("id",taskId);
+          if(!error){
+            setRenhar(prev=>prev.map((t:any)=>t.id===taskId?{...t,pekerja_per_komponen:newMap}:t));
+          }
+        });
+        pekerjaPerKomponenQueue.current[taskId]=thisWrite;
+        await thisWrite;
       }
     };
 
