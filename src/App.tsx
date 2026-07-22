@@ -1377,6 +1377,26 @@ function OperatorView({user,viewMode}:any){
   const [savedFlash,setSavedFlash]=useState<Record<string,boolean>>({});
   const PROSES_FLASH_TERSIMPAN=["FINISHING","RENDAM","PAINTING","WIRING CONTROL","WIRING POWER","RAKIT","PASANG KOMPONEN","BUSBAR"];
 
+  // Auto-scroll + highlight kartu accordion begitu popup Konfirmasi ditutup, biar operator
+  // langsung lihat hasil konfirmasinya tanpa perlu scroll manual cari sendiri.
+  const accordionRefs=useRef<Record<string,HTMLDivElement|null>>({});
+  const [highlightGroup,setHighlightGroup]=useState<string|null>(null);
+  const scrollDanHighlightGroup=(proses:string,groupKey:string)=>{
+    if(!groupKey)return;
+    const key=`${proses}_${groupKey}`;
+    // Double rAF - nunggu React selesai render & browser selesai paint dulu abis setSelectedKomponen,
+    // baru elemen kartunya PASTI ada di DOM sebelum di-scrollIntoView.
+    requestAnimationFrame(()=>{
+      requestAnimationFrame(()=>{
+        const el=accordionRefs.current[key];
+        if(!el)return;
+        el.scrollIntoView({behavior:"smooth",block:"center"});
+        setHighlightGroup(key);
+        setTimeout(()=>setHighlightGroup(prev=>prev===key?null:prev),2500);
+      });
+    });
+  };
+
   const getUrgensi=(woId:number)=>{
     const target=woTargetMap[woId];
     if(!target)return{level:"normal",label:"",hari:null};
@@ -2588,8 +2608,14 @@ function OperatorView({user,viewMode}:any){
                       <button onClick={()=>setKomponenPopup(null)}
                         style={{padding:"8px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",cursor:"pointer"}}>Batal</button>
                       <button onClick={()=>{
-                          setSelectedKomponen((prev:any)=>({...prev,[`${proses}_${komponenPopup.panelId}`]:tempSelectedKomponen}));
+                          const panelKeyKonfirmasi=`${proses}_${komponenPopup.panelId}`;
+                          const prevSelected=selectedKomponen[panelKeyKonfirmasi]||[];
+                          const newlyAdded=tempSelectedKomponen.filter(k=>!prevSelected.includes(k));
+                          const targetKode=newlyAdded[0]||tempSelectedKomponen[0];
+                          const targetRow=panelRows.find((r:any)=>r.kode===targetKode);
+                          setSelectedKomponen((prev:any)=>({...prev,[panelKeyKonfirmasi]:tempSelectedKomponen}));
                           setKomponenPopup(null);
+                          if(targetRow)scrollDanHighlightGroup(proses,targetRow.item?.nama||targetRow.kode);
                         }}
                         style={{padding:"8px 14px",borderRadius:8,border:"none",background:"#4f46e5",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
                         Konfirmasi ({tempSelectedKomponen.length})
@@ -2677,6 +2703,7 @@ function OperatorView({user,viewMode}:any){
                             return next;
                           });
                           setKomponenPopupJenis(null);
+                          scrollDanHighlightGroup(proses,komponenPopupJenis.namaKomponen);
                         }}
                         style={{padding:"8px 14px",borderRadius:8,border:"none",background:"#4f46e5",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
                         Konfirmasi ({tempSelectedPanelJenis.length})
@@ -2813,8 +2840,11 @@ function OperatorView({user,viewMode}:any){
       const isOpen=expandedPanel[proses]===groupKey;
       const panelCount=new Set(group.rows.map((r:any)=>r.panelId)).size;
       const belumAdaOperatorCount=group.rows.filter((r:any)=>!(((r.task.pekerja_per_komponen||{}))[r.kode]?.length>0)).length;
+      const isHighlighted=highlightGroup===`${proses}_${groupKey}`;
       return(
-        <div key={groupKey} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,overflow:"hidden"}}>
+        <div key={groupKey} ref={(el)=>{accordionRefs.current[`${proses}_${groupKey}`]=el;}}
+          style={{background:isHighlighted?"#fefce8":"#fff",border:isHighlighted?"1.5px solid #facc15":"1.5px solid #e2e8f0",
+            borderRadius:14,overflow:"hidden",transition:"background .6s ease, border-color .6s ease"}}>
           <div onClick={()=>setExpandedPanel(prev=>({...prev,[proses]:isOpen?null:groupKey}))}
             style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",cursor:"pointer",background:isOpen?"#eff6ff":"#fff"}}>
             <div style={{display:"flex",flexDirection:"column",gap:2}}>
