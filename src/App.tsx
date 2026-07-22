@@ -2727,16 +2727,32 @@ function OperatorView({user,viewMode}:any){
         </div>
       );
     }
-    const adaTimerJalanPotong=proses==="POTONG"&&visibleRows.some((r:any)=>{
-      const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
-      return idsKomp.some((pid:number)=>!!timerAktif[`${r.panelId}_${r.kode}_${proses}_${pid}`]);
-    });
+    const potongTimerInfo=(()=>{
+      if(proses!=="POTONG")return{ada:false,label:""};
+      for(const r of visibleRows){
+        const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
+        const runningPid=idsKomp.find((pid:number)=>!!timerAktif[`${r.panelId}_${r.kode}_${proses}_${pid}`]);
+        if(runningPid!==undefined){
+          const key=`${r.panelId}_${r.kode}_${proses}_${runningPid}`;
+          const timer=timerAktif[key];
+          const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
+          const totalMenit=(timerDurasiSelesai[key]||0)+menitBerjalan;
+          const jam=Math.floor(totalMenit/60);
+          const menit=Math.round(totalMenit%60);
+          const detik=Math.max(0,Math.round(totalMenit*60));
+          const label=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
+          return{ada:true,label};
+        }
+      }
+      return{ada:false,label:""};
+    })();
+    const adaTimerJalanPotong=potongTimerInfo.ada;
     const bulkToolbarPotong=proses==="POTONG"?(
       <div key="bulk-toolbar-potong" style={{display:"flex",gap:8}}>
         <button onClick={()=>adaTimerJalanPotong?bulkStopDesktop(proses,visibleRows):startUntukUserSendiri(proses,visibleRows)}
           style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",
             background:adaTimerJalanPotong?"#dc2626":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-          {adaTimerJalanPotong?"⏹ Selesai":"▶ Mulai"}
+          {adaTimerJalanPotong?`⏹ Selesai ${potongTimerInfo.label}`:"▶ Mulai"}
         </button>
         <button onClick={()=>lockBulkKomponen(proses,visibleRows)}
           style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
