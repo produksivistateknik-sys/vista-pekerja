@@ -1299,7 +1299,21 @@ function NameplateView({user}:any){
 
 function OperatorView({user,viewMode}:any){
   void viewMode; // dipake nanti buat render mobile vs desktop
-  const [viewDate,setViewDate]=useState(TODAY);
+  const wsKey=`vista_pekerja_ws_${user.divisi}_${user.sub_bagian||""}_${user.id||user.username||user.nama||""}`;
+  // Kalau app dibuka/reload jam 00:00-06:59 DAN sesi kerja sebelumnya (localStorage) tercatat
+  // shift 2 di tanggal KEMARIN (belum ganti hari), hari kerja-nya tetap dianggap kemarin -
+  // biar shift 2 yang kerja lewat tengah malam (HP di-lock/di-background OS lalu reload) gak
+  // ke-hitung sebagai hari baru di Rencana Harian.
+  const hariKerjaAwal=(()=>{
+    try{
+      const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
+      const jamSekarang=new Date().getHours();
+      const kemarin=addDays(TODAY,-1);
+      if(jamSekarang<7&&saved.shift==="2"&&saved.tanggal===kemarin)return kemarin;
+    }catch{}
+    return TODAY;
+  })();
+  const [viewDate,setViewDate]=useState(hariKerjaAwal);
   const [bomPanelTypes,setBomPanelTypes]=useState<any>({});
   useEffect(()=>{
     supabase.from("bom_master").select("*").then(({data}:any)=>{
@@ -1324,22 +1338,24 @@ function OperatorView({user,viewMode}:any){
     });
   },[]);
   const getEffCfg=(tipe:string)=>(bomPanelTypes?.[tipe]?.wps?.length>0)?bomPanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
-  const wsKey=`vista_pekerja_ws_${user.divisi}_${user.sub_bagian||""}_${user.id||user.username||user.nama||""}`;
   const [shift,setShift]=useState(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===TODAY&&saved.shift?saved.shift:"1";
+      return saved.tanggal===hariKerjaAwal&&saved.shift?saved.shift:"1";
     }catch{return "1";}
   });
   const [shiftSet,setShiftSet]=useState(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===TODAY?!!saved.shiftSet:false;
+      return saved.tanggal===hariKerjaAwal?!!saved.shiftSet:false;
     }catch{return false;}
   });
   useEffect(()=>{
-    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:TODAY,shift,shiftSet}));}catch{}
-  },[shift,shiftSet,wsKey]);
+    // Simpan hariKerjaAwal (tanggal sesi kerja sesungguhnya), BUKAN viewDate - viewDate bisa
+    // berubah bebas kalau operator navigasi lihat hari lain (tombol prev/next), dan itu gak
+    // boleh ikut nimpa/ngerusak status shift sesi kerja yang sebenarnya lagi berjalan.
+    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:hariKerjaAwal,shift,shiftSet}));}catch{}
+  },[shift,shiftSet,wsKey,hariKerjaAwal]);
   const [catatan,setCatatan]=useState<Record<string,string>>({});
   const [savedNote,setSavedNote]=useState<Record<string,boolean>>({});
   const [lockMsg,setLockMsg]=useState(false);
