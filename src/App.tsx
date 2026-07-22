@@ -1349,6 +1349,10 @@ function OperatorView({user,viewMode}:any){
   const [fPanel,setFPanel]=useState("ALL");
   const [renhar,setRenhar]=useState<any[]>([]);
   const [panelsMap,setPanelsMap]=useState<Record<number,any>>({});
+  // Sinkron manual (bukan lewat dependency effect) biar useEffect subscribe realtime renhar
+  // gak perlu depend ke panelsMap - kalau iya, channel-nya bakal resubscribe terus-menerus.
+  const panelsMapRef=useRef<Record<number,any>>({});
+  useEffect(()=>{panelsMapRef.current=panelsMap;},[panelsMap]);
   const [loadingData,setLoadingData]=useState(false);
   const [pekerjaList,setPekerjaList]=useState<any[]>([]);
   const [woTargetMap,setWoTargetMap]=useState<Record<number,string>>({});
@@ -1459,9 +1463,27 @@ function OperatorView({user,viewMode}:any){
 
     const renharChannel=supabase.channel("realtime-renhar-pekerja")
       .on("postgres_changes",{event:"*",schema:"public",table:"renhar"},(payload:any)=>{
-        const row=payload.new||payload.old;
-        if(row?.tanggal===viewDate&&row?.divisi===user.divisi){
-          loadData();
+        // Merge tertarget - JANGAN loadData() penuh di sini. loadData() bikin loadingData=true
+        // yang ganti SELURUH layar jadi spinner - dan karena tulisan operator sendiri (Mulai/
+        // Pilih Operator) ke tabel renhar ini JUGA nge-trigger event ini (echo ke diri sendiri),
+        // dulu tiap klik Mulai/Pilih Operator kerasa kayak "restart" penuh di HP operator.
+        if(payload.eventType==="DELETE"){
+          const oldRow=payload.old;
+          if(oldRow?.id)setRenhar(prev=>prev.filter((t:any)=>t.id!==oldRow.id));
+          return;
+        }
+        const row=payload.new;
+        if(!row||row.tanggal!==viewDate||row.divisi!==user.divisi)return;
+        setRenhar(prev=>{
+          const exists=prev.some((t:any)=>t.id===row.id);
+          return exists?prev.map((t:any)=>t.id===row.id?row:t):[...prev,row];
+        });
+        // Task baru bisa referensiin panel yang belum ke-load - fetch panel itu aja kalau perlu.
+        const panelId=row.panel_id||row.panelId;
+        if(panelId&&!panelsMapRef.current[panelId]){
+          supabase.from("panels").select("*").eq("id",panelId).maybeSingle().then(({data})=>{
+            if(data)setPanelsMap(prev=>prev[data.id]?prev:{...prev,[data.id]:data});
+          });
         }
       })
       .subscribe();
