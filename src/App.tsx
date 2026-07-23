@@ -1475,11 +1475,15 @@ function OperatorView({user,viewMode}:any){
   const [timerLoading,setTimerLoading]=useState<string|null>(null);
   const [, setTimerTick]=useState(0);
   useEffect(()=>{
-    // Maksa re-render tiap 30 detik biar durasi timer yang lagi berjalan ke-update
-    // otomatis di layar, gak nunggu refresh atau trigger render lain.
-    const iv=setInterval(()=>setTimerTick(t=>t+1),30000);
+    // Maksa re-render tiap detik SELAMA ada timer yang lagi jalan, biar durasi timer
+    // keliatan jalan live kayak stopwatch beneran (30 detik kayak sebelumnya kerasa
+    // beku/patah-patah, baru "loncat" pas render lain kepicu). Interval cuma nyala
+    // pas ada timer aktif - kalau gak ada, gak jalan sama sekali (hemat, gak nguras
+    // baterai/CPU pas nganggur).
+    if(Object.keys(timerAktif).length===0)return;
+    const iv=setInterval(()=>setTimerTick(t=>t+1),1000);
     return ()=>clearInterval(iv);
-  },[]);
+  },[timerAktif]);
   const [tempPekerjaIds,setTempPekerjaIds]=useState<number[]>([]);
   const [bulkAssignProses,setBulkAssignProses]=useState<string|null>(null);
   const [expandedPanel,setExpandedPanel]=useState<Record<string,string|null>>({});
