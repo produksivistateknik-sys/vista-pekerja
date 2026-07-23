@@ -160,6 +160,20 @@ function pBg(v:number){
   if(v>=50)return"#ffedd5";  if(v>=25)return"#fee2e2";
   if(v>0)return"#f3f0ff";    return"#f1f5f9";
 }
+// Beberapa komponen BOM punya pasangan nama mirip ("Tulangan X" vs "X" polos, misal
+// "Tulangan Groundplate" vs "Groundplate", "Tulangan Pintu Dalam" vs "Pintu Dalam") - dua
+// komponen BEDA yang sah, bukan duplikat, tapi gampang ke-skip mata di layar kecil karena
+// namanya mirip. Kasih badge kecil "TULANGAN" di depan biar langsung kebeda sekilas mata,
+// gak perlu baca teks penuh buat mastiin.
+function renderNamaKomponen(nama:string){
+  if(!nama?.startsWith("Tulangan "))return nama;
+  return(
+    <>
+      <span style={{fontSize:8,fontWeight:800,background:"#ede9fe",color:"#6d28d9",borderRadius:4,padding:"1px 5px",marginRight:4,letterSpacing:.3}}>TULANGAN</span>
+      {nama.slice(9)}
+    </>
+  );
+}
 function addDays(s:string,n:number){ const d=new Date(s); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
 function fmtDate(s:string){ return new Date(s).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short",year:"numeric"}); }
 function fmtShort(s:string){ return new Date(s).toLocaleDateString("id-ID",{day:"numeric",month:"short"}); }
@@ -2695,7 +2709,7 @@ function OperatorView({user,viewMode}:any){
                               style={{width:16,height:16}}/>
                             <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{r.item.nama}</span>
+                                <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{renderNamaKomponen(r.item.nama)}</span>
                                 {r.wiringBadge&&(
                                   <span style={{fontSize:9,fontWeight:700,background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px"}}>
                                     ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
@@ -3149,7 +3163,7 @@ function OperatorView({user,viewMode}:any){
                       <div style={{display:"flex",flexDirection:"column",gap:3}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
-                          <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{r.item.nama}</span>
+                          <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{renderNamaKomponen(r.item.nama)}</span>
                         </div>
                         <div style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek} · {r.panel.nama}</div>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
@@ -3364,7 +3378,7 @@ function OperatorView({user,viewMode}:any){
                               {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
                             </td>
                             <td style={{...td,fontWeight:600,color:"#374151",whiteSpace:"nowrap"}}>
-                              {r.item.nama}
+                              {renderNamaKomponen(r.item.nama)}
                               {r.wiringBadge&&(()=>{
                                 const BOBOT_COLOR:any={EASY:"#16a34a",MEDIUM:"#d97706",HARD:"#dc2626",VERY_HARD:"#7c3aed"};
                                 const bc=BOBOT_COLOR[r.wiringBadge.bobot]||"#6366f1";
