@@ -2583,6 +2583,11 @@ function OperatorView({user,viewMode}:any){
         const PROSES_PILIH_PER_KOMPONEN=["BENDING","STEL","FINISHING","RENDAM","PAINTING","BUSBAR","RAKIT","PASANG KOMPONEN"];
         const visibleRows=(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
       const isWiringProses=["WIRING CONTROL","WIRING POWER"].includes(proses);
+      // Proses yang operatornya dipilih per-kartu individual (bukan bulk satu grup sekaligus) -
+      // WIRING udah dari revisi sebelumnya, RAKIT/PASANG KOMPONEN nyusul sekarang. Dipisah dari
+      // isWiringProses karena itu masih dipakai buat hal lain yang genuinely wiring-only
+      // (badge bobot/jumlah orang, gating PCT_STEPS desktop) yang gak boleh ikut kena.
+      const operatorPerKartu=isWiringProses||proses==="RAKIT"||proses==="PASANG KOMPONEN";
       const cardMode=PROSES_CARD_MODE[proses]||'qty';
 
         return(
@@ -3022,13 +3027,13 @@ function OperatorView({user,viewMode}:any){
           </div>
           {isOpen&&(
             <div style={{padding:"0 14px 14px 14px",display:"flex",flexDirection:"column",gap:10}}>
-              {proses!=="POTONG"&&!isWiringProses&&proses!=="BUSBAR"&&(
+              {proses!=="POTONG"&&!operatorPerKartu&&proses!=="BUSBAR"&&(
                 <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);}}
                   style={{padding:"10px",minHeight:44,borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                   Pilih Operator ({group.rows.length} komponen)
                 </button>
               )}
-              {proses!=="POTONG"&&!isWiringProses&&proses!=="BUSBAR"&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
+              {proses!=="POTONG"&&!operatorPerKartu&&proses!=="BUSBAR"&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
                   onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);}}>
                   <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
@@ -3185,7 +3190,7 @@ function OperatorView({user,viewMode}:any){
                     ):(
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {workers.length===0&&(
-                        isWiringProses?(
+                        operatorPerKartu?(
                           <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
                             style={{fontSize:12,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center"}}>
                             + Pilih Operator
@@ -3232,7 +3237,7 @@ function OperatorView({user,viewMode}:any){
                                   {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
                                 </span>
                               ))}
-                              {isWiringProses&&(
+                              {operatorPerKartu&&(
                                 <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
                                   style={{fontSize:10,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"4px 8px",cursor:"pointer"}}>
                                   ✏️ Edit Operator
