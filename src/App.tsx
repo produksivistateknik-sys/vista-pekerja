@@ -2514,6 +2514,10 @@ function OperatorView({user,viewMode}:any){
         const pc=PROSES_COLOR[proses]||"#64748b";
 
         const rows:any[]=[];
+        // Safety-net: kalau ada 2 renhar row yang kebetulan sama-sama punya kode komponen yang
+        // sama buat panel+proses ini (mis. bug dobel-insert lama, atau data yang belum sempat
+        // dibersihin), jangan sampai nongol jadi 2 row/card - ambil yang pertama ketemu aja.
+        const seenRowKeys=new Set<string>();
         tasks.forEach((task:any)=>{
           const panelId=task.panel_id||task.panelId;
           const panel=panelsMap[panelId];
@@ -2530,6 +2534,9 @@ function OperatorView({user,viewMode}:any){
               // Gak bikin baris sendiri lagi - komponen real di bawah yang jadi baris (per-komponen tracking).
               return;
             }
+            const rowKey=`${panelId}_${kode}`;
+            if(seenRowKeys.has(rowKey))return;
+            seenRowKeys.add(rowKey);
             const isBusbarKomp=proses==="BUSBAR";
             const item=allItems.find((it:any)=>it.kode===kode);
             // Untuk BUSBAR, komponen adalah nama langsung (H-BUS, INCOMING, dll)
