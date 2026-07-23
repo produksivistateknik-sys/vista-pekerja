@@ -131,6 +131,15 @@ function hitungProgressBusbarGabungan(busbarTahap:any,urutan:string[]):number{
   const total=urutan.reduce((s,t)=>s+(busbarTahap[t]?.progress||0),0);
   return Math.round((total/urutan.length)*10)/10;
 }
+// pekerja_per_komponen[kode] BIASANYA array flat (id operator) - TAPI buat BUSBAR sekarang
+// berbentuk object per-tahap ({FABRIKASI:[id,...],PLATING:[id,...],...}) karena tiap tahap
+// butuh operator sendiri-sendiri yang bisa keisi BERSAMAAN (bukan gantian kayak field lain).
+// Helper ini aman dipanggil buat kode APAPUN - otomatis balik [] kalau bentuknya bukan array
+// (misal ke-panggil buat kode BUSBAR yang datanya object), biar gak ada .map()/.some() crash.
+function getFlatOperatorIds(task:any,kode:string):number[]{
+  const v=(task?.pekerja_per_komponen||{})[kode];
+  return Array.isArray(v)?v:[];
+}
 function getProgressOnDate(cl:any, proses:string, date:string){
   const byDate=cl?.progressByDate?.[proses];
   if(byDate&&byDate[date]!==undefined) return byDate[date];
@@ -1947,7 +1956,15 @@ function OperatorView({user,viewMode}:any){
           const{data:fresh}=await supabase.from("renhar").select("pekerja_per_komponen").eq("id",taskId).maybeSingle();
           const baseMap=fresh?.pekerja_per_komponen||{};
           const newMap={...baseMap};
-          rowsSatuTask.forEach(r=>{newMap[r.kode]=getPekerjaIds(r);});
+          rowsSatuTask.forEach(r=>{
+            if(r.tahap){
+              // BUSBAR per-tahap: merge ke object nested, JANGAN timpa tahap lain yang udah keisi.
+              const existingForKode=(baseMap[r.kode]&&typeof baseMap[r.kode]==="object"&&!Array.isArray(baseMap[r.kode]))?baseMap[r.kode]:{};
+              newMap[r.kode]={...existingForKode,[r.tahap]:getPekerjaIds(r)};
+            } else {
+              newMap[r.kode]=getPekerjaIds(r);
+            }
+          });
           const{error}=await supabase.from("renhar").update({pekerja_per_komponen:newMap}).eq("id",taskId);
           if(!error){
             setRenhar(prev=>prev.map((t:any)=>t.id===taskId?{...t,pekerja_per_komponen:newMap}:t));
@@ -1964,6 +1981,11 @@ function OperatorView({user,viewMode}:any){
     // di task yang sama kalau ada penulisan lain yang nyaris bersamaan).
     const updatePekerjaPerKomponen=async(taskId:number,kode:string,pekerjaIds:number[])=>{
       await updatePekerjaPerKomponenBatch([{task:{id:taskId},kode}],()=>pekerjaIds);
+    };
+    // Assign operator KHUSUS SATU TAHAP BUSBAR - beda operator per tahap boleh keisi
+    // bersamaan (gak saling timpa), lihat catatan nested-merge di updatePekerjaPerKomponenBatch.
+    const updateOperatorBusbarTahap=async(taskId:number,kode:string,tahap:string,pekerjaIds:number[])=>{
+      await updatePekerjaPerKomponenBatch([{task:{id:taskId},kode,tahap}],()=>pekerjaIds);
     };
 
     const bulkAssignAndStart=async(_proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
@@ -2075,11 +2097,12 @@ function OperatorView({user,viewMode}:any){
   };
 
   // ── BUSBAR: alur khusus 3-4 tahap berurutan (FABRIKASI->PLATING->[HEATSHRINK->]PASANG) ──
+  // Semua tahap (4/3) berdiri sendiri-sendiri, gak ada lagi konsep "tahap aktif" - operator
+  // bebas kerjakan tahap manapun kapan saja, gak ada urutan/estafet wajib.
   const getBusbarTahapState=(cl:any,kode:string)=>{
     const urutan=getUrutanTahapBusbar(kode);
-    if(cl?.busbarTahap?.tahapAktif)return cl.busbarTahap;
-    const fresh:any={tahapAktif:urutan[0]};
-    urutan.forEach((t:string)=>{fresh[t]={progress:0,sudahDisimpan100:false};});
+    const fresh:any={};
+    urutan.forEach((t:string)=>{fresh[t]=cl?.busbarTahap?.[t]||{progress:0,sudahDisimpan100:false};});
     return fresh;
   };
   // Update progress tahap AKTIF secara live (tiap klik PCT_STEPS) - langsung ke-refleksi ke
@@ -2106,14 +2129,13 @@ function OperatorView({user,viewMode}:any){
     await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
   };
   const canSimpanBusbarTahap=(task:any,panelId:number,kode:string,tahap:string):boolean=>{
-    const ids=(task?.pekerja_per_komponen||{})[kode]||[];
+    const ids=(task?.pekerja_per_komponen||{})[kode]?.[tahap]||[];
     if(ids.length===0)return false;
     return ids.some((pid:number)=>!!timerAktif[timerKey(panelId,kode,"BUSBAR",pid,tahap)]||!!timerSelesaiHariIni[timerKey(panelId,kode,"BUSBAR",pid,tahap)]);
   };
-  // Simpan Progress tahap aktif - kalau tahap itu jadi 100%, otomatis pindah ke tahap
-  // berikutnya (reset operator, wajib pilih ulang) atau tandai SELESAI total kalau ini
-  // tahap terakhir (PASANG).
-  const simpanProgressTahapBusbar=async(panelId:number,kode:string):Promise<boolean>=>{
+  // Simpan Progress SATU tahap tertentu (dipilih eksplisit lewat parameter tahap) - gak ada
+  // lagi auto-pindah/estafet, tiap tahap berdiri sendiri dan bisa disimpan kapan saja.
+  const simpanProgressTahapBusbar=async(panelId:number,kode:string,tahap:string):Promise<boolean>=>{
     const panel=panelsMap[panelId];
     if(!panel)return false;
     const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses==="BUSBAR"&&(t.komponen||[]).includes(kode));
@@ -2122,27 +2144,22 @@ function OperatorView({user,viewMode}:any){
     if(!cl)return false;
     const urutan=getUrutanTahapBusbar(kode);
     const busbarTahapState=getBusbarTahapState(cl,kode);
-    const tahapSaatIni=busbarTahapState.tahapAktif;
-    if(tahapSaatIni==="SELESAI")return false;
-    if(!canSimpanBusbarTahap(task,panelId,kode,tahapSaatIni)){
+    if(!canSimpanBusbarTahap(task,panelId,kode,tahap)){
       alert('Belum bisa disimpan - pastikan operator sudah dipilih dan timer sudah pernah dijalankan buat tahap ini.');
       return false;
     }
-    const pctTahap=busbarTahapState[tahapSaatIni]?.progress||0;
+    const pctTahap=busbarTahapState[tahap]?.progress||0;
     if(pctTahap===0){alert('Progress tahap ini masih 0%, belum ada yang bisa disimpan.');return false;}
 
-    const idxTahap=urutan.indexOf(tahapSaatIni);
-    const tahapBerikutnya=idxTahap===urutan.length-1?null:urutan[idxTahap+1];
     const newBusbarTahap={
       ...busbarTahapState,
-      [tahapSaatIni]:{...busbarTahapState[tahapSaatIni],progress:pctTahap,sudahDisimpan100:pctTahap>=100},
-      tahapAktif:pctTahap>=100?(tahapBerikutnya||"SELESAI"):tahapSaatIni,
+      [tahap]:{...busbarTahapState[tahap],progress:pctTahap,sudahDisimpan100:pctTahap>=100},
     };
     const combined=hitungProgressBusbarGabungan(newBusbarTahap,urutan);
 
     const prevHist=cl.history?.BUSBAR||[];
     const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
-    const idsKomp=(task.pekerja_per_komponen||{})[kode]||[];
+    const idsKomp=(task.pekerja_per_komponen||{})[kode]?.[tahap]||[];
     const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
     const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
     const checkpointEntry={panel_id:panelId,kode_komponen:kode,proses:"BUSBAR",checkpoint:combined,pekerja_nama:pekerjaNamaLog,tanggal:viewDate};
@@ -2161,11 +2178,6 @@ function OperatorView({user,viewMode}:any){
     await supabase.from('progress_checkpoint_log').insert([checkpointEntry]);
     await supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId);
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
-
-    // Tahap pindah (belum SELESAI total) - reset operator, wajib pilih ulang buat tahap baru.
-    if(pctTahap>=100&&tahapBerikutnya){
-      await updatePekerjaPerKomponenBatch([{task,kode}],()=>[]);
-    }
     return true;
   };
 
@@ -2556,7 +2568,7 @@ function OperatorView({user,viewMode}:any){
             // Sudah disimpan (klik "Simpan Progress") hari ini dengan pct 100 - bukan cuma qty kebetulan penuh.
             const sudahDisimpan100=(cl.history?.[proses]||[]).some((h:any)=>h.tanggal===viewDate&&h.pct===100);
             // Timer pernah dimulai (walau udah di-stop lagi) - buat gating input qty di POTONG/BENDING/STEL/FINISHING.
-            const idsKompRow=(task.pekerja_per_komponen||{})[kode]||[];
+            const idsKompRow=getFlatOperatorIds(task,kode);
             const sudahPernahMulai=idsKompRow.some((pid:number)=>!!timerPernahMulai[`${panelId}_${kode}_${proses}_${pid}`]);
             rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
               isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp,
@@ -2988,7 +3000,13 @@ function OperatorView({user,viewMode}:any){
       const groupKey=group.namaKomponen;
       const isOpen=expandedPanel[proses]===groupKey;
       const panelCount=new Set(group.rows.map((r:any)=>r.panelId)).size;
-      const belumAdaOperatorCount=group.rows.filter((r:any)=>!(((r.task.pekerja_per_komponen||{}))[r.kode]?.length>0)).length;
+      const belumAdaOperatorCount=group.rows.filter((r:any)=>{
+        if(proses==="BUSBAR"){
+          const ppk=(r.task.pekerja_per_komponen||{})[r.kode];
+          return!ppk||!Object.values(ppk).some((ids:any)=>Array.isArray(ids)&&ids.length>0);
+        }
+        return getFlatOperatorIds(r.task,r.kode).length===0;
+      }).length;
       const isHighlighted=highlightGroup===`${proses}_${groupKey}`;
       return(
         <div key={groupKey} ref={(el)=>{accordionRefs.current[`${proses}_${groupKey}`]=el;}}
@@ -3004,13 +3022,13 @@ function OperatorView({user,viewMode}:any){
           </div>
           {isOpen&&(
             <div style={{padding:"0 14px 14px 14px",display:"flex",flexDirection:"column",gap:10}}>
-              {proses!=="POTONG"&&!isWiringProses&&(
+              {proses!=="POTONG"&&!isWiringProses&&proses!=="BUSBAR"&&(
                 <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);}}
                   style={{padding:"10px",minHeight:44,borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                   Pilih Operator ({group.rows.length} komponen)
                 </button>
               )}
-              {proses!=="POTONG"&&!isWiringProses&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
+              {proses!=="POTONG"&&!isWiringProses&&proses!=="BUSBAR"&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
                   onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);}}>
                   <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
@@ -3052,19 +3070,119 @@ function OperatorView({user,viewMode}:any){
                 const bisaEdit=canEditProgressKomponen(r.task,r.kode,r.panelId,proses);
                 const kInfo=r.wiringBadge||komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
                 const fmtD=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):"–";
-                const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
-                const workers=idsKomp.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
-                // ── BUSBAR: state tahap aktif (FABRIKASI/PLATING/[HEATSHRINK/]PASANG) ──
                 const isBusbarProses=proses==="BUSBAR";
+                const idsKomp=isBusbarProses?[]:getFlatOperatorIds(r.task,r.kode);
+                const workers=idsKomp.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
                 const busbarUrutan=isBusbarProses?getUrutanTahapBusbar(r.kode):[];
                 const busbarTahapState=isBusbarProses?getBusbarTahapState(panelsMap[r.panelId]?.checklist?.[r.kode],r.kode):null;
-                const busbarTahapAktif=busbarTahapState?.tahapAktif||"";
-                const busbarPctTahapAktif=busbarTahapState?.[busbarTahapAktif]?.progress||0;
-                const bisaEditBusbar=isBusbarProses?canSimpanBusbarTahap(r.task,r.panelId,r.kode,busbarTahapAktif):false;
                 return(
                   <div key={`${r.task.id}-${r.kode}-m`} style={{background:done?"#f0fdf4":"#fff",
                     border:`1.5px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:14,padding:"12px 14px",
                     display:"flex",flexDirection:"column",gap:10}}>
+                    {isBusbarProses?(
+                      // ── BUSBAR: SEMUA tahap (4/3) tampil sekaligus, masing-masing berdiri sendiri
+                      // (operator, timer, persentase, simpan) - gak ada "tahap aktif"/estafet lagi.
+                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                        {busbarUrutan.map((t:string,ti:number)=>{
+                          const idsKompTahap=(r.task.pekerja_per_komponen?.[r.kode]?.[t])||[];
+                          const workersTahap=idsKompTahap.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
+                          const stTahap=busbarTahapState?.[t]||{progress:0,sudahDisimpan100:false};
+                          const pctTahap=stTahap.progress||0;
+                          const bisaEditTahap=canSimpanBusbarTahap(r.task,r.panelId,r.kode,t);
+                          const timerKeysTahap=workersTahap.map((w:any)=>timerKey(r.panelId,r.kode,"BUSBAR",w.id,t));
+                          const anyTimerRunningTahap=timerKeysTahap.some((k:string)=>!!timerAktif[k]);
+                          const anyLoadingTahap=timerKeysTahap.some((k:string)=>timerLoading===k);
+                          let durasiLabelTahap="";
+                          const runningKeyTahap=timerKeysTahap.find((k:string)=>timerAktif[k]);
+                          if(runningKeyTahap){
+                            const timer=timerAktif[runningKeyTahap];
+                            const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
+                            const totalMenit=(timerDurasiSelesai[runningKeyTahap]||0)+menitBerjalan;
+                            const jam=Math.floor(totalMenit/60);
+                            const menit=Math.round(totalMenit%60);
+                            const detik=Math.max(0,Math.round(totalMenit*60));
+                            durasiLabelTahap=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
+                          }
+                          const flashKeyTahap=`${r.panelId}_${r.kode}_BUSBAR_${t}`;
+                          const flashingTahap=!!savedFlash[flashKeyTahap];
+                          return(
+                            <div key={t} style={{border:"1px solid #e2e8f0",borderRadius:10,padding:"8px 10px",
+                              background:stTahap.sudahDisimpan100?"#f0fdf4":"#fafafa",display:"flex",flexDirection:"column",gap:6}}>
+                              <div style={{fontSize:11,fontWeight:800,color:stTahap.sudahDisimpan100?"#16a34a":"#374151"}}>
+                                {stTahap.sudahDisimpan100?"✅ ":""}{ti+1}. {BUSBAR_TAHAP_LABEL[t]}
+                              </div>
+                              {workersTahap.length===0?(
+                                <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t});setTempPekerjaIds(idsKompTahap);}}
+                                  style={{fontSize:11,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:8,padding:"8px 10px",cursor:"pointer",textAlign:"center"}}>
+                                  + Pilih Operator {BUSBAR_TAHAP_LABEL[t]}
+                                </button>
+                              ):(
+                                <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
+                                  {workersTahap.map((w:any)=>(
+                                    <span key={w.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,
+                                      color:DIVISI_CONFIG[w.divisi]?.color||"#64748b",background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
+                                      borderRadius:20,padding:"3px 8px"}}>
+                                      {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
+                                    </span>
+                                  ))}
+                                  <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t});setTempPekerjaIds(idsKompTahap);}}
+                                    style={{fontSize:9,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"3px 7px",cursor:"pointer"}}>
+                                    ✏️ Edit
+                                  </button>
+                                </div>
+                              )}
+                              {workersTahap.length>0&&(
+                                <button disabled={anyLoadingTahap}
+                                  onClick={()=>{
+                                    if(anyTimerRunningTahap){
+                                      workersTahap.forEach((w:any)=>{
+                                        const k=timerKey(r.panelId,r.kode,"BUSBAR",w.id,t);
+                                        if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,"BUSBAR",t);
+                                      });
+                                    } else {
+                                      workersTahap.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,"BUSBAR",viewDate,t));
+                                    }
+                                  }}
+                                  style={{fontSize:12,fontWeight:700,border:"none",borderRadius:8,padding:"9px 10px",minHeight:38,cursor:anyLoadingTahap?"not-allowed":"pointer",
+                                    background:anyTimerRunningTahap?"#fef2f2":"#f0fdf4",color:anyTimerRunningTahap?"#dc2626":"#16a34a"}}>
+                                  {anyLoadingTahap?"...":anyTimerRunningTahap?`⏹ Selesai ${durasiLabelTahap}`:"▶ Mulai"}
+                                </button>
+                              )}
+                              <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+                                {PCT_STEPS.map((s:number)=>{
+                                  const reached=pctTahap>=s;
+                                  const isNext=s===PCT_STEPS.find((x:number)=>x>pctTahap);
+                                  const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
+                                  return(
+                                    <button key={s} disabled={!bisaEditTahap}
+                                      onClick={()=>{if(bisaEditTahap)updatePctManualBusbarTahap(r.panelId,r.kode,t,reached?prevStep:s);}}
+                                      style={{flex:1,minWidth:36,padding:"7px 3px",borderRadius:7,border:"none",
+                                        cursor:bisaEditTahap?"pointer":"not-allowed",
+                                        background:reached?pColor(s):isNext?"#eff6ff":"#f1f5f9",
+                                        color:reached?"#fff":isNext?pc:"#94a3b8",
+                                        fontWeight:700,fontSize:10,outline:isNext&&bisaEditTahap?`2px solid ${pc}`:"none"}}>
+                                      {reached?"✓":`${s}%`}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                              <button disabled={pctTahap===0} onClick={async()=>{
+                                  const berhasil=await simpanProgressTahapBusbar(r.panelId,r.kode,t);
+                                  if(berhasil&&pctTahap<100){
+                                    setSavedFlash(prev=>({...prev,[flashKeyTahap]:true}));
+                                    setTimeout(()=>setSavedFlash(prev=>({...prev,[flashKeyTahap]:false})),1500);
+                                  }
+                                }}
+                                style={{fontSize:11,fontWeight:700,border:"none",borderRadius:8,padding:"9px 10px",minHeight:38,
+                                  cursor:pctTahap===0?"not-allowed":"pointer",
+                                  background:flashingTahap?"#16a34a":"#eff6ff",color:flashingTahap?"#fff":"#1d4ed8"}}>
+                                {flashingTahap?"✅ Tersimpan":`💾 Simpan ${BUSBAR_TAHAP_LABEL[t]}`}
+                              </button>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ):(
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {workers.length===0&&(
                         isWiringProses?(
@@ -3089,27 +3207,8 @@ function OperatorView({user,viewMode}:any){
                           ))}
                         </div>
                       )}
-                      {isBusbarProses&&(
-                        <div style={{display:"flex",flexWrap:"wrap",gap:4,alignItems:"center",padding:"4px 0"}}>
-                          {busbarUrutan.map((t:string,ti:number)=>{
-                            const st=busbarTahapState?.[t];
-                            const sudah=!!st?.sudahDisimpan100;
-                            const aktif=t===busbarTahapAktif;
-                            return(
-                              <span key={t} style={{display:"flex",alignItems:"center",gap:4}}>
-                                <span style={{fontSize:10,fontWeight:700,padding:"3px 8px",borderRadius:20,
-                                  background:sudah?"#dcfce7":aktif?"#dbeafe":"#f1f5f9",
-                                  color:sudah?"#16a34a":aktif?"#2563eb":"#94a3b8"}}>
-                                  {sudah?"✅ ":aktif?"🟡 ":"⚪ "}{BUSBAR_TAHAP_LABEL[t]}
-                                </span>
-                                {ti<busbarUrutan.length-1&&<span style={{color:"#cbd5e1",fontSize:10}}>→</span>}
-                              </span>
-                            );
-                          })}
-                        </div>
-                      )}
                       {workers.length>0&&proses!=="POTONG"&&(()=>{
-                        const timerKeys=workers.map((w:any)=>timerKey(r.panelId,r.kode,proses,w.id,isBusbarProses?busbarTahapAktif:undefined));
+                        const timerKeys=workers.map((w:any)=>timerKey(r.panelId,r.kode,proses,w.id));
                         const anyTimerRunning=timerKeys.some((k:string)=>!!timerAktif[k]);
                         const anyLoading=timerKeys.some((k:string)=>timerLoading===k);
                         let durasiLabel="";
@@ -3140,17 +3239,15 @@ function OperatorView({user,viewMode}:any){
                                 </button>
                               )}
                             </div>
-                            {isBusbarProses&&<span style={{fontSize:9,color:"#94a3b8"}}>Timer buat tahap: <b>{BUSBAR_TAHAP_LABEL[busbarTahapAktif]}</b></span>}
                             <button disabled={anyLoading}
                               onClick={()=>{
-                                const tahapArg=isBusbarProses?busbarTahapAktif:undefined;
                                 if(anyTimerRunning){
                                   workers.forEach((w:any)=>{
-                                    const k=timerKey(r.panelId,r.kode,proses,w.id,tahapArg);
-                                    if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,proses,tahapArg);
+                                    const k=timerKey(r.panelId,r.kode,proses,w.id);
+                                    if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,proses);
                                   });
                                 } else {
-                                  workers.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,proses,viewDate,tahapArg));
+                                  workers.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,proses,viewDate));
                                 }
                               }}
                               style={{fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,cursor:anyLoading?"not-allowed":"pointer",
@@ -3163,12 +3260,10 @@ function OperatorView({user,viewMode}:any){
                       {proses!=="POTONG"&&(()=>{
                         const flashKey=`${r.panelId}_${r.kode}_${proses}`;
                         const flashing=!!savedFlash[flashKey];
-                        const disabledBtn=isBusbarProses?busbarPctTahapAktif===0:r.pct===0;
+                        const disabledBtn=r.pct===0;
                         return(
                         <button disabled={disabledBtn} onClick={async()=>{
-                            const berhasil=isBusbarProses
-                              ?await simpanProgressTahapBusbar(r.panelId,r.kode)
-                              :await lockSingleKomponen(r.panelId,r.kode,proses);
+                            const berhasil=await lockSingleKomponen(r.panelId,r.kode,proses);
                             if(berhasil&&r.pct<100&&PROSES_FLASH_TERSIMPAN.includes(proses)){
                               setSavedFlash(prev=>({...prev,[flashKey]:true}));
                               setTimeout(()=>setSavedFlash(prev=>({...prev,[flashKey]:false})),1500);
@@ -3177,11 +3272,12 @@ function OperatorView({user,viewMode}:any){
                           style={{fontSize:12,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,
                             cursor:disabledBtn?"not-allowed":"pointer",
                             background:flashing?"#16a34a":"#eff6ff",color:flashing?"#fff":"#1d4ed8"}}>
-                          {flashing?"✅ Tersimpan":isBusbarProses?`💾 Simpan ${BUSBAR_TAHAP_LABEL[busbarTahapAktif]||""}`:"💾 Simpan Progress"}
+                          {flashing?"✅ Tersimpan":"💾 Simpan Progress"}
                         </button>
                         );
                       })()}
                     </div>
+                    )}
 
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                       <div style={{display:"flex",flexDirection:"column",gap:3}}>
@@ -3248,26 +3344,7 @@ function OperatorView({user,viewMode}:any){
                           <span style={{fontWeight:800,color:pColor(r.pct),fontFamily:"'DM Mono',monospace",fontSize:13,minWidth:34}}>{r.pct}%</span>
                         </div>
                       );
-                    })():isBusbarProses?(
-                      <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                        {PCT_STEPS.map((s:number)=>{
-                          const reached=busbarPctTahapAktif>=s;
-                          const isNext=busbarTahapAktif!=="SELESAI"&&s===PCT_STEPS.find((x:number)=>x>busbarPctTahapAktif);
-                          const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
-                          return(
-                            <button key={s} disabled={!bisaEditBusbar}
-                              onClick={()=>{if(bisaEditBusbar)updatePctManualBusbarTahap(r.panelId,r.kode,busbarTahapAktif,reached?prevStep:s);}}
-                              style={{flex:1,minWidth:40,padding:"9px 4px",borderRadius:8,border:"none",
-                                cursor:bisaEditBusbar?"pointer":"not-allowed",
-                                background:reached?pColor(s):isNext?"#eff6ff":"#f1f5f9",
-                                color:reached?"#fff":isNext?pc:"#94a3b8",
-                                fontWeight:700,fontSize:11,outline:isNext&&bisaEditBusbar?`2px solid ${pc}`:"none"}}>
-                              {reached?"✓":`${s}%`}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    ):(
+                    })():isBusbarProses?null:(
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                         {PCT_STEPS.map((s:number)=>{
                           const reached=r.pct>=s;
@@ -3640,7 +3717,11 @@ function OperatorView({user,viewMode}:any){
             <div style={{display:"flex",gap:8}}>
               <button onClick={()=>setOperatorModal(null)}
                 style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
-              <button onClick={async()=>{await updatePekerjaPerKomponen(operatorModal.taskId,operatorModal.kode,tempPekerjaIds);setOperatorModal(null);}}
+              <button onClick={async()=>{
+                  if(operatorModal.tahap)await updateOperatorBusbarTahap(operatorModal.taskId,operatorModal.kode,operatorModal.tahap,tempPekerjaIds);
+                  else await updatePekerjaPerKomponen(operatorModal.taskId,operatorModal.kode,tempPekerjaIds);
+                  setOperatorModal(null);
+                }}
                 style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>Simpan</button>
             </div>
           </div>
