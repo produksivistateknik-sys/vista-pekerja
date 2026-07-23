@@ -2580,7 +2580,7 @@ function OperatorView({user,viewMode}:any){
         const isDrilldownProses=["WIRING CONTROL","WIRING POWER","BUSBAR"].includes(proses);
         const PROSES_KUMPUL_DULU_DESKTOP=["POTONG","RENDAM","PAINTING"];
         // Mobile: titik awal pilih komponen dibalik jadi Jenis Komponen -> Panel buat proses ini.
-        const PROSES_PILIH_PER_KOMPONEN=["BENDING","STEL","FINISHING","RENDAM","PAINTING","BUSBAR"];
+        const PROSES_PILIH_PER_KOMPONEN=["BENDING","STEL","FINISHING","RENDAM","PAINTING","BUSBAR","RAKIT","PASANG KOMPONEN"];
         const visibleRows=(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
       const isWiringProses=["WIRING CONTROL","WIRING POWER"].includes(proses);
       const cardMode=PROSES_CARD_MODE[proses]||'qty';
