@@ -3000,13 +3000,13 @@ function OperatorView({user,viewMode}:any){
           </div>
           {isOpen&&(
             <div style={{padding:"0 14px 14px 14px",display:"flex",flexDirection:"column",gap:10}}>
-              {proses!=="POTONG"&&(
+              {proses!=="POTONG"&&!isWiringProses&&(
                 <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);}}
                   style={{padding:"10px",minHeight:44,borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                   Pilih Operator ({group.rows.length} komponen)
                 </button>
               )}
-              {proses!=="POTONG"&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
+              {proses!=="POTONG"&&!isWiringProses&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
                   onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);}}>
                   <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
@@ -3063,9 +3063,16 @@ function OperatorView({user,viewMode}:any){
                     display:"flex",flexDirection:"column",gap:10}}>
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {workers.length===0&&(
-                        <div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",padding:"6px 0"}}>
-                          {proses==="POTONG"?'Belum dimulai - klik "▶ Mulai Semua" di atas.':'Belum ada operator - klik "Pilih Operator" di atas.'}
-                        </div>
+                        isWiringProses?(
+                          <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
+                            style={{fontSize:12,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center"}}>
+                            + Pilih Operator
+                          </button>
+                        ):(
+                          <div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",padding:"6px 0"}}>
+                            {proses==="POTONG"?'Belum dimulai - klik "▶ Mulai Semua" di atas.':'Belum ada operator - klik "Pilih Operator" di atas.'}
+                          </div>
+                        )
                       )}
                       {workers.length>0&&proses==="POTONG"&&(
                         <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
@@ -3122,6 +3129,12 @@ function OperatorView({user,viewMode}:any){
                                   {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
                                 </span>
                               ))}
+                              {isWiringProses&&(
+                                <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
+                                  style={{fontSize:10,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"4px 8px",cursor:"pointer"}}>
+                                  ✏️ Edit Operator
+                                </button>
+                              )}
                             </div>
                             {isBusbarProses&&<span style={{fontSize:9,color:"#94a3b8"}}>Timer buat tahap: <b>{BUSBAR_TAHAP_LABEL[busbarTahapAktif]}</b></span>}
                             <button disabled={anyLoading}
