@@ -2545,7 +2545,7 @@ function OperatorView({user,viewMode}:any){
         const isDrilldownProses=["WIRING CONTROL","WIRING POWER","BUSBAR"].includes(proses);
         const PROSES_KUMPUL_DULU_DESKTOP=["POTONG","RENDAM","PAINTING"];
         // Mobile: titik awal pilih komponen dibalik jadi Jenis Komponen -> Panel buat proses ini.
-        const PROSES_PILIH_PER_KOMPONEN=["BENDING","STEL","FINISHING","RENDAM","PAINTING"];
+        const PROSES_PILIH_PER_KOMPONEN=["BENDING","STEL","FINISHING","RENDAM","PAINTING","BUSBAR"];
         const visibleRows=(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
       const isWiringProses=["WIRING CONTROL","WIRING POWER"].includes(proses);
       const cardMode=PROSES_CARD_MODE[proses]||'qty';
@@ -2684,7 +2684,7 @@ function OperatorView({user,viewMode}:any){
                         const checked=tempSelectedKomponen.includes(r.kode);
                         const panelKeyPopup=`${proses}_${komponenPopup.panelId}`;
                         const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
-                        const sudahSelesai=r.qtyKomp>0&&r.pct===100&&r.sudahDisimpan100;
+                        const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
                         const isDisabled=alreadyConfirmed||sudahSelesai;
                         return(
                           <label key={r.kode} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
@@ -2724,7 +2724,7 @@ function OperatorView({user,viewMode}:any){
                     <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:"1px solid #f1f5f9"}}>
                       <button onClick={()=>setTempSelectedKomponen(panelRows.filter((r:any)=>{
                           const alreadyConfirmed=(selectedKomponen[`${proses}_${komponenPopup.panelId}`]||[]).includes(r.kode);
-                          const sudahSelesai=r.qtyKomp>0&&r.pct===100&&r.sudahDisimpan100;
+                          const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
                           return !alreadyConfirmed&&!sudahSelesai;
                         }).map((r:any)=>r.kode))}
                         style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
@@ -2766,7 +2766,7 @@ function OperatorView({user,viewMode}:any){
                         const checked=tempSelectedPanelJenis.includes(r.panelId);
                         const panelKeyPopup=`${proses}_${r.panelId}`;
                         const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
-                        const sudahSelesai=r.qtyKomp>0&&r.pct===100&&r.sudahDisimpan100;
+                        const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
                         const isDisabled=alreadyConfirmed||sudahSelesai;
                         return(
                           <label key={r.panelId} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
@@ -2806,7 +2806,7 @@ function OperatorView({user,viewMode}:any){
                     <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:"1px solid #f1f5f9"}}>
                       <button onClick={()=>setTempSelectedPanelJenis(groupRows.filter((r:any)=>{
                           const alreadyConfirmed=(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode);
-                          const sudahSelesai=r.qtyKomp>0&&r.pct===100&&r.sudahDisimpan100;
+                          const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
                           return !alreadyConfirmed&&!sudahSelesai;
                         }).map((r:any)=>r.panelId))}
                         style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
