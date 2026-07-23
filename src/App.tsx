@@ -1911,16 +1911,6 @@ function OperatorView({user,viewMode}:any){
     });
   };
 
-  const updatePekerjaPerKomponen=async(taskId:number,kode:string,pekerjaIds:number[])=>{
-    const task=renhar.find((t:any)=>t.id===taskId);
-    if(!task)return;
-    const newMap={...(task.pekerja_per_komponen||{}),[kode]:pekerjaIds};
-    const{error}=await supabase.from("renhar").update({pekerja_per_komponen:newMap}).eq("id",taskId);
-    if(!error){
-      setRenhar(prev=>prev.map((t:any)=>t.id===taskId?{...t,pekerja_per_komponen:newMap}:t));
-    }
-  };
-
     // Gabungin semua kode per taskId jadi SATU map sebelum ditulis, biar gak saling overwrite.
     // Dua lapis proteksi race:
     // 1. Serialisasi per taskId lewat pekerjaPerKomponenQueue - panggilan yang nembak nyaris
@@ -1948,6 +1938,14 @@ function OperatorView({user,viewMode}:any){
         pekerjaPerKomponenQueue.current[taskId]=thisWrite;
         await thisWrite;
       }
+    };
+    // Assign SATU komponen (dipanggil dari modal "Pilih Operator" per-komponen individual di
+    // tabel desktop) - didelegasikan ke versi batch yang udah dibenerin (serialisasi + fetch
+    // fresh dari DB sebelum merge), biar gak ada lagi jalur terpisah yang masih rawan stale-
+    // closure race (baca renhar state lokal yang bisa lag, nimpa balik assignment kode lain
+    // di task yang sama kalau ada penulisan lain yang nyaris bersamaan).
+    const updatePekerjaPerKomponen=async(taskId:number,kode:string,pekerjaIds:number[])=>{
+      await updatePekerjaPerKomponenBatch([{task:{id:taskId},kode}],()=>pekerjaIds);
     };
 
     const bulkAssignAndStart=async(_proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
