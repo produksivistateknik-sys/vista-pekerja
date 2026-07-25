@@ -1143,11 +1143,163 @@ function TrackingKomponenView({user}:any){
   );
 }
 
+const STATUS_TUGAS_NP:Record<string,{label:string,bg:string,color:string}>={
+  belum:{label:"Belum Mulai",bg:"#f1f5f9",color:"#64748b"},
+  proses:{label:"Sedang Dikerjakan",bg:"#fef9c3",color:"#a16207"},
+  selesai:{label:"Selesai",bg:"#dcfce7",color:"#16a34a"},
+};
+const hitungStatusTugasNp=(pct:number,jumlahFoto:number)=>{
+  if(pct>=100&&jumlahFoto>=1)return"selesai";
+  if(pct>0||jumlahFoto>0)return"proses";
+  return"belum";
+};
+const TUGAS_NP=[
+  {field:"nameplate",label:"Nameplate",icon:"🏷️",color:"#0891b2",progressField:"nameplate_progress" as const,fotoField:"nameplate_photos",historyField:"nameplate_history",updatedByField:"nameplate_updated_by",updatedAtField:"nameplate_updated_at"},
+  {field:"yellowmark",label:"Yellowmark",icon:"🟡",color:"#ca8a04",progressField:"yellowmark_progress" as const,fotoField:"yellowmark_photos",historyField:"yellowmark_history",updatedByField:"yellowmark_updated_by",updatedAtField:"yellowmark_updated_at"},
+];
+// Kompres foto sebelum upload (canvas resize max-width 1600px + JPEG q0.8) - foto asli dari
+// kamera HP bisa 3-8MB, operator sering upload lewat data seluler.
+const compressImageNp=(file:File):Promise<Blob>=>new Promise((resolve,reject)=>{
+  const img=new Image();
+  const url=URL.createObjectURL(file);
+  img.onload=()=>{
+    const maxW=1600;
+    const scale=Math.min(1,maxW/img.width);
+    const canvas=document.createElement("canvas");
+    canvas.width=Math.round(img.width*scale);
+    canvas.height=Math.round(img.height*scale);
+    const ctx=canvas.getContext("2d");
+    if(!ctx){URL.revokeObjectURL(url);reject(new Error("Canvas tidak didukung"));return;}
+    ctx.drawImage(img,0,0,canvas.width,canvas.height);
+    canvas.toBlob(blob=>{
+      URL.revokeObjectURL(url);
+      if(blob)resolve(blob);else reject(new Error("Gagal kompres foto"));
+    },"image/jpeg",0.8);
+  };
+  img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Gagal membaca foto"));};
+  img.src=url;
+});
+const downloadFotoNp=async(url:string,label:string)=>{
+  try{
+    const res=await fetch(url);
+    const blob=await res.blob();
+    const blobUrl=URL.createObjectURL(blob);
+    const a=document.createElement("a");
+    a.href=blobUrl;
+    a.download=`${label}_${Date.now()}.jpg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(blobUrl);
+  }catch(err:any){
+    alert("Gagal download: "+err.message);
+  }
+};
+
 function NameplateView({user}:any){
   const[panelsList,setPanelsList]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
   const[search,setSearch]=useState("");
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
+  const[expandedTugas,setExpandedTugas]=useState<Set<string>>(new Set());
+  const toggleTugas=(panelId:number,field:string)=>{
+    const key=`${panelId}_${field}`;
+    setExpandedTugas(prev=>{
+      const next=new Set(prev);
+      if(next.has(key))next.delete(key);else next.add(key);
+      return next;
+    });
+  };
+
+  // Foto yang baru dipilih tapi BELUM disimpan permanen (staging lokal saja, belum ada
+  // di Supabase Storage/DB) - operator masih bisa Batalkan sebelum tekan Simpan Progress.
+  const[stagedFotos,setStagedFotos]=useState<Record<string,{file:File,previewUrl:string}[]>>({});
+  const[savingKey,setSavingKey]=useState<string|null>(null);
+  const[uploadProgress,setUploadProgress]=useState<{current:number,total:number}|null>(null);
+
+  const[viewerFoto,setViewerFoto]=useState<{url:string,uploaded_at?:string,uploaded_by?:string,label:string}|null>(null);
+  const[zoomNp,setZoomNp]=useState(1);
+  const pinchStartDist=useRef<number|null>(null);
+  const pinchStartZoom=useRef(1);
+  const bukaViewer=(f:any,label:string)=>{setViewerFoto({...f,label});setZoomNp(1);};
+  const tutupViewer=()=>{setViewerFoto(null);setZoomNp(1);};
+  const handleTouchStartNp=(e:any)=>{
+    if(e.touches.length===2){
+      const[a,b]=e.touches;
+      pinchStartDist.current=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      pinchStartZoom.current=zoomNp;
+    }
+  };
+  const handleTouchMoveNp=(e:any)=>{
+    if(e.touches.length===2&&pinchStartDist.current){
+      const[a,b]=e.touches;
+      const dist=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      const scale=dist/pinchStartDist.current;
+      setZoomNp(Math.min(4,Math.max(1,pinchStartZoom.current*scale)));
+    }
+  };
+  const handleTouchEndNp=()=>{pinchStartDist.current=null;};
+
+  const pilihFotoStaged=(panelId:number,field:string,fileList:FileList|null)=>{
+    if(!fileList||fileList.length===0)return;
+    const key=`${panelId}_${field}`;
+    const dipilih=Array.from(fileList).map(file=>({file,previewUrl:URL.createObjectURL(file)}));
+    setStagedFotos(prev=>({...prev,[key]:[...(prev[key]||[]),...dipilih]}));
+  };
+
+  const batalkanFotoStaged=(panelId:number,field:string,idx:number)=>{
+    const key=`${panelId}_${field}`;
+    setStagedFotos(prev=>{
+      const arr=prev[key]||[];
+      URL.revokeObjectURL(arr[idx]?.previewUrl);
+      return{...prev,[key]:arr.filter((_,i)=>i!==idx)};
+    });
+  };
+
+  const simpanProgressTugas=async(p:any,t:typeof TUGAS_NP[number])=>{
+    const key=`${p.id}_${t.field}`;
+    const staged=stagedFotos[key]||[];
+    const pct=p[t.progressField]||0;
+    const existingFoto=p[t.fotoField]||[];
+    const hist=p[t.historyField]||[];
+    const existIdx=hist.findIndex((h:any)=>h.tanggal===TODAY);
+    const pctBerubah=existIdx<0||hist[existIdx].pct!==pct;
+    if(!pctBerubah&&staged.length===0){alert("Tidak ada perubahan untuk disimpan");return;}
+    setSavingKey(key);
+    try{
+      const fotoTerupload:any[]=[];
+      for(let i=0;i<staged.length;i++){
+        setUploadProgress({current:i+1,total:staged.length});
+        const s=staged[i];
+        const blob=await compressImageNp(s.file);
+        const path=`${p.id}/${t.field}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+        const{error:upErr}=await supabase.storage.from("nameplate-photos").upload(path,blob,{contentType:"image/jpeg"});
+        if(upErr){alert(`Gagal upload salah satu foto: ${upErr.message}`);continue;}
+        const{data:urlData}=supabase.storage.from("nameplate-photos").getPublicUrl(path);
+        fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+      }
+      setUploadProgress(null);
+      const newFoto=[...existingFoto,...fotoTerupload];
+      const newHist=[...hist];
+      if(existIdx>=0)newHist[existIdx]={...newHist[existIdx],pct,ts:new Date().toISOString()};
+      else newHist.push({tanggal:TODAY,pct,oleh:user.nama,ts:new Date().toISOString()});
+      const patch={
+        [t.progressField]:pct,
+        [t.updatedByField]:user.nama,
+        [t.updatedAtField]:new Date().toISOString(),
+        [t.historyField]:newHist,
+        [t.fotoField]:newFoto,
+      };
+      await supabase.from("panels").update(patch).eq("id",p.id);
+      setPanelsList(prev=>prev.map((pp:any)=>pp.id===p.id?{...pp,...patch}:pp));
+      staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
+      setStagedFotos(prev=>{const next={...prev};delete next[key];return next;});
+    }catch(err:any){
+      alert("Terjadi kesalahan: "+err.message);
+    }
+    setUploadProgress(null);
+    setSavingKey(null);
+  };
 
   const fetchData=async()=>{
     setLoading(true);
@@ -1217,7 +1369,10 @@ function NameplateView({user}:any){
     });
     return Object.entries(groups).map(([woId,g])=>{
       const totalPanel=g.panels.length;
-      const selesai=g.panels.filter((p:any)=>(p.nameplate_progress||0)>=100&&(p.yellowmark_progress||0)>=100).length;
+      const selesai=g.panels.filter((p:any)=>
+        hitungStatusTugasNp(p.nameplate_progress||0,(p.nameplate_photos||[]).length)==="selesai"&&
+        hitungStatusTugasNp(p.yellowmark_progress||0,(p.yellowmark_photos||[]).length)==="selesai"
+      ).length;
       return{woId:Number(woId),wo:g.wo,panels:g.panels,totalPanel,selesai};
     }).sort((a,b)=>{
       const aDone=a.selesai===a.totalPanel;
@@ -1295,45 +1450,125 @@ function NameplateView({user}:any){
 
       <div style={{display:"flex",flexDirection:"column",gap:10}}>
         {(selectedProject?.panels||[]).map((p:any)=>{
-          const npPct=p.nameplate_progress||0;
-          const ymPct=p.yellowmark_progress||0;
-          const done=npPct>=100&&ymPct>=100;
+          const statusPerTugas=TUGAS_NP.map(t=>hitungStatusTugasNp(p[t.progressField]||0,(p[t.fotoField]||[]).length));
+          const done=statusPerTugas.every(s=>s==="selesai");
           return(
             <div key={p.id} style={{background:"#fff",border:`1px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:10,padding:"12px 14px",opacity:done?0.7:1}}>
               <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.nama}</div>
               <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>WP / detail panel</div>
 
-              <div style={{marginBottom:8}}>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                  <span style={{fontSize:11,fontWeight:600,color:"#0891b2"}}>🏷️ Nameplate</span>
-                  <span style={{fontSize:11,fontWeight:700,color:npPct>=100?"#16a34a":"#64748b"}}>{npPct}%</span>
-                </div>
-                <div style={{display:"flex",gap:4}}>
-                  {PROGRESS_STEPS_NP.map(s=>(
-                    <button key={s} onClick={()=>updateProgress(p.id,"nameplate_progress",npPct>=s?s-25:s)}
-                      style={{flex:1,height:28,borderRadius:6,border:"none",cursor:"pointer",fontSize:10,fontWeight:700,
-                        background:npPct>=s?"#0891b2":"#f1f5f9",color:npPct>=s?"#fff":"#94a3b8"}}>{s}%</button>
-                  ))}
-                </div>
-              </div>
-
-              <div>
-                <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                  <span style={{fontSize:11,fontWeight:600,color:"#ca8a04"}}>🟡 Yellowmark</span>
-                  <span style={{fontSize:11,fontWeight:700,color:ymPct>=100?"#16a34a":"#64748b"}}>{ymPct}%</span>
-                </div>
-                <div style={{display:"flex",gap:4}}>
-                  {PROGRESS_STEPS_NP.map(s=>(
-                    <button key={s} onClick={()=>updateProgress(p.id,"yellowmark_progress",ymPct>=s?s-25:s)}
-                      style={{flex:1,height:28,borderRadius:6,border:"none",cursor:"pointer",fontSize:10,fontWeight:700,
-                        background:ymPct>=s?"#ca8a04":"#f1f5f9",color:ymPct>=s?"#fff":"#94a3b8"}}>{s}%</button>
-                  ))}
-                </div>
+              <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                {TUGAS_NP.map((t,ti)=>{
+                  const pct=p[t.progressField]||0;
+                  const fotoArr=p[t.fotoField]||[];
+                  const status=statusPerTugas[ti];
+                  const st=STATUS_TUGAS_NP[status];
+                  const key=`${p.id}_${t.field}`;
+                  const expanded=expandedTugas.has(key);
+                  const staged=stagedFotos[key]||[];
+                  const saving=savingKey===key;
+                  return(
+                    <div key={t.field} style={{border:"1px solid #e2e8f0",borderRadius:8,overflow:"hidden"}}>
+                      <div onClick={()=>toggleTugas(p.id,t.field)}
+                        style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"9px 11px",cursor:"pointer",background:"#fff"}}>
+                        <span style={{fontSize:12.5,fontWeight:700,color:t.color}}>{t.icon} {t.label}</span>
+                        <div style={{display:"flex",alignItems:"center",gap:8}}>
+                          <span style={{fontSize:10,fontWeight:700,background:st.bg,color:st.color,borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap" as const}}>{st.label}</span>
+                          <i className={`ti ti-chevron-${expanded?"up":"down"}`} style={{fontSize:15,color:"#94a3b8"}}/>
+                        </div>
+                      </div>
+                      {expanded&&(
+                        <div style={{padding:"10px 11px",borderTop:"1px solid #f1f5f9",background:"#f8fafc"}}>
+                          <div style={{marginBottom:12}}>
+                            <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.4}}>SECTION 1 · FABRIKASI</div>
+                            <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                              <span style={{fontSize:11,color:"#64748b"}}>Progress</span>
+                              <span style={{fontSize:11,fontWeight:700,color:pct>=100?"#16a34a":"#64748b"}}>{pct}%</span>
+                            </div>
+                            <div style={{display:"flex",gap:4}}>
+                              {PROGRESS_STEPS_NP.map(s=>(
+                                <button key={s} onClick={()=>updateProgress(p.id,t.progressField,pct>=s?s-25:s)}
+                                  style={{flex:1,height:28,borderRadius:6,border:"none",cursor:"pointer",fontSize:10,fontWeight:700,
+                                    background:pct>=s?t.color:"#f1f5f9",color:pct>=s?"#fff":"#94a3b8"}}>{s}%</button>
+                              ))}
+                            </div>
+                          </div>
+                          <div>
+                            <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.4}}>SECTION 2 · PEMASANGAN (FOTO)</div>
+                            {fotoArr.length===0&&staged.length===0?(
+                              <div style={{fontSize:11,color:"#94a3b8",padding:"6px 0 10px"}}>Belum ada foto</div>
+                            ):(
+                              <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:10}}>
+                                {fotoArr.map((f:any,fi:number)=>(
+                                  <div key={`saved_${fi}`} onClick={()=>bukaViewer(f,`${t.label}_${p.nama}`)} style={{cursor:"pointer"}}>
+                                    <img src={f.url} style={{width:56,height:56,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0"}}/>
+                                    <div style={{fontSize:8,color:"#94a3b8",marginTop:2,textAlign:"center" as const}}>{f.uploaded_at?new Date(f.uploaded_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):""}</div>
+                                  </div>
+                                ))}
+                                {staged.map((s,si)=>(
+                                  <div key={`staged_${si}`} style={{position:"relative" as const}}>
+                                    <img src={s.previewUrl} style={{width:56,height:56,borderRadius:6,objectFit:"cover" as const,border:`1.5px dashed ${t.color}`}}/>
+                                    <button onClick={()=>batalkanFotoStaged(p.id,t.field,si)}
+                                      style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #f8fafc",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                      <i className="ti ti-x" style={{fontSize:10}}/>
+                                    </button>
+                                    <div style={{fontSize:8,color:t.color,marginTop:2,textAlign:"center" as const,fontWeight:700}}>belum disimpan</div>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:t.color,background:"#fff",border:`1px dashed ${t.color}`,borderRadius:6,padding:"7px 10px",
+                                cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}>
+                              + Tambah Foto
+                              <input type="file" accept="image/*" multiple disabled={saving} style={{display:"none"}}
+                                onChange={(e:any)=>{pilihFotoStaged(p.id,t.field,e.target.files);e.target.value="";}}/>
+                            </label>
+                            <button onClick={()=>simpanProgressTugas(p,t)} disabled={saving}
+                              style={{display:"block",marginTop:10,width:"100%",background:saving?"#94a3b8":t.color,color:"#fff",border:"none",borderRadius:8,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+                              {saving?(uploadProgress?`⏳ Upload foto ${uploadProgress.current}/${uploadProgress.total}...`:"⏳ Menyimpan..."):"💾 Simpan Progress"}
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             </div>
           );
         })}
       </div>
+      {viewerFoto&&(
+        <div onClick={tutupViewer}
+          style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.9)",zIndex:300,display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",padding:16}}>
+          <button onClick={tutupViewer}
+            style={{position:"absolute" as const,top:16,right:16,width:36,height:36,borderRadius:99,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <i className="ti ti-x" style={{fontSize:18}}/>
+          </button>
+          <div onClick={(e:any)=>e.stopPropagation()}
+            onTouchStart={handleTouchStartNp} onTouchMove={handleTouchMoveNp} onTouchEnd={handleTouchEndNp}
+            style={{overflow:"hidden",maxWidth:"100%",maxHeight:"65vh",touchAction:"none" as const}}>
+            <img src={viewerFoto.url} draggable={false}
+              style={{maxWidth:"100%",maxHeight:"65vh",objectFit:"contain" as const,transform:`scale(${zoomNp})`,transformOrigin:"center"}}/>
+          </div>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{display:"flex",alignItems:"center",gap:14,marginTop:14}}>
+            <button onClick={()=>setZoomNp(z=>Math.max(1,z-0.5))}
+              style={{width:34,height:34,borderRadius:99,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",fontSize:18,fontWeight:700,cursor:"pointer"}}>−</button>
+            <span style={{color:"#fff",fontSize:12,fontWeight:700,minWidth:40,textAlign:"center" as const}}>{Math.round(zoomNp*100)}%</span>
+            <button onClick={()=>setZoomNp(z=>Math.min(4,z+0.5))}
+              style={{width:34,height:34,borderRadius:99,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",fontSize:18,fontWeight:700,cursor:"pointer"}}>+</button>
+          </div>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{marginTop:14,textAlign:"center" as const,color:"#fff"}}>
+            <div style={{fontSize:11,color:"#cbd5e1"}}>
+              {viewerFoto.uploaded_by?`Diupload oleh ${viewerFoto.uploaded_by}`:""}{viewerFoto.uploaded_at?" · "+new Date(viewerFoto.uploaded_at).toLocaleString("id-ID"):""}
+            </div>
+            <button onClick={()=>downloadFotoNp(viewerFoto.url,viewerFoto.label)}
+              style={{marginTop:10,display:"flex",alignItems:"center",gap:6,background:"#fff",color:"#1e293b",border:"none",borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              <i className="ti ti-download" style={{fontSize:15}}/> Download
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
