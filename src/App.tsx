@@ -3912,6 +3912,48 @@ function OperatorView({user,viewMode}:any){
         );
       })}
 
+      {/* Section Pemasangan (Foto) khusus Pasang Komponen - Assembling Luar. Sengaja RENDER
+          TERPISAH dari Card myProses.map di atas (bukan disisipkan ke dalamnya) - biar alur
+          qty/timer/operator/simpan progress yang sudah jalan buat Pasang Komponen SAMA SEKALI
+          gak disentuh/dirisikokan. Section 1 (Fabrikasi) = Card di atas apa adanya, Section 2
+          (Pemasangan Foto) = card baru ini. */}
+      {myProses.includes("PASANG KOMPONEN")&&user.sub_bagian==="Assembling Luar"&&(()=>{
+        const tasksPk=tasksByProses["PASANG KOMPONEN"]||[];
+        if(!tasksPk.length)return null;
+        const panelIdsPk=[...new Set(tasksPk.map((t:any)=>t.panel_id||t.panelId))];
+        return(
+          <Card style={{marginBottom:20,padding:0,overflow:"hidden"}}>
+            <div style={{background:"#f97316",padding:"10px 16px"}}>
+              <div style={{fontWeight:800,fontSize:14,color:"#fff"}}>📷 Pasang Komponen — Pemasangan (Foto)</div>
+            </div>
+            <div style={{padding:12,display:"flex",flexDirection:"column",gap:10}}>
+              {panelIdsPk.map((panelId:any)=>{
+                const panel=panelsMap[panelId];
+                if(!panel)return null;
+                const fotoArr=panel.pasang_komponen_photos||[];
+                return(
+                  <div key={panelId} style={{border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 12px"}}>
+                    <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:8}}>{panel.nama}</div>
+                    {fotoArr.length===0?(
+                      <div style={{fontSize:11,color:"#94a3b8",padding:"6px 0 10px"}}>Belum ada foto</div>
+                    ):(
+                      <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:10}}>
+                        {fotoArr.map((f:any,fi:number)=>(
+                          <img key={fi} src={f.url} style={{width:56,height:56,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0"}}/>
+                        ))}
+                      </div>
+                    )}
+                    <button disabled style={{fontSize:11,fontWeight:700,color:"#94a3b8",background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:6,padding:"7px 10px",cursor:"not-allowed"}}>
+                      + Tambah Foto (aktif Tahap 3)
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        );
+      })()}
+
       {/* TOMBOL KUNCI PROGRESS */}
       {todayTasks.length>0&&(
         <div style={{marginTop:16,marginBottom:8}}>
