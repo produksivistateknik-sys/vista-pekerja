@@ -2823,7 +2823,10 @@ function OperatorView({user,viewMode}:any){
       // isWiringProses karena itu masih dipakai buat hal lain yang genuinely wiring-only
       // (badge bobot/jumlah orang, gating PCT_STEPS desktop) yang gak boleh ikut kena.
       const operatorPerKartu=isWiringProses||proses==="RAKIT"||proses==="PASANG KOMPONEN";
-      const cardMode=PROSES_CARD_MODE[proses]||'qty';
+      // Pasang Komponen khusus Assembling Luar pakai mode persentase-check (25/50/75/100),
+      // bukan input qty - scoped ke sub_bagian ini aja, gak ganggu proses lain atau
+      // sub-bagian lain kalau nanti PASANG KOMPONEN di-assign ke tempat lain juga.
+      const cardMode=(proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar")?'pct':(PROSES_CARD_MODE[proses]||'qty');
 
         return(
           <Card key={proses} style={{marginBottom:20,padding:0,overflow:"hidden"}}>
@@ -3587,26 +3590,33 @@ function OperatorView({user,viewMode}:any){
                           <span style={{fontWeight:800,color:pColor(r.pct),fontFamily:"'DM Mono',monospace",fontSize:13,minWidth:34}}>{r.pct}%</span>
                         </div>
                       );
-                    })():isBusbarProses?null:(
+                    })():isBusbarProses?null:(()=>{
+                      // Pasang Komponen (Assembling Luar) pakai mode % - tapi tetap kunci
+                      // sampai operator dipilih dulu, konsisten sama semangat "Klik Mulai
+                      // dulu" yang berlaku di mode qty. Proses lain yang lewat jalur PCT_STEPS
+                      // ini gak kepengaruh (bisaEditPk default ke bisaEdit apa adanya).
+                      const bisaEditPk=(proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar")?(bisaEdit&&workers.length>0):bisaEdit;
+                      return(
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                         {PCT_STEPS.map((s:number)=>{
                           const reached=r.pct>=s;
                           const isNext=!done&&s===PCT_STEPS.find((x:number)=>x>r.pct);
                           const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
                           return(
-                            <button key={s} disabled={!bisaEdit}
-                              onClick={()=>{if(bisaEdit)updatePctManual(r.panelId,r.kode,proses,reached?prevStep:s);}}
+                            <button key={s} disabled={!bisaEditPk}
+                              onClick={()=>{if(bisaEditPk)updatePctManual(r.panelId,r.kode,proses,reached?prevStep:s);}}
                               style={{flex:1,minWidth:40,padding:"9px 4px",borderRadius:8,border:"none",
-                                cursor:bisaEdit?"pointer":"not-allowed",
+                                cursor:bisaEditPk?"pointer":"not-allowed",
                                 background:reached?pColor(s):isNext?"#eff6ff":"#f1f5f9",
                                 color:reached?"#fff":isNext?pc:"#94a3b8",
-                                fontWeight:700,fontSize:11,outline:isNext&&bisaEdit?`2px solid ${pc}`:"none"}}>
+                                fontWeight:700,fontSize:11,outline:isNext&&bisaEditPk?`2px solid ${pc}`:"none"}}>
                               {reached?"✓":`${s}%`}
                             </button>
                           );
                         })}
                       </div>
-                    )}
+                      );
+                    })()}
                     {proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"&&(()=>{
                       const panelPk=panelsMap[r.panelId];
                       const fotoArr=panelPk?.pasang_komponen_photos||[];
