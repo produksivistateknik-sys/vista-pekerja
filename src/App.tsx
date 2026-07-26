@@ -2812,6 +2812,148 @@ function OperatorView({user,viewMode}:any){
         });
 
         const isDone=(r:any)=>r.pct===100;
+
+        // Pasang Komponen khusus Assembling Luar: kartu format Nameplate (1 card per panel,
+        // Section 1 Fabrikasi + Section 2 Pemasangan Foto), TAPI tetap pakai fungsi tulis-data
+        // yang SAMA PERSIS dengan alur qty biasa (updateQtyProses/startTimer/stopTimer/
+        // lockSingleKomponen/startUntukUserSendiri) - jadi checklist/renhar/Rencana Harian
+        // gak berubah sama sekali, cuma tata letaknya yang beda. RAKIT dan proses lain di
+        // Assembling Luar TIDAK lewat sini, tetap render lewat jalur biasa di bawah.
+        if(proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"){
+          const panelIdsPk=[...new Set(rows.map((r:any)=>r.panelId))];
+          return(
+            <Card key={proses} style={{marginBottom:20,padding:0,overflow:"hidden"}}>
+              <div style={{background:pc,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                <div style={{fontWeight:800,fontSize:14,color:"#fff"}}>{proses}</div>
+                <span style={{background:"#ffffff22",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
+                  {rows.filter(isDone).length}/{rows.length} selesai
+                </span>
+              </div>
+              <div style={{padding:12,display:"flex",flexDirection:"column",gap:10}}>
+                {panelIdsPk.map((panelId:any)=>{
+                  const panelRows=rows.filter((r:any)=>r.panelId===panelId);
+                  const panel=panelsMap[panelId];
+                  if(!panel)return null;
+                  const fotoArr=panel.pasang_komponen_photos||[];
+                  return(
+                    <div key={panelId} style={{border:"1px solid #e2e8f0",borderRadius:12,overflow:"hidden"}}>
+                      <div style={{padding:"10px 12px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+                        <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{panel.nama}</div>
+                        <div style={{fontSize:10,color:"#94a3b8"}}>{panelRows[0]?.task.proyek}</div>
+                      </div>
+                      <div style={{padding:"10px 12px"}}>
+                        <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:.4}}>SECTION 1 · FABRIKASI</div>
+                        <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                          {panelRows.map((r:any)=>{
+                            const done=isDone(r);
+                            const idsKomp=getFlatOperatorIds(r.task,r.kode);
+                            const workers=idsKomp.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
+                            const qtyLocked=!r.sudahPernahMulai;
+                            const floor=getLockedFloor(r.panelId,r.kode,proses);
+                            const locked=isCellLocked(r.panelId,r.kode,proses);
+                            const flashKey=`${r.panelId}_${r.kode}_${proses}`;
+                            const flashing=!!savedFlash[flashKey];
+                            return(
+                              <div key={r.kode} style={{border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 12px",background:done?"#f0fdf4":"#fff"}}>
+                                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}>
+                                  <div>
+                                    <span style={{fontWeight:700,fontSize:12,color:"#374151"}}>{r.item?.nama||r.kode}</span>
+                                    <div style={{fontSize:9,color:"#94a3b8"}}>{r.kode}</div>
+                                  </div>
+                                  {done?<Badge label="TERCAPAI" color="#16a34a" bg="#dcfce7"/>:r.pct===0?<Badge label="BELUM MULAI" color="#94a3b8" bg="#f1f5f9"/>:<Badge label="ON PROGRESS" color="#2563eb" bg="#dbeafe"/>}
+                                </div>
+                                {workers.length===0?(
+                                  <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
+                                    style={{width:"100%",fontSize:12,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center" as const,marginBottom:8}}>
+                                    + Pilih Operator
+                                  </button>
+                                ):(()=>{
+                                  const timerKeys=workers.map((w:any)=>timerKey(r.panelId,r.kode,proses,w.id));
+                                  const anyTimerRunning=timerKeys.some((k:string)=>!!timerAktif[k]);
+                                  const anyLoading=timerKeys.some((k:string)=>timerLoading===k);
+                                  return(
+                                    <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:8}}>
+                                      <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,alignItems:"center"}}>
+                                        {workers.map((w:any)=>(
+                                          <span key={w.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:DIVISI_CONFIG[w.divisi]?.color||"#64748b",background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",borderRadius:20,padding:"4px 10px"}}>
+                                            {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
+                                          </span>
+                                        ))}
+                                        <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
+                                          style={{fontSize:10,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"4px 8px",cursor:"pointer"}}>
+                                          ✏️ Edit Operator
+                                        </button>
+                                      </div>
+                                      <button disabled={anyLoading}
+                                        onClick={()=>{
+                                          if(anyTimerRunning){workers.forEach((w:any)=>{const k=timerKey(r.panelId,r.kode,proses,w.id);if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,proses);});}
+                                          else{workers.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,proses,viewDate));}
+                                        }}
+                                        style={{fontSize:12,fontWeight:700,border:"none",borderRadius:8,padding:"10px 12px",minHeight:40,cursor:anyLoading?"not-allowed":"pointer",background:anyTimerRunning?"#fef2f2":"#f0fdf4",color:anyTimerRunning?"#dc2626":"#16a34a"}}>
+                                        {anyLoading?"...":anyTimerRunning?"⏹ Selesai":"▶ Mulai"}
+                                      </button>
+                                    </div>
+                                  );
+                                })()}
+                                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
+                                  {locked?(
+                                    <span style={{padding:"7px 10px",borderRadius:8,border:"1.5px solid #16a34a",background:"#f0fdf4",fontSize:13,fontWeight:700,color:"#16a34a"}}>{r.qtyProses} 🔒</span>
+                                  ):(
+                                    <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
+                                      <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
+                                        onChange={(e:any)=>{
+                                          if(!((r.task.pekerja_per_komponen||{})[r.kode]?.length))startUntukUserSendiri(proses,[r]);
+                                          updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value));
+                                        }}
+                                        disabled={r.qtyKomp===0||qtyLocked}
+                                        placeholder={qtyLocked?"–":undefined}
+                                        style={{width:70,minHeight:40,padding:"8px",borderRadius:8,border:`1.5px solid ${r.qtyKomp===0||qtyLocked?"#e2e8f0":floor>0?"#f59e0b":"#2563eb"}`,background:r.qtyKomp===0||qtyLocked?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",fontSize:15,textAlign:"center" as const,fontWeight:700,fontFamily:"'DM Mono',monospace",color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
+                                      {qtyLocked&&<span style={{fontSize:9,color:"#94a3b8",fontWeight:600,whiteSpace:"nowrap" as const}}>Klik Mulai dulu</span>}
+                                    </div>
+                                  )}
+                                  <div style={{flex:1,background:"#e2e8f0",borderRadius:99,height:8,overflow:"hidden"}}>
+                                    <div style={{width:`${r.pct}%`,height:"100%",background:pColor(r.pct),borderRadius:99}}/>
+                                  </div>
+                                  <span style={{fontWeight:800,color:pColor(r.pct),fontFamily:"'DM Mono',monospace",fontSize:13,minWidth:34}}>{r.pct}%</span>
+                                </div>
+                                {workers.length>0&&(
+                                  <button disabled={r.pct===0} onClick={async()=>{
+                                      const berhasil=await lockSingleKomponen(r.panelId,r.kode,proses);
+                                      if(berhasil&&r.pct<100){
+                                        setSavedFlash(prev=>({...prev,[flashKey]:true}));
+                                        setTimeout(()=>setSavedFlash(prev=>({...prev,[flashKey]:false})),1500);
+                                      }
+                                    }}
+                                    style={{width:"100%",fontSize:12,fontWeight:700,border:"none",borderRadius:10,padding:"10px 12px",minHeight:40,cursor:r.pct===0?"not-allowed":"pointer",background:flashing?"#16a34a":"#eff6ff",color:flashing?"#fff":"#1d4ed8"}}>
+                                    {flashing?"✅ Tersimpan":"💾 Simpan Progress"}
+                                  </button>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                        <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",margin:"14px 0 8px",letterSpacing:.4}}>SECTION 2 · PEMASANGAN (FOTO)</div>
+                        {fotoArr.length===0?(
+                          <div style={{fontSize:11,color:"#94a3b8",padding:"6px 0 10px"}}>Belum ada foto</div>
+                        ):(
+                          <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:10}}>
+                            {fotoArr.map((f:any,fi:number)=>(
+                              <img key={fi} src={f.url} style={{width:56,height:56,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0"}}/>
+                            ))}
+                          </div>
+                        )}
+                        <button disabled style={{fontSize:11,fontWeight:700,color:"#94a3b8",background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:6,padding:"7px 10px",cursor:"not-allowed"}}>
+                          + Tambah Foto (aktif Tahap 3)
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </Card>
+          );
+        }
+
         const isDrilldownProses=["WIRING CONTROL","WIRING POWER","BUSBAR"].includes(proses);
         const PROSES_KUMPUL_DULU_DESKTOP=["POTONG","RENDAM","PAINTING"];
         // Mobile: titik awal pilih komponen dibalik jadi Jenis Komponen -> Panel buat proses ini.
@@ -3911,48 +4053,6 @@ function OperatorView({user,viewMode}:any){
           </Card>
         );
       })}
-
-      {/* Section Pemasangan (Foto) khusus Pasang Komponen - Assembling Luar. Sengaja RENDER
-          TERPISAH dari Card myProses.map di atas (bukan disisipkan ke dalamnya) - biar alur
-          qty/timer/operator/simpan progress yang sudah jalan buat Pasang Komponen SAMA SEKALI
-          gak disentuh/dirisikokan. Section 1 (Fabrikasi) = Card di atas apa adanya, Section 2
-          (Pemasangan Foto) = card baru ini. */}
-      {myProses.includes("PASANG KOMPONEN")&&user.sub_bagian==="Assembling Luar"&&(()=>{
-        const tasksPk=tasksByProses["PASANG KOMPONEN"]||[];
-        if(!tasksPk.length)return null;
-        const panelIdsPk=[...new Set(tasksPk.map((t:any)=>t.panel_id||t.panelId))];
-        return(
-          <Card style={{marginBottom:20,padding:0,overflow:"hidden"}}>
-            <div style={{background:"#f97316",padding:"10px 16px"}}>
-              <div style={{fontWeight:800,fontSize:14,color:"#fff"}}>📷 Pasang Komponen — Pemasangan (Foto)</div>
-            </div>
-            <div style={{padding:12,display:"flex",flexDirection:"column",gap:10}}>
-              {panelIdsPk.map((panelId:any)=>{
-                const panel=panelsMap[panelId];
-                if(!panel)return null;
-                const fotoArr=panel.pasang_komponen_photos||[];
-                return(
-                  <div key={panelId} style={{border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 12px"}}>
-                    <div style={{fontWeight:700,fontSize:13,color:"#1e293b",marginBottom:8}}>{panel.nama}</div>
-                    {fotoArr.length===0?(
-                      <div style={{fontSize:11,color:"#94a3b8",padding:"6px 0 10px"}}>Belum ada foto</div>
-                    ):(
-                      <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:10}}>
-                        {fotoArr.map((f:any,fi:number)=>(
-                          <img key={fi} src={f.url} style={{width:56,height:56,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0"}}/>
-                        ))}
-                      </div>
-                    )}
-                    <button disabled style={{fontSize:11,fontWeight:700,color:"#94a3b8",background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:6,padding:"7px 10px",cursor:"not-allowed"}}>
-                      + Tambah Foto (aktif Tahap 3)
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          </Card>
-        );
-      })()}
 
       {/* TOMBOL KUNCI PROGRESS */}
       {todayTasks.length>0&&(
