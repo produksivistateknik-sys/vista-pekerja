@@ -541,6 +541,10 @@ function Login({onLogin}:any){
 // OPERATOR VIEW — tabel besar per proses (connect ke Supabase)
 // ─────────────────────────────────────────────────────────────────────────────
 const PROGRESS_STEPS_NP=[25,50,75,100];
+// Warehouse/QS: status 3-tahap (bukan persentase) - To Do=0, In Progress=50, Done=100, tetap
+// disimpan ke field progress (number) yang sama biar status "selesai/proses/belum" di tempat lain
+// (Quality Center, dsb) gak perlu berubah.
+const STATUS_3_NP=[{key:"todo",label:"To Do",pct:0},{key:"progress",label:"In Progress",pct:50},{key:"done",label:"Done",pct:100}];
 
 const getUrgensiPanel=(target:string|undefined)=>{
   if(!target)return{level:"normal",label:"",hari:null};
@@ -1968,16 +1972,15 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
                 <div style={{padding:"10px 14px",borderTop:"1px solid #f1f5f9",background:"#f8fafc"}}>
                   <div style={{marginBottom:12}}>
                     <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.4}}>SECTION 1 · FABRIKASI</div>
-                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
-                      <span style={{fontSize:11,color:"#64748b"}}>Progress</span>
-                      <span style={{fontSize:11,fontWeight:700,color:pct>=100?"#16a34a":"#64748b"}}>{pct}%</span>
-                    </div>
                     <div style={{display:"flex",gap:4}}>
-                      {PROGRESS_STEPS_NP.map(s=>(
-                        <button key={s} onClick={()=>updateProgress(p.id,pct>=s?s-25:s)}
-                          style={{flex:1,height:28,borderRadius:6,border:"none",cursor:"pointer",fontSize:10,fontWeight:700,
-                            background:pct>=s?tugas.color:"#f1f5f9",color:pct>=s?"#fff":"#94a3b8"}}>{s}%</button>
-                      ))}
+                      {STATUS_3_NP.map(s=>{
+                        const active=s.key==="todo"?pct===0:s.key==="done"?pct>=100:(pct>0&&pct<100);
+                        return(
+                          <button key={s.key} onClick={()=>updateProgress(p.id,s.pct)}
+                            style={{flex:1,height:32,borderRadius:6,border:"none",cursor:"pointer",fontSize:10.5,fontWeight:700,
+                              background:active?tugas.color:"#f1f5f9",color:active?"#fff":"#94a3b8"}}>{s.label}</button>
+                        );
+                      })}
                     </div>
                   </div>
                   <div>
