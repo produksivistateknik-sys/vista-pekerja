@@ -1693,6 +1693,7 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
         [tugas.fotoField]:newFoto,
       };
       await supabase.from("panels").update(patch).eq("id",p.id);
+      dirtyProgressRef.current.delete(p.id);
       setPanelsList(prev=>prev.map((pp:any)=>pp.id===p.id?{...pp,...patch}:pp));
       staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
       setStagedFotos(prev=>{const next={...prev};delete next[p.id];return next;});
@@ -1703,6 +1704,11 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
     setSavingKey(null);
   };
 
+  // Panel yang persentase-nya barusan diklik tapi belum "Simpan Progress" - dilindungi dari
+  // ketiban fetchData() (realtime nyala buat SEMUA update tabel panels, bukan cuma punya sendiri,
+  // jadi tanpa ini klik yang belum disimpan bisa ke-timpa balik pas ada panel lain yang berubah).
+  const dirtyProgressRef=useRef<Set<number>>(new Set());
+
   const fetchData=async()=>{
     setLoading(true);
     const{data:panels}=await supabase.from("panels").select("*");
@@ -1710,10 +1716,19 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
     const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target,is_archived").in("id",woIds):{data:[]};
     const woMap:Record<number,any>={};
     (wos??[]).forEach((w:any)=>{woMap[w.id]=w;});
-    const merged=(panels??[])
-      .filter((p:any)=>!woMap[p.wo_id]?.is_archived)
-      .map((p:any)=>({...p,_wo:woMap[p.wo_id]||{}}));
-    setPanelsList(merged);
+    setPanelsList(prev=>{
+      const prevMap:Record<number,any>={};
+      prev.forEach((p:any)=>{prevMap[p.id]=p;});
+      return(panels??[])
+        .filter((p:any)=>!woMap[p.wo_id]?.is_archived)
+        .map((p:any)=>{
+          const merged={...p,_wo:woMap[p.wo_id]||{}};
+          if(dirtyProgressRef.current.has(p.id)&&prevMap[p.id]){
+            merged[tugas.progressField]=prevMap[p.id][tugas.progressField];
+          }
+          return merged;
+        });
+    });
     setLoading(false);
   };
 
@@ -1729,6 +1744,7 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
   const[lockLoading,setLockLoading]=useState(false);
 
   const updateProgress=(panelId:number,val:number)=>{
+    dirtyProgressRef.current.add(panelId);
     setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,[tugas.progressField]:val}:p));
   };
 
@@ -1749,6 +1765,7 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
         [tugas.updatedAtField]:new Date().toISOString(),
         [tugas.historyField]:newHist,
       }).eq("id",p.id);
+      dirtyProgressRef.current.delete(p.id);
       count++;
     }
     setLockLoading(false);
@@ -1757,6 +1774,13 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
   };
 
   const urutanLevelNp:Record<string,number>={telat:0,mendesak:1,perhatian:2,normal:3};
+  // Beda dari Nameplate/Yellowmark: Warehouse/QS dianggap "Selesai" cukup dari persentase 100%,
+  // gak wajib ada foto (foto tetap boleh dilampirkan, tapi bukan syarat status selesai).
+  const hitungStatusKomponen=(pct:number)=>{
+    if(pct>=100)return"selesai";
+    if(pct>0)return"proses";
+    return"belum";
+  };
 
   const projectGroups=useMemo(()=>{
     const groups:Record<string,{wo:any,panels:any[]}>={};
@@ -1767,7 +1791,7 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
     });
     return Object.entries(groups).map(([woId,g])=>{
       const totalPanel=g.panels.length;
-      const selesai=g.panels.filter((p:any)=>hitungStatusTugasNp(p[tugas.progressField]||0,(p[tugas.fotoField]||[]).length)==="selesai").length;
+      const selesai=g.panels.filter((p:any)=>hitungStatusKomponen(p[tugas.progressField]||0)==="selesai").length;
       return{woId:Number(woId),wo:g.wo,panels:g.panels,totalPanel,selesai};
     }).sort((a,b)=>{
       const aDone=a.selesai===a.totalPanel;
@@ -1847,7 +1871,7 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
         {(selectedProject?.panels||[]).map((p:any)=>{
           const pct=p[tugas.progressField]||0;
           const fotoArr=p[tugas.fotoField]||[];
-          const status=hitungStatusTugasNp(pct,fotoArr.length);
+          const status=hitungStatusKomponen(pct);
           const st=STATUS_TUGAS_NP[status];
           const expanded=expandedPanel.has(p.id);
           const staged=stagedFotos[p.id]||[];
