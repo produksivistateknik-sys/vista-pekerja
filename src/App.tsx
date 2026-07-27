@@ -87,9 +87,13 @@ const DIVISI_CONFIG: Record<string,any> = {
   assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",proses:null,manualName:true,
     subBagianPassword:{"Assembling Luar":"asmluar123","Assembling Dalam":"asmdalam123"},
     subBagianProses:{"Assembling Luar":["RAKIT","PASANG KOMPONEN"],"Assembling Dalam":["BUSBAR"]}},
-  wiring_ctrl:{label:"Wiring Control",icon:"⚡", color:"#6366f1",bg:"#eef2ff",password:"wiring123",  proses:["WIRING CONTROL"]},
-  wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8",password:"wiringp123", proses:["WIRING POWER"]},
-  qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",password:"qc123",      proses:["QC TEST","PACKING"]},
+  // manualName:true - nama login jadi dropdown dari tabel pekerja (semua nama operator per
+  // divisi ini), pakai 1 password bersama (field password di bawah), persis pola Potong/
+  // Bending/Stel dkk di mekanik. Sebelumnya QC/Wiring lewat operator_users (username+password
+  // per orang) - akun individual di situ jadi gak kepakai lagi setelah ini.
+  wiring_ctrl:{label:"Wiring Control",icon:"⚡", color:"#6366f1",bg:"#eef2ff",password:"wiring123",  proses:["WIRING CONTROL"],manualName:true},
+  wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8",password:"wiringp123", proses:["WIRING POWER"],manualName:true},
+  qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",password:"qc123",      proses:["QC TEST","PACKING"],manualName:true},
   nameplate:  {label:"Nameplate",     icon:"🏷️", color:"#0891b2",bg:"#ecfeff",password:"nameplate123",proses:null},
   komponen:   {label:"Komponen",       icon:"📦", color:"#0d9488",bg:"#f0fdfa",proses:null,manualName:true,
     // "Assembling" sengaja dihapus dari opsi login - sudah gantiin pakai Assembling Luar
