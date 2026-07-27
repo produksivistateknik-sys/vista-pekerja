@@ -1157,6 +1157,10 @@ const TUGAS_NP=[
   {field:"nameplate",label:"Nameplate",icon:"🏷️",color:"#0891b2",progressField:"nameplate_progress" as const,fotoField:"nameplate_photos",historyField:"nameplate_history",updatedByField:"nameplate_updated_by",updatedAtField:"nameplate_updated_at"},
   {field:"yellowmark",label:"Yellowmark",icon:"🟡",color:"#ca8a04",progressField:"yellowmark_progress" as const,fotoField:"yellowmark_photos",historyField:"yellowmark_history",updatedByField:"yellowmark_updated_by",updatedAtField:"yellowmark_updated_at"},
 ];
+// Warehouse & QS - gaya sama persis Nameplate/Yellowmark (Fabrikasi % + Pemasangan Foto per
+// panel), tapi masing-masing cuma 1 tugas (bukan sepasang) dan bucket foto sendiri-sendiri.
+const TUGAS_WAREHOUSE={field:"warehouse",label:"Warehouse",icon:"📦",color:"#0d9488",progressField:"warehouse_progress" as const,fotoField:"warehouse_photos",historyField:"warehouse_history",updatedByField:"warehouse_updated_by",updatedAtField:"warehouse_updated_at",bucket:"warehouse-photos"};
+const TUGAS_QS={field:"qs",label:"QS",icon:"📋",color:"#7c3aed",progressField:"qs_progress" as const,fotoField:"qs_photos",historyField:"qs_history",updatedByField:"qs_updated_by",updatedAtField:"qs_updated_at",bucket:"qs-photos"};
 // Kompres foto sebelum upload (canvas resize max-width 1600px + JPEG q0.8) - foto asli dari
 // kamera HP bisa 3-8MB, operator sering upload lewat data seluler.
 const compressImageNp=(file:File):Promise<Blob>=>new Promise((resolve,reject)=>{
@@ -1534,6 +1538,361 @@ function NameplateView({user}:any){
                   );
                 })}
               </div>
+            </div>
+          );
+        })}
+      </div>
+      {viewerFoto&&(
+        <div onClick={tutupViewer}
+          style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.9)",zIndex:300,display:"flex",flexDirection:"column" as const,alignItems:"center",justifyContent:"center",padding:16}}>
+          <button onClick={tutupViewer}
+            style={{position:"absolute" as const,top:16,right:16,width:36,height:36,borderRadius:99,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            <i className="ti ti-x" style={{fontSize:18}}/>
+          </button>
+          <div onClick={(e:any)=>e.stopPropagation()}
+            onTouchStart={handleTouchStartNp} onTouchMove={handleTouchMoveNp} onTouchEnd={handleTouchEndNp}
+            style={{overflow:"hidden",maxWidth:"100%",maxHeight:"65vh",touchAction:"none" as const}}>
+            <img src={viewerFoto.url} draggable={false}
+              style={{maxWidth:"100%",maxHeight:"65vh",objectFit:"contain" as const,transform:`scale(${zoomNp})`,transformOrigin:"center"}}/>
+          </div>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{display:"flex",alignItems:"center",gap:14,marginTop:14}}>
+            <button onClick={()=>setZoomNp(z=>Math.max(1,z-0.5))}
+              style={{width:34,height:34,borderRadius:99,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",fontSize:18,fontWeight:700,cursor:"pointer"}}>−</button>
+            <span style={{color:"#fff",fontSize:12,fontWeight:700,minWidth:40,textAlign:"center" as const}}>{Math.round(zoomNp*100)}%</span>
+            <button onClick={()=>setZoomNp(z=>Math.min(4,z+0.5))}
+              style={{width:34,height:34,borderRadius:99,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",fontSize:18,fontWeight:700,cursor:"pointer"}}>+</button>
+          </div>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{marginTop:14,textAlign:"center" as const,color:"#fff"}}>
+            <div style={{fontSize:11,color:"#cbd5e1"}}>
+              {viewerFoto.uploaded_by?`Diupload oleh ${viewerFoto.uploaded_by}`:""}{viewerFoto.uploaded_at?" · "+new Date(viewerFoto.uploaded_at).toLocaleString("id-ID"):""}
+            </div>
+            <button onClick={()=>downloadFotoNp(viewerFoto.url,viewerFoto.label)}
+              style={{marginTop:10,display:"flex",alignItems:"center",gap:6,background:"#fff",color:"#1e293b",border:"none",borderRadius:8,padding:"8px 16px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+              <i className="ti ti-download" style={{fontSize:15}}/> Download
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Sama persis pola NameplateView, digenerikkan buat 1 tugas (Warehouse ATAU QS, bukan sepasang) -
+// dipakai via prop `tugas` (TUGAS_WAREHOUSE/TUGAS_QS), termasuk nama bucket foto sendiri-sendiri.
+function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:string,icon:string,color:string,progressField:string,fotoField:string,historyField:string,updatedByField:string,updatedAtField:string,bucket:string}}){
+  const[panelsList,setPanelsList]=useState<any[]>([]);
+  const[loading,setLoading]=useState(true);
+  const[search,setSearch]=useState("");
+  const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
+  const[expandedPanel,setExpandedPanel]=useState<Set<number>>(new Set());
+  const togglePanel=(panelId:number)=>{
+    setExpandedPanel(prev=>{
+      const next=new Set(prev);
+      if(next.has(panelId))next.delete(panelId);else next.add(panelId);
+      return next;
+    });
+  };
+
+  const[stagedFotos,setStagedFotos]=useState<Record<number,{file:File,previewUrl:string}[]>>({});
+  const[savingKey,setSavingKey]=useState<number|null>(null);
+  const[uploadProgress,setUploadProgress]=useState<{current:number,total:number}|null>(null);
+
+  const[viewerFoto,setViewerFoto]=useState<{url:string,uploaded_at?:string,uploaded_by?:string,label:string}|null>(null);
+  const[zoomNp,setZoomNp]=useState(1);
+  const pinchStartDist=useRef<number|null>(null);
+  const pinchStartZoom=useRef(1);
+  const bukaViewer=(f:any,label:string)=>{setViewerFoto({...f,label});setZoomNp(1);};
+  const tutupViewer=()=>{setViewerFoto(null);setZoomNp(1);};
+  const handleTouchStartNp=(e:any)=>{
+    if(e.touches.length===2){
+      const[a,b]=e.touches;
+      pinchStartDist.current=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      pinchStartZoom.current=zoomNp;
+    }
+  };
+  const handleTouchMoveNp=(e:any)=>{
+    if(e.touches.length===2&&pinchStartDist.current){
+      const[a,b]=e.touches;
+      const dist=Math.hypot(a.clientX-b.clientX,a.clientY-b.clientY);
+      const scale=dist/pinchStartDist.current;
+      setZoomNp(Math.min(4,Math.max(1,pinchStartZoom.current*scale)));
+    }
+  };
+  const handleTouchEndNp=()=>{pinchStartDist.current=null;};
+
+  const pilihFotoStaged=(panelId:number,fileList:FileList|null)=>{
+    if(!fileList||fileList.length===0)return;
+    const dipilih=Array.from(fileList).map(file=>({file,previewUrl:URL.createObjectURL(file)}));
+    setStagedFotos(prev=>({...prev,[panelId]:[...(prev[panelId]||[]),...dipilih]}));
+  };
+
+  const batalkanFotoStaged=(panelId:number,idx:number)=>{
+    setStagedFotos(prev=>{
+      const arr=prev[panelId]||[];
+      URL.revokeObjectURL(arr[idx]?.previewUrl);
+      return{...prev,[panelId]:arr.filter((_,i)=>i!==idx)};
+    });
+  };
+
+  const simpanProgressPanel=async(p:any)=>{
+    const staged=stagedFotos[p.id]||[];
+    const pct=p[tugas.progressField]||0;
+    const existingFoto=p[tugas.fotoField]||[];
+    const hist=p[tugas.historyField]||[];
+    const existIdx=hist.findIndex((h:any)=>h.tanggal===TODAY);
+    const pctBerubah=existIdx<0||hist[existIdx].pct!==pct;
+    if(!pctBerubah&&staged.length===0){alert("Tidak ada perubahan untuk disimpan");return;}
+    setSavingKey(p.id);
+    try{
+      const fotoTerupload:any[]=[];
+      for(let i=0;i<staged.length;i++){
+        setUploadProgress({current:i+1,total:staged.length});
+        const s=staged[i];
+        const blob=await compressImageNp(s.file);
+        const path=`${p.id}/${tugas.field}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+        const{error:upErr}=await supabase.storage.from(tugas.bucket).upload(path,blob,{contentType:"image/jpeg"});
+        if(upErr){alert(`Gagal upload salah satu foto: ${upErr.message}`);continue;}
+        const{data:urlData}=supabase.storage.from(tugas.bucket).getPublicUrl(path);
+        fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+      }
+      setUploadProgress(null);
+      const newFoto=[...existingFoto,...fotoTerupload];
+      const newHist=[...hist];
+      if(existIdx>=0)newHist[existIdx]={...newHist[existIdx],pct,ts:new Date().toISOString()};
+      else newHist.push({tanggal:TODAY,pct,oleh:user.nama,ts:new Date().toISOString()});
+      const patch={
+        [tugas.progressField]:pct,
+        [tugas.updatedByField]:user.nama,
+        [tugas.updatedAtField]:new Date().toISOString(),
+        [tugas.historyField]:newHist,
+        [tugas.fotoField]:newFoto,
+      };
+      await supabase.from("panels").update(patch).eq("id",p.id);
+      setPanelsList(prev=>prev.map((pp:any)=>pp.id===p.id?{...pp,...patch}:pp));
+      staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
+      setStagedFotos(prev=>{const next={...prev};delete next[p.id];return next;});
+    }catch(err:any){
+      alert("Terjadi kesalahan: "+err.message);
+    }
+    setUploadProgress(null);
+    setSavingKey(null);
+  };
+
+  const fetchData=async()=>{
+    setLoading(true);
+    const{data:panels}=await supabase.from("panels").select("*");
+    const woIds=[...new Set((panels??[]).map((p:any)=>p.wo_id).filter(Boolean))];
+    const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target,is_archived").in("id",woIds):{data:[]};
+    const woMap:Record<number,any>={};
+    (wos??[]).forEach((w:any)=>{woMap[w.id]=w;});
+    const merged=(panels??[])
+      .filter((p:any)=>!woMap[p.wo_id]?.is_archived)
+      .map((p:any)=>({...p,_wo:woMap[p.wo_id]||{}}));
+    setPanelsList(merged);
+    setLoading(false);
+  };
+
+  useEffect(()=>{
+    fetchData();
+    const ch=supabase.channel(`realtime-panels-${tugas.field}`)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},()=>{fetchData();})
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"panels"},()=>{fetchData();})
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[tugas.field]);
+
+  const[lockLoading,setLockLoading]=useState(false);
+
+  const updateProgress=(panelId:number,val:number)=>{
+    setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,[tugas.progressField]:val}:p));
+  };
+
+  const kunciProgress=async(panelList:any[])=>{
+    setLockLoading(true);
+    let count=0;
+    for(const p of panelList){
+      const hist=p[tugas.historyField]||[];
+      const existIdx=hist.findIndex((h:any)=>h.tanggal===TODAY);
+      const changed=existIdx<0||hist[existIdx].pct!==(p[tugas.progressField]||0);
+      if(!changed)continue;
+      const newHist=[...hist];
+      if(existIdx>=0)newHist[existIdx]={...newHist[existIdx],pct:p[tugas.progressField]||0,ts:new Date().toISOString()};
+      else newHist.push({tanggal:TODAY,pct:p[tugas.progressField]||0,oleh:user.nama,ts:new Date().toISOString()});
+      await supabase.from("panels").update({
+        [tugas.progressField]:p[tugas.progressField]||0,
+        [tugas.updatedByField]:user.nama,
+        [tugas.updatedAtField]:new Date().toISOString(),
+        [tugas.historyField]:newHist,
+      }).eq("id",p.id);
+      count++;
+    }
+    setLockLoading(false);
+    alert(count>0?`${count} panel berhasil dikunci`:"Tidak ada perubahan untuk dikunci");
+    fetchData();
+  };
+
+  const urutanLevelNp:Record<string,number>={telat:0,mendesak:1,perhatian:2,normal:3};
+
+  const projectGroups=useMemo(()=>{
+    const groups:Record<string,{wo:any,panels:any[]}>={};
+    panelsList.forEach((p:any)=>{
+      const woId=String(p.wo_id);
+      if(!groups[woId])groups[woId]={wo:p._wo,panels:[]};
+      groups[woId].panels.push(p);
+    });
+    return Object.entries(groups).map(([woId,g])=>{
+      const totalPanel=g.panels.length;
+      const selesai=g.panels.filter((p:any)=>hitungStatusTugasNp(p[tugas.progressField]||0,(p[tugas.fotoField]||[]).length)==="selesai").length;
+      return{woId:Number(woId),wo:g.wo,panels:g.panels,totalPanel,selesai};
+    }).sort((a,b)=>{
+      const aDone=a.selesai===a.totalPanel;
+      const bDone=b.selesai===b.totalPanel;
+      if(aDone!==bDone)return aDone?1:-1;
+      const uA=getUrgensiPanel(a.wo?.target);const uB=getUrgensiPanel(b.wo?.target);
+      const lvA=urutanLevelNp[uA.level]??3;const lvB=urutanLevelNp[uB.level]??3;
+      if(lvA!==lvB)return lvA-lvB;
+      if(uA.hari!==null&&uB.hari!==null)return uA.hari-uB.hari;
+      return 0;
+    });
+  },[panelsList,tugas]);
+
+  const filteredProjects=projectGroups.filter((g:any)=>
+    !search||g.wo?.proyek?.toLowerCase().includes(search.toLowerCase())||g.wo?.wo?.toLowerCase().includes(search.toLowerCase())
+  );
+
+  const selectedProject=projectGroups.find((g:any)=>g.woId===selectedWoId);
+
+  const warnaUrgMap:Record<string,{bg:string,color:string}>={telat:{bg:"#fef2f2",color:"#dc2626"},mendesak:{bg:"#fff7ed",color:"#ea580c"},perhatian:{bg:"#fefce8",color:"#ca8a04"}};
+
+  if(!selectedWoId){
+    return(
+      <div style={{padding:"12px 14px"}}>
+        <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="🔍 Cari proyek atau WO..."
+          style={{width:"100%",height:36,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,marginBottom:12,outline:"none"}}/>
+        {loading?(
+          <div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Memuat data...</div>
+        ):filteredProjects.length===0?(
+          <div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Tidak ada proyek</div>
+        ):(
+          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+            {filteredProjects.map((g:any)=>{
+              const allDone=g.selesai===g.totalPanel;
+              const urg=getUrgensiPanel(g.wo?.target);
+              const w=warnaUrgMap[urg.level];
+              return(
+                <div key={g.woId} onClick={()=>setSelectedWoId(g.woId)}
+                  style={{background:"#fff",border:`1px solid ${allDone?"#bbf7d0":"#e2e8f0"}`,borderRadius:10,padding:"14px 16px",cursor:"pointer",opacity:allDone?0.7:1,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+                  <div>
+                    <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{g.wo?.proyek}</div>
+                    <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>WO {g.wo?.wo} · {g.selesai}/{g.totalPanel} panel selesai</div>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",gap:8}}>
+                    {urg.label&&urg.level!=="normal"&&w&&(
+                      <span style={{fontSize:9,fontWeight:700,background:w.bg,color:w.color,borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap" as const}}>{urg.level==="telat"?"⚠️ ":"⏰ "}{urg.label}</span>
+                    )}
+                    <i className="ti ti-chevron-right" style={{fontSize:18,color:"#94a3b8"}}/>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return(
+    <div style={{padding:"12px 14px"}}>
+      <button onClick={()=>setSelectedWoId(null)}
+        style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:tugas.color,fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12,padding:0}}>
+        <i className="ti ti-arrow-left" style={{fontSize:16}}/> Kembali ke Daftar Proyek
+      </button>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
+        <div>
+          <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:4}}>{selectedProject?.wo?.proyek}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>WO {selectedProject?.wo?.wo}</div>
+        </div>
+        <button onClick={()=>kunciProgress(selectedProject?.panels||[])} disabled={lockLoading}
+          style={{background:lockLoading?"#94a3b8":tugas.color,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:lockLoading?"not-allowed":"pointer",whiteSpace:"nowrap" as const}}>
+          {lockLoading?"⏳ Mengunci...":"🔒 Kunci Progress"}
+        </button>
+      </div>
+
+      <div style={{display:"flex",flexDirection:"column",gap:10}}>
+        {(selectedProject?.panels||[]).map((p:any)=>{
+          const pct=p[tugas.progressField]||0;
+          const fotoArr=p[tugas.fotoField]||[];
+          const status=hitungStatusTugasNp(pct,fotoArr.length);
+          const st=STATUS_TUGAS_NP[status];
+          const expanded=expandedPanel.has(p.id);
+          const staged=stagedFotos[p.id]||[];
+          const saving=savingKey===p.id;
+          return(
+            <div key={p.id} style={{border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden",background:"#fff"}}>
+              <div onClick={()=>togglePanel(p.id)}
+                style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 14px",cursor:"pointer"}}>
+                <div>
+                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.nama}</div>
+                  <div style={{fontSize:10,color:"#94a3b8"}}>{tugas.icon} {tugas.label}</div>
+                </div>
+                <div style={{display:"flex",alignItems:"center",gap:8}}>
+                  <span style={{fontSize:10,fontWeight:700,background:st.bg,color:st.color,borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap" as const}}>{st.label}</span>
+                  <i className={`ti ti-chevron-${expanded?"up":"down"}`} style={{fontSize:15,color:"#94a3b8"}}/>
+                </div>
+              </div>
+              {expanded&&(
+                <div style={{padding:"10px 14px",borderTop:"1px solid #f1f5f9",background:"#f8fafc"}}>
+                  <div style={{marginBottom:12}}>
+                    <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.4}}>SECTION 1 · FABRIKASI</div>
+                    <div style={{display:"flex",justifyContent:"space-between",marginBottom:4}}>
+                      <span style={{fontSize:11,color:"#64748b"}}>Progress</span>
+                      <span style={{fontSize:11,fontWeight:700,color:pct>=100?"#16a34a":"#64748b"}}>{pct}%</span>
+                    </div>
+                    <div style={{display:"flex",gap:4}}>
+                      {PROGRESS_STEPS_NP.map(s=>(
+                        <button key={s} onClick={()=>updateProgress(p.id,pct>=s?s-25:s)}
+                          style={{flex:1,height:28,borderRadius:6,border:"none",cursor:"pointer",fontSize:10,fontWeight:700,
+                            background:pct>=s?tugas.color:"#f1f5f9",color:pct>=s?"#fff":"#94a3b8"}}>{s}%</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.4}}>SECTION 2 · PEMASANGAN (FOTO)</div>
+                    {fotoArr.length===0&&staged.length===0?(
+                      <div style={{fontSize:11,color:"#94a3b8",padding:"6px 0 10px"}}>Belum ada foto</div>
+                    ):(
+                      <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:10}}>
+                        {fotoArr.map((f:any,fi:number)=>(
+                          <div key={`saved_${fi}`} onClick={()=>bukaViewer(f,`${tugas.label}_${p.nama}`)} style={{cursor:"pointer"}}>
+                            <img src={f.url} style={{width:56,height:56,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0"}}/>
+                            <div style={{fontSize:8,color:"#94a3b8",marginTop:2,textAlign:"center" as const}}>{f.uploaded_at?new Date(f.uploaded_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):""}</div>
+                          </div>
+                        ))}
+                        {staged.map((s,si)=>(
+                          <div key={`staged_${si}`} style={{position:"relative" as const}}>
+                            <img src={s.previewUrl} style={{width:56,height:56,borderRadius:6,objectFit:"cover" as const,border:`1.5px dashed ${tugas.color}`}}/>
+                            <button onClick={()=>batalkanFotoStaged(p.id,si)}
+                              style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #f8fafc",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <i className="ti ti-x" style={{fontSize:10}}/>
+                            </button>
+                            <div style={{fontSize:8,color:tugas.color,marginTop:2,textAlign:"center" as const,fontWeight:700}}>belum disimpan</div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:tugas.color,background:"#fff",border:`1px dashed ${tugas.color}`,borderRadius:6,padding:"7px 10px",
+                        cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}>
+                      + Tambah Foto
+                      <input type="file" accept="image/*" multiple disabled={saving} style={{display:"none"}}
+                        onChange={(e:any)=>{pilihFotoStaged(p.id,e.target.files);e.target.value="";}}/>
+                    </label>
+                    <button onClick={()=>simpanProgressPanel(p)} disabled={saving}
+                      style={{display:"block",marginTop:10,width:"100%",background:saving?"#94a3b8":tugas.color,color:"#fff",border:"none",borderRadius:8,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
+                      {saving?(uploadProgress?`⏳ Upload foto ${uploadProgress.current}/${uploadProgress.total}...`:"⏳ Menyimpan..."):"💾 Simpan Progress"}
+                    </button>
+                  </div>
+                </div>
+              )}
             </div>
           );
         })}
@@ -4073,7 +4432,12 @@ export default function App(){
           </div>
         </div>
         <div style={{flex:1,overflowY:"auto"}}>
-          {user.divisi==="nameplate"?<NameplateView user={user}/>:user.divisi==="qc"?<QCChecklistTab user={user}/>:user.divisi==="komponen"?<TrackingKomponenView user={user}/>:<OperatorView user={user} viewMode={viewMode}/>}
+          {user.divisi==="nameplate"?<NameplateView user={user}/>
+            :user.divisi==="qc"?<QCChecklistTab user={user}/>
+            :user.divisi==="komponen"&&user.sub_bagian==="Warehouse"?<KomponenProgressView user={user} tugas={TUGAS_WAREHOUSE}/>
+            :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS}/>
+            :user.divisi==="komponen"?<TrackingKomponenView user={user}/>
+            :<OperatorView user={user} viewMode={viewMode}/>}
         </div>
         <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",
           display:"flex",minHeight:52,paddingBottom:"env(safe-area-inset-bottom)",zIndex:100,boxShadow:"0 -2px 10px #00000010"}}>
