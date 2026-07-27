@@ -1892,33 +1892,76 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
 
   const warnaUrgMap:Record<string,{bg:string,color:string}>={telat:{bg:"#fef2f2",color:"#dc2626"},mendesak:{bg:"#fff7ed",color:"#ea580c"},perhatian:{bg:"#fefce8",color:"#ca8a04"}};
 
+  const STATUS_ICON_KP:Record<string,string>={belum:"ti-circle-dashed",proses:"ti-loader-2",selesai:"ti-circle-check-filled"};
+  const STATUS_3_ICON:Record<string,string>={todo:"ti-circle-dashed",progress:"ti-loader-2",done:"ti-circle-check-filled"};
+
   if(!selectedWoId){
+    const totalPanelSemua=projectGroups.reduce((s,g)=>s+g.totalPanel,0);
+    const selesaiSemua=projectGroups.reduce((s,g)=>s+g.selesai,0);
     return(
-      <div style={{padding:"12px 14px"}}>
-        <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="🔍 Cari proyek atau WO..."
-          style={{width:"100%",height:36,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,marginBottom:12,outline:"none"}}/>
+      <div style={{padding:"14px 14px 28px",background:"#f8fafc",minHeight:"100%"}}>
+        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,padding:"14px 16px",borderRadius:16,
+          background:`linear-gradient(135deg,${tugas.color},${tugas.color}cc)`,boxShadow:`0 6px 18px ${tugas.color}33`}}>
+          <div style={{width:42,height:42,borderRadius:12,background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
+            {tugas.icon}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{color:"#fff",fontWeight:800,fontSize:15}}>{tugas.label}</div>
+            <div style={{color:"rgba(255,255,255,0.85)",fontSize:11.5,marginTop:1}}>{selesaiSemua}/{totalPanelSemua} panel selesai · {projectGroups.length} proyek</div>
+          </div>
+        </div>
+
+        <div style={{position:"relative" as const,marginBottom:14}}>
+          <i className="ti ti-search" style={{position:"absolute" as const,left:13,top:"50%",transform:"translateY(-50%)",fontSize:16,color:"#94a3b8"}}/>
+          <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="Cari proyek atau WO..."
+            style={{width:"100%",height:42,padding:"0 14px 0 38px",border:"1.5px solid #e2e8f0",borderRadius:12,fontSize:13.5,outline:"none",background:"#fff",boxSizing:"border-box" as const,color:"#1e293b"}}/>
+        </div>
+
         {loading?(
-          <div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Memuat data...</div>
+          <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+            <i className="ti ti-loader-2" style={{fontSize:26,display:"block",marginBottom:8}}/>
+            Memuat data...
+          </div>
         ):filteredProjects.length===0?(
-          <div style={{textAlign:"center",padding:32,color:"#94a3b8"}}>Tidak ada proyek</div>
+          <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+            <i className="ti ti-folder-x" style={{fontSize:32,display:"block",marginBottom:8}}/>
+            Tidak ada proyek
+          </div>
         ):(
-          <div style={{display:"flex",flexDirection:"column",gap:10}}>
+          <div style={{display:"flex",flexDirection:"column",gap:12}}>
             {filteredProjects.map((g:any)=>{
               const allDone=g.selesai===g.totalPanel;
+              const pctWo=g.totalPanel>0?Math.round((g.selesai/g.totalPanel)*100):0;
               const urg=getUrgensiPanel(g.wo?.target);
               const w=warnaUrgMap[urg.level];
               return(
                 <div key={g.woId} onClick={()=>setSelectedWoId(g.woId)}
-                  style={{background:"#fff",border:`1px solid ${allDone?"#bbf7d0":"#e2e8f0"}`,borderRadius:10,padding:"14px 16px",cursor:"pointer",opacity:allDone?0.7:1,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-                  <div>
-                    <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{g.wo?.proyek}</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>WO {g.wo?.wo}{g.wo?.target?` · Deadline ${fmtTanggalDeadlineNp(g.wo.target)}`:""} · {g.selesai}/{g.totalPanel} panel selesai</div>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",gap:8}}>
-                    {urg.label&&urg.level!=="normal"&&w&&(
-                      <span style={{fontSize:9,fontWeight:700,background:w.bg,color:w.color,borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap" as const}}>{urg.level==="telat"?"⚠️ ":"⏰ "}{urg.label}</span>
+                  style={{position:"relative" as const,background:"#fff",borderRadius:16,padding:"14px 16px 14px 20px",cursor:"pointer",
+                    opacity:allDone?0.72:1,border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.05)",overflow:"hidden"}}>
+                  <div style={{position:"absolute" as const,left:0,top:0,bottom:0,width:4,background:allDone?"#16a34a":tugas.color}}/>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:10}}>
+                    <div style={{minWidth:0,flex:1}}>
+                      <div style={{fontWeight:800,fontSize:14.5,color:"#0f172a",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{g.wo?.proyek}</div>
+                      <div style={{fontSize:11,color:"#94a3b8",marginTop:3}}>
+                        WO {g.wo?.wo}{g.wo?.target?` · Deadline ${fmtTanggalDeadlineNp(g.wo.target)}`:""}
+                      </div>
+                    </div>
+                    {urg.label&&urg.level!=="normal"&&w?(
+                      <span style={{fontSize:9,fontWeight:800,background:w.bg,color:w.color,borderRadius:20,padding:"4px 9px",whiteSpace:"nowrap" as const,flexShrink:0}}>
+                        {urg.level==="telat"?"⚠ ":"⏰ "}{urg.label}
+                      </span>
+                    ):(
+                      <i className="ti ti-chevron-right" style={{fontSize:18,color:"#cbd5e1",flexShrink:0,marginTop:2}}/>
                     )}
-                    <i className="ti ti-chevron-right" style={{fontSize:18,color:"#94a3b8"}}/>
+                  </div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+                    <span style={{fontSize:11,fontWeight:700,color:allDone?"#16a34a":"#64748b"}}>
+                      {allDone?"✓ Semua selesai":`${g.selesai}/${g.totalPanel} panel selesai`}
+                    </span>
+                    <span style={{fontSize:11,fontWeight:800,color:allDone?"#16a34a":tugas.color}}>{pctWo}%</span>
+                  </div>
+                  <div style={{height:6,borderRadius:99,background:"#f1f5f9",overflow:"hidden"}}>
+                    <div style={{height:"100%",width:`${pctWo}%`,borderRadius:99,background:allDone?"#16a34a":tugas.color,transition:"width .35s ease"}}/>
                   </div>
                 </div>
               );
@@ -1930,19 +1973,26 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
   }
 
   return(
-    <div style={{padding:"12px 14px"}}>
+    <div style={{padding:"14px 14px 28px",background:"#f8fafc",minHeight:"100%"}}>
       <button onClick={()=>setSelectedWoId(null)}
         style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:tugas.color,fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12,padding:0}}>
         <i className="ti ti-arrow-left" style={{fontSize:16}}/> Kembali ke Daftar Proyek
       </button>
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
-        <div>
-          <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:4}}>{selectedProject?.wo?.proyek}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>WO {selectedProject?.wo?.wo}</div>
+
+      <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.05)",
+        display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
+        <div style={{minWidth:0}}>
+          <div style={{fontWeight:800,fontSize:15.5,color:"#0f172a"}}>{selectedProject?.wo?.proyek}</div>
+          <div style={{fontSize:11.5,color:"#94a3b8",marginTop:3}}>
+            WO {selectedProject?.wo?.wo}{selectedProject?.wo?.target?` · Deadline ${fmtTanggalDeadlineNp(selectedProject.wo.target)}`:""}
+          </div>
         </div>
         <button onClick={()=>kunciProgress(selectedProject?.panels||[])} disabled={lockLoading}
-          style={{background:lockLoading?"#94a3b8":tugas.color,color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:lockLoading?"not-allowed":"pointer",whiteSpace:"nowrap" as const}}>
-          {lockLoading?"⏳ Mengunci...":"🔒 Kunci Progress"}
+          style={{display:"flex",alignItems:"center",gap:6,background:lockLoading?"#cbd5e1":tugas.color,color:"#fff",border:"none",borderRadius:10,padding:"9px 14px",
+            fontSize:12,fontWeight:700,cursor:lockLoading?"not-allowed":"pointer",whiteSpace:"nowrap" as const,flexShrink:0,
+            boxShadow:lockLoading?"none":`0 3px 10px ${tugas.color}40`}}>
+          <i className={lockLoading?"ti ti-loader-2":"ti ti-lock"} style={{fontSize:14}}/>
+          {lockLoading?"Mengunci...":"Kunci"}
         </button>
       </div>
 
@@ -1956,66 +2006,78 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
           const staged=stagedFotos[p.id]||[];
           const saving=savingKey===p.id;
           return(
-            <div key={p.id} style={{border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden",background:"#fff"}}>
+            <div key={p.id} style={{background:"#fff",borderRadius:14,border:"1px solid #eef0f3",overflow:"hidden",
+              boxShadow:expanded?"0 6px 18px rgba(15,23,42,0.07)":"0 1px 2px rgba(15,23,42,0.03)",transition:"box-shadow .15s"}}>
               <div onClick={()=>togglePanel(p.id)}
-                style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"11px 14px",cursor:"pointer"}}>
-                <div>
-                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.nama}</div>
-                  <div style={{fontSize:10,color:"#94a3b8"}}>{tugas.icon} {tugas.label}</div>
+                style={{display:"flex",alignItems:"center",gap:11,padding:"13px 15px",cursor:"pointer"}}>
+                <div style={{width:38,height:38,borderRadius:11,background:st.bg,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                  <i className={`ti ${STATUS_ICON_KP[status]}`} style={{fontSize:18,color:st.color}}/>
                 </div>
-                <div style={{display:"flex",alignItems:"center",gap:8}}>
-                  <span style={{fontSize:10,fontWeight:700,background:st.bg,color:st.color,borderRadius:6,padding:"3px 8px",whiteSpace:"nowrap" as const}}>{st.label}</span>
-                  <i className={`ti ti-chevron-${expanded?"up":"down"}`} style={{fontSize:15,color:"#94a3b8"}}/>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:13.5,color:"#0f172a",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{p.nama}</div>
+                  <div style={{fontSize:10.5,fontWeight:600,color:st.color,marginTop:1}}>{st.label}</div>
                 </div>
+                <i className={`ti ti-chevron-down`} style={{fontSize:16,color:"#cbd5e1",flexShrink:0,transition:"transform .2s",transform:expanded?"rotate(180deg)":"none"}}/>
               </div>
               {expanded&&(
-                <div style={{padding:"10px 14px",borderTop:"1px solid #f1f5f9",background:"#f8fafc"}}>
-                  <div style={{marginBottom:12}}>
-                    <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.4}}>SECTION 1 · FABRIKASI</div>
-                    <div style={{display:"flex",gap:4}}>
+                <div style={{padding:"2px 15px 16px",borderTop:"1px solid #f1f5f9"}}>
+                  <div style={{marginBottom:16,marginTop:14}}>
+                    <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10.5,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:0.3}}>
+                      <i className="ti ti-tool" style={{fontSize:12}}/> FABRIKASI
+                    </div>
+                    <div style={{display:"flex",gap:6}}>
                       {STATUS_3_NP.map(s=>{
                         const active=s.key==="todo"?pct===0:s.key==="done"?pct>=100:(pct>0&&pct<100);
                         return(
                           <button key={s.key} onClick={()=>updateProgress(p.id,s.pct)}
-                            style={{flex:1,height:32,borderRadius:6,border:"none",cursor:"pointer",fontSize:10.5,fontWeight:700,
-                              background:active?tugas.color:"#f1f5f9",color:active?"#fff":"#94a3b8"}}>{s.label}</button>
+                            style={{flex:1,display:"flex",flexDirection:"column" as const,alignItems:"center",gap:4,padding:"10px 4px",borderRadius:11,
+                              border:active?"none":"1.5px solid #eef0f3",cursor:"pointer",
+                              background:active?tugas.color:"#fff",boxShadow:active?`0 4px 12px ${tugas.color}40`:"none",transition:"all .15s"}}>
+                            <i className={`ti ${STATUS_3_ICON[s.key]}`} style={{fontSize:16,color:active?"#fff":"#94a3b8"}}/>
+                            <span style={{fontSize:10,fontWeight:700,color:active?"#fff":"#64748b"}}>{s.label}</span>
+                          </button>
                         );
                       })}
                     </div>
                   </div>
                   <div>
-                    <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.4}}>SECTION 2 · PEMASANGAN (FOTO)</div>
+                    <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10.5,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:0.3}}>
+                      <i className="ti ti-camera" style={{fontSize:12}}/> PEMASANGAN (FOTO)
+                    </div>
                     {fotoArr.length===0&&staged.length===0?(
-                      <div style={{fontSize:11,color:"#94a3b8",padding:"6px 0 10px"}}>Belum ada foto</div>
+                      <div style={{fontSize:11.5,color:"#cbd5e1",padding:"10px 0 12px",fontStyle:"italic" as const}}>Belum ada foto</div>
                     ):(
-                      <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:10}}>
+                      <div style={{display:"flex",flexWrap:"wrap" as const,gap:8,marginBottom:12}}>
                         {fotoArr.map((f:any,fi:number)=>(
                           <div key={`saved_${fi}`} onClick={()=>setFotoViewer({fotos:fotoArr,startIndex:fi,label:`${tugas.label}_${p.nama}`})} style={{cursor:"pointer"}}>
-                            <img src={f.url} style={{width:56,height:56,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0"}}/>
-                            <div style={{fontSize:8,color:"#94a3b8",marginTop:2,textAlign:"center" as const}}>{f.uploaded_at?new Date(f.uploaded_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):""}</div>
+                            <img src={f.url} style={{width:62,height:62,borderRadius:10,objectFit:"cover" as const,border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.06)"}}/>
+                            <div style={{fontSize:8,color:"#94a3b8",marginTop:3,textAlign:"center" as const}}>{f.uploaded_at?new Date(f.uploaded_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):""}</div>
                           </div>
                         ))}
                         {staged.map((s,si)=>(
                           <div key={`staged_${si}`} style={{position:"relative" as const}}>
-                            <img src={s.previewUrl} style={{width:56,height:56,borderRadius:6,objectFit:"cover" as const,border:`1.5px dashed ${tugas.color}`}}/>
+                            <img src={s.previewUrl} style={{width:62,height:62,borderRadius:10,objectFit:"cover" as const,border:`1.5px dashed ${tugas.color}`}}/>
                             <button onClick={()=>batalkanFotoStaged(p.id,si)}
-                              style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #f8fafc",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              style={{position:"absolute" as const,top:-6,right:-6,width:19,height:19,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}>
                               <i className="ti ti-x" style={{fontSize:10}}/>
                             </button>
-                            <div style={{fontSize:8,color:tugas.color,marginTop:2,textAlign:"center" as const,fontWeight:700}}>belum disimpan</div>
+                            <div style={{fontSize:8,color:tugas.color,marginTop:3,textAlign:"center" as const,fontWeight:700}}>belum disimpan</div>
                           </div>
                         ))}
                       </div>
                     )}
-                    <label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:tugas.color,background:"#fff",border:`1px dashed ${tugas.color}`,borderRadius:6,padding:"7px 10px",
+                    <label style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:tugas.color,background:`${tugas.color}0f`,border:`1.5px dashed ${tugas.color}55`,borderRadius:10,padding:"9px 13px",
                         cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}>
-                      + Tambah Foto
+                      <i className="ti ti-camera-plus" style={{fontSize:14}}/> Tambah Foto
                       <input type="file" accept="image/*" multiple disabled={saving} style={{display:"none"}}
                         onChange={(e:any)=>{pilihFotoStaged(p.id,e.target.files);e.target.value="";}}/>
                     </label>
                     <button onClick={()=>simpanProgressPanel(p)} disabled={saving}
-                      style={{display:"block",marginTop:10,width:"100%",background:saving?"#94a3b8":tugas.color,color:"#fff",border:"none",borderRadius:8,padding:"9px 10px",fontSize:12,fontWeight:700,cursor:saving?"not-allowed":"pointer"}}>
-                      {saving?(uploadProgress?`⏳ Upload foto ${uploadProgress.current}/${uploadProgress.total}...`:"⏳ Menyimpan..."):"💾 Simpan Progress"}
+                      style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12,width:"100%",
+                        background:saving?"#cbd5e1":tugas.color,color:"#fff",border:"none",borderRadius:11,padding:"11px 10px",fontSize:12.5,fontWeight:700,
+                        cursor:saving?"not-allowed":"pointer",boxShadow:saving?"none":`0 4px 12px ${tugas.color}40`}}>
+                      <i className={saving?"ti ti-loader-2":"ti ti-device-floppy"} style={{fontSize:15}}/>
+                      {saving?(uploadProgress?`Upload foto ${uploadProgress.current}/${uploadProgress.total}...`:"Menyimpan..."):"Simpan Progress"}
                     </button>
                   </div>
                 </div>
