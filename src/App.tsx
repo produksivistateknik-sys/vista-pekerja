@@ -92,7 +92,10 @@ const DIVISI_CONFIG: Record<string,any> = {
   qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",password:"qc123",      proses:["QC TEST","PACKING"]},
   nameplate:  {label:"Nameplate",     icon:"🏷️", color:"#0891b2",bg:"#ecfeff",password:"nameplate123",proses:null},
   komponen:   {label:"Komponen",       icon:"📦", color:"#0d9488",bg:"#f0fdfa",proses:null,manualName:true,
-    subBagianPassword:{Warehouse:"warehouse123",Assembling:"assemblingkomp123",QS:"qs123"}},
+    // "Assembling" sengaja dihapus dari opsi login - sudah gantiin pakai Assembling Luar
+    // (Pasang Komponen, divisi "assembling") buat kebutuhan itu. Data lama sub_bagian=Assembling
+    // di fcs_tracking_komponen TETAP ada, cuma gak bisa login buat nambah data baru lagi.
+    subBagianPassword:{Warehouse:"warehouse123",QS:"qs123"}},
 };
 
 function getLocalDateStr(d:Date=new Date()){
