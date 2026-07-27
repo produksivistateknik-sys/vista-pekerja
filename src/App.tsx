@@ -550,6 +550,7 @@ const getUrgensiPanel=(target:string|undefined)=>{
   if(hari<=7)return{level:"perhatian",label:`H-${hari}`,hari};
   return{level:"normal",label:`H-${hari}`,hari};
 };
+const fmtTanggalDeadlineNp=(target:string)=>new Date(target).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"});
 
 const QC_ITEMS=[
   {key:"fisik",label:"Pemeriksaan Fisik",desc:"Kelayakan kualitas fisik panel",icon:"🔍"},
@@ -1469,7 +1470,7 @@ function NameplateView({user}:any){
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14}}>
         <div>
           <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:4}}>{selectedProject?.wo?.proyek}</div>
-          <div style={{fontSize:11,color:"#94a3b8"}}>WO {selectedProject?.wo?.wo}</div>
+          <div style={{fontSize:11,color:"#94a3b8"}}>WO {selectedProject?.wo?.wo}{selectedProject?.wo?.target?` · Deadline ${fmtTanggalDeadlineNp(selectedProject.wo.target)}`:""}</div>
         </div>
         <button onClick={()=>kunciProgress(selectedProject?.panels||[])} disabled={lockLoading}
           style={{background:lockLoading?"#94a3b8":"#0891b2",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:lockLoading?"not-allowed":"pointer",whiteSpace:"nowrap" as const}}>
@@ -1833,7 +1834,7 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
                   style={{background:"#fff",border:`1px solid ${allDone?"#bbf7d0":"#e2e8f0"}`,borderRadius:10,padding:"14px 16px",cursor:"pointer",opacity:allDone?0.7:1,display:"flex",justifyContent:"space-between",alignItems:"center"}}>
                   <div>
                     <div style={{fontWeight:700,fontSize:14,color:"#1e293b"}}>{g.wo?.proyek}</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>WO {g.wo?.wo} · {g.selesai}/{g.totalPanel} panel selesai</div>
+                    <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>WO {g.wo?.wo}{g.wo?.target?` · Deadline ${fmtTanggalDeadlineNp(g.wo.target)}`:""} · {g.selesai}/{g.totalPanel} panel selesai</div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8}}>
                     {urg.label&&urg.level!=="normal"&&w&&(
