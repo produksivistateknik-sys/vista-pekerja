@@ -2609,19 +2609,8 @@ function OperatorView({user,viewMode}:any){
 
     const bulkAssignAndStart=async(_proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
       // Cuma assign operator, TIDAK auto-start timer.
-      // Operator klik tombol "▶ Mulai Semua" (RENDAM/PAINTING) atau manual satu-satu per komponen.
+      // Operator klik tombol Mulai manual satu-satu per komponen.
       await updatePekerjaPerKomponenBatch(rowsToAssign,()=>pekerjaIds);
-    };
-    // Start timer buat SEMUA baris terkumpul pakai operator yang SUDAH di-assign sebelumnya
-    // (dipanggil dari tombol "▶ Mulai Semua" RENDAM/PAINTING - beda dari bulkAssignAndStartDesktop
-    // yang assign+start sekaligus, ini cuma start karena assign-nya udah kejadian di step terpisah).
-    const bulkStartAssigned=async(proses:string,rows:any[])=>{
-      for(const r of rows){
-        const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
-        for(const pid of idsKomp){
-          await startTimer(pid,r.panelId,r.kode,proses,viewDate);
-        }
-      }
     };
 
     const bulkAssignAndStartDesktop=async(proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
@@ -3634,7 +3623,65 @@ function OperatorView({user,viewMode}:any){
         </button>
       </div>
     ):null;
-    return[bulkToolbarPotong,...groups.map(group=>{
+    // RENDAM/PAINTING: sama seperti POTONG (assign + mulai sekaligus buat semua komponen
+    // terkumpul), bedanya operatornya masih harus dipilih manual (gak auto = user login).
+    const adaTimerJalanAssignMulai=(proses==="RENDAM"||proses==="PAINTING")&&visibleRows.some((r:any)=>{
+      const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
+      return idsKomp.some((pid:number)=>!!timerAktif[`${r.panelId}_${r.kode}_${proses}_${pid}`]);
+    });
+    const bulkToolbarAssignMulai=(proses==="RENDAM"||proses==="PAINTING")?(
+      <div key="bulk-toolbar-assignmulai" style={{display:"flex",flexDirection:"column",gap:8}}>
+        <div style={{display:"flex",gap:8}}>
+          <button onClick={()=>{setBulkAssignProses(proses);setTempBulkPekerjaIds([]);}}
+            style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+            Pilih Operator & Mulai ({visibleRows.length})
+          </button>
+          {adaTimerJalanAssignMulai&&(
+            <button onClick={()=>bulkStopDesktop(proses,visibleRows)}
+              style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#dc2626",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+              ⏹ Selesai Semua
+            </button>
+          )}
+        </div>
+        {bulkAssignProses===proses&&(
+          <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+            onClick={()=>setBulkAssignProses(null)}>
+            <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
+              onClick={(e:any)=>e.stopPropagation()}>
+              <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
+              <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-assign & timer langsung mulai untuk {visibleRows.length} komponen terkumpul di {proses}.</div>
+              <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
+                {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
+                  const checked=tempBulkPekerjaIds.includes(p.id);
+                  return(
+                    <label key={p.id} style={{display:"flex",alignItems:"center",gap:10,border:`1.5px solid ${checked?"#2563eb":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",cursor:"pointer",background:checked?"#eff6ff":"#fff"}}>
+                      <input type="checkbox" checked={checked}
+                        onChange={()=>setTempBulkPekerjaIds((prev:number[])=>checked?prev.filter((id:number)=>id!==p.id):[...prev,p.id])}/>
+                      <span style={{fontSize:13,fontWeight:600,color:"#1e293b"}}>{p.nama}</span>
+                    </label>
+                  );
+                })}
+              </div>
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={()=>setBulkAssignProses(null)}
+                  style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
+                <button disabled={tempBulkPekerjaIds.length===0}
+                  onClick={async()=>{
+                    await bulkAssignAndStartDesktop(proses,visibleRows,tempBulkPekerjaIds);
+                    setBulkAssignProses(null);
+                  }}
+                  style={{flex:1,padding:"10px",borderRadius:10,border:"none",
+                    background:tempBulkPekerjaIds.length===0?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
+                    cursor:tempBulkPekerjaIds.length===0?"not-allowed":"pointer"}}>
+                  Mulai ({tempBulkPekerjaIds.length})
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+      </div>
+    ):null;
+    return[bulkToolbarPotong,bulkToolbarAssignMulai,...groups.map(group=>{
       const groupKey=group.namaKomponen;
       const isOpen=expandedPanel[proses]===groupKey;
       const panelCount=new Set(group.rows.map((r:any)=>r.panelId)).size;
@@ -3660,19 +3707,19 @@ function OperatorView({user,viewMode}:any){
           </div>
           {isOpen&&(
             <div style={{padding:"0 14px 14px 14px",display:"flex",flexDirection:"column",gap:10}}>
-              {proses!=="POTONG"&&!operatorPerKartu&&proses!=="BUSBAR"&&(
+              {proses!=="POTONG"&&proses!=="RENDAM"&&proses!=="PAINTING"&&!operatorPerKartu&&proses!=="BUSBAR"&&(
                 <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);}}
                   style={{padding:"10px",minHeight:44,borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                   Pilih Operator ({group.rows.length} komponen)
                 </button>
               )}
-              {proses!=="POTONG"&&!operatorPerKartu&&proses!=="BUSBAR"&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
+              {proses!=="POTONG"&&proses!=="RENDAM"&&proses!=="PAINTING"&&!operatorPerKartu&&proses!=="BUSBAR"&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
                   onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);}}>
                   <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
                     onClick={(e:any)=>e.stopPropagation()}>
                     <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-set untuk SEMUA {group.rows.length} "{group.namaKomponen}" di {panelCount} panel (menimpa operator lama kalau ada). {(proses==="RENDAM"||proses==="PAINTING")?'Setelah ini klik "▶ Mulai Semua" buat start timer semuanya sekaligus.':"Timer tetap diklik manual per komponen."}</div>
+                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-set untuk SEMUA {group.rows.length} "{group.namaKomponen}" di {panelCount} panel (menimpa operator lama kalau ada). Timer tetap diklik manual per komponen.</div>
                     <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
                       {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
                         const checked=tempBulkPekerjaIds.includes(p.id);
@@ -3703,21 +3750,6 @@ function OperatorView({user,viewMode}:any){
                   </div>
                 </div>
               )}
-              {(proses==="RENDAM"||proses==="PAINTING")&&(()=>{
-                const idsPerRow=group.rows.map((r:any)=>getFlatOperatorIds(r.task,r.kode));
-                const adaOperator=idsPerRow.some((ids:number[])=>ids.length>0);
-                const timerKeysGroup=group.rows.flatMap((r:any,ri:number)=>idsPerRow[ri].map((pid:number)=>timerKey(r.panelId,r.kode,proses,pid)));
-                const anyRunning=timerKeysGroup.some((k:string)=>!!timerAktif[k]);
-                return(
-                  <button disabled={!adaOperator}
-                    onClick={()=>anyRunning?bulkStopDesktop(proses,group.rows):bulkStartAssigned(proses,group.rows)}
-                    style={{padding:"10px",minHeight:44,borderRadius:10,border:"none",
-                      background:!adaOperator?"#94a3b8":anyRunning?"#dc2626":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
-                      cursor:!adaOperator?"not-allowed":"pointer"}}>
-                    {anyRunning?"⏹ Selesai Semua":"▶ Mulai Semua"}
-                  </button>
-                );
-              })()}
               {group.rows.map((r:any)=>{
                 const done=isDone(r);
                 const bisaEdit=canEditProgressKomponen(r.task,r.kode,r.panelId,proses);
