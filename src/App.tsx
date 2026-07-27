@@ -279,6 +279,7 @@ function Login({onLogin}:any){
   const [userList,setUserList]=useState<any[]>([]);
   const [pekerjaOptions,setPekerjaOptions]=useState<any[]>([]);
   const [pekerjaTerpilihId,setPekerjaTerpilihId]=useState("");
+  const [namaManualTeks,setNamaManualTeks]=useState("");
   const [pwd,setPwd]=useState("");
   const [err,setErr]=useState("");
   const [show,setShow]=useState(false);
@@ -296,6 +297,7 @@ function Login({onLogin}:any){
       supabase.from("pekerja").select("id,nama,divisi").eq("divisi",div)
         .then(({data})=>{setPekerjaOptions(data??[]);setPekerjaTerpilihId("");});
       setSubBagianTerpilih(null);
+      setNamaManualTeks("");
     }
   },[div]);
 
@@ -306,12 +308,24 @@ function Login({onLogin}:any){
   const go=async()=>{
     if(isManualName&&subBagianOptions){
       if(!subBagianTerpilih){setErr("Pilih sub-bagian dulu!");return;}
-      if(!pekerjaTerpilihId){setErr("Pilih nama kamu!");return;}
+      // Warehouse/QS ketik nama manual (bebas, gak perlu terdaftar di tabel pekerja) - beda
+      // dari sub-bagian lain yang masih wajib pilih dari daftar pekerja terdaftar.
+      const isNamaBebas=subBagianTerpilih==="Warehouse"||subBagianTerpilih==="QS";
+      if(isNamaBebas){
+        if(!namaManualTeks.trim()){setErr("Ketik nama kamu!");return;}
+      } else if(!pekerjaTerpilihId){setErr("Pilih nama kamu!");return;}
       if(!pwd){setErr("Masukkan password!");return;}
       setLoading(true);
       const{data:pwRow,error:pwErr}=await supabase.from("fcs_sub_bagian_password").select("password").eq("sub_bagian",subBagianTerpilih).single();
       const expectedPwd=pwErr?subBagianOptions[subBagianTerpilih]:pwRow?.password;
       if(pwd!==expectedPwd){setErr("Password salah!");setLoading(false);return;}
+      if(isNamaBebas){
+        const namaBebas=namaManualTeks.trim();
+        setSuccess(true);
+        setTimeout(()=>onLogin({id:0,nama:namaBebas,name:namaBebas,divisi:div,sub_bagian:subBagianTerpilih}),800);
+        setLoading(false);
+        return;
+      }
       const pekerjaTerpilih=pekerjaOptions.find((p:any)=>String(p.id)===pekerjaTerpilihId);
       if(!pekerjaTerpilih){setErr("Data pekerja gak valid, coba pilih ulang.");setLoading(false);return;}
       setSuccess(true);
@@ -448,7 +462,7 @@ function Login({onLogin}:any){
               <div className="lg-label">Sub-bagian</div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
                 {Object.keys(subBagianOptions).map((sb:string)=>(
-                  <button key={sb} type="button" className="subbagian-btn" onClick={()=>{setSubBagianTerpilih(sb);setErr("");}}
+                  <button key={sb} type="button" className="subbagian-btn" onClick={()=>{setSubBagianTerpilih(sb);setErr("");setNamaManualTeks("");setPekerjaTerpilihId("");}}
                     style={{
                       border:`1.5px solid ${subBagianTerpilih===sb?"#0d9488":"#e2e8f0"}`,
                       background:subBagianTerpilih===sb?"#0d948818":"#f8fafc",
@@ -464,7 +478,11 @@ function Login({onLogin}:any){
             <div className="lg-label">Nama</div>
             <div style={{position:"relative"}}>
               <span className="lg-icon">👤</span>
-              {isManualName?(
+              {isManualName&&(subBagianTerpilih==="Warehouse"||subBagianTerpilih==="QS")?(
+                <input className="lg-sel" type="text" value={namaManualTeks}
+                  onChange={(e:any)=>{setNamaManualTeks(e.target.value);setErr("");}}
+                  placeholder="Ketik nama kamu..."/>
+              ):isManualName?(
                 <>
                   <select className="lg-sel" value={pekerjaTerpilihId} onChange={(e:any)=>{setPekerjaTerpilihId(e.target.value);setErr("");}}>
                     <option value="">-- Pilih Nama --</option>
