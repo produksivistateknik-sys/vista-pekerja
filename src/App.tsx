@@ -2609,8 +2609,19 @@ function OperatorView({user,viewMode}:any){
 
     const bulkAssignAndStart=async(_proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
       // Cuma assign operator, TIDAK auto-start timer.
-      // Operator klik tombol Mulai manual satu-satu per komponen.
+      // Operator klik tombol "▶ Mulai Semua" (RENDAM/PAINTING) atau manual satu-satu per komponen.
       await updatePekerjaPerKomponenBatch(rowsToAssign,()=>pekerjaIds);
+    };
+    // Start timer buat SEMUA baris terkumpul pakai operator yang SUDAH di-assign sebelumnya
+    // (dipanggil dari tombol "▶ Mulai Semua" RENDAM/PAINTING - beda dari bulkAssignAndStartDesktop
+    // yang assign+start sekaligus, ini cuma start karena assign-nya udah kejadian di step terpisah).
+    const bulkStartAssigned=async(proses:string,rows:any[])=>{
+      for(const r of rows){
+        const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
+        for(const pid of idsKomp){
+          await startTimer(pid,r.panelId,r.kode,proses,viewDate);
+        }
+      }
     };
 
     const bulkAssignAndStartDesktop=async(proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
@@ -3661,7 +3672,7 @@ function OperatorView({user,viewMode}:any){
                   <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
                     onClick={(e:any)=>e.stopPropagation()}>
                     <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-set untuk SEMUA {group.rows.length} "{group.namaKomponen}" di {panelCount} panel (menimpa operator lama kalau ada). Timer tetap diklik manual per komponen.</div>
+                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-set untuk SEMUA {group.rows.length} "{group.namaKomponen}" di {panelCount} panel (menimpa operator lama kalau ada). {(proses==="RENDAM"||proses==="PAINTING")?'Setelah ini klik "▶ Mulai Semua" buat start timer semuanya sekaligus.':"Timer tetap diklik manual per komponen."}</div>
                     <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
                       {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
                         const checked=tempBulkPekerjaIds.includes(p.id);
@@ -3692,6 +3703,21 @@ function OperatorView({user,viewMode}:any){
                   </div>
                 </div>
               )}
+              {(proses==="RENDAM"||proses==="PAINTING")&&(()=>{
+                const idsPerRow=group.rows.map((r:any)=>getFlatOperatorIds(r.task,r.kode));
+                const adaOperator=idsPerRow.some((ids:number[])=>ids.length>0);
+                const timerKeysGroup=group.rows.flatMap((r:any,ri:number)=>idsPerRow[ri].map((pid:number)=>timerKey(r.panelId,r.kode,proses,pid)));
+                const anyRunning=timerKeysGroup.some((k:string)=>!!timerAktif[k]);
+                return(
+                  <button disabled={!adaOperator}
+                    onClick={()=>anyRunning?bulkStopDesktop(proses,group.rows):bulkStartAssigned(proses,group.rows)}
+                    style={{padding:"10px",minHeight:44,borderRadius:10,border:"none",
+                      background:!adaOperator?"#94a3b8":anyRunning?"#dc2626":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
+                      cursor:!adaOperator?"not-allowed":"pointer"}}>
+                    {anyRunning?"⏹ Selesai Semua":"▶ Mulai Semua"}
+                  </button>
+                );
+              })()}
               {group.rows.map((r:any)=>{
                 const done=isDone(r);
                 const bisaEdit=canEditProgressKomponen(r.task,r.kode,r.panelId,proses);
