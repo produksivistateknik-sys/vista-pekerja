@@ -2261,6 +2261,9 @@ function OperatorView({user,viewMode}:any){
     BENDING:'qty',STEL:'qty',FINISHING:'qty',RAKIT:'qty',"PASANG KOMPONEN":'qty',
     "WIRING CONTROL":'timer',"WIRING POWER":'timer',BUSBAR:'timer',
   };
+  // Khusus WIRING CONTROL, dua komponen ini dapat tambahan bagian "Foto Pemasangan" di
+  // kartunya (alur operator+timer yang sudah jalan TIDAK berubah, cuma ditambah foto bukti).
+  const WIRING_KOMPONEN_FOTO_NAMA=["Box Control","Pintu"];
   // Proses qty-mode yang qty-nya dikunci sampai operator klik Mulai (biar gak bisa keisi
   // tanpa operator ter-assign). RENDAM/PAINTING/RAKIT/PASANG KOMPONEN dulu gak ada di sini -
   // itu lubang yang sama persis kayak bug "operator kosong padahal 100%" yang udah diperbaiki
@@ -2796,6 +2799,103 @@ function OperatorView({user,viewMode}:any){
     };
     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
+  };
+
+  // Foto Pemasangan buat Box Control/Pintu di WIRING CONTROL - disimpan per-kode di
+  // checklist[kode].fotoPemasangan, gak nyentuh progress/timer/qty proses yang udah jalan.
+  const[stagedFotoWiring,setStagedFotoWiring]=useState<Record<string,{file:File,previewUrl:string}[]>>({});
+  const[savingFotoWiring,setSavingFotoWiring]=useState<string|null>(null);
+  const[fotoViewerWiring,setFotoViewerWiring]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
+
+  const pilihFotoWiring=(panelId:number,kode:string,fileList:FileList|null)=>{
+    if(!fileList||fileList.length===0)return;
+    const key=`${panelId}_${kode}`;
+    const dipilih=Array.from(fileList).map(file=>({file,previewUrl:URL.createObjectURL(file)}));
+    setStagedFotoWiring(prev=>({...prev,[key]:[...(prev[key]||[]),...dipilih]}));
+  };
+  const batalkanFotoWiring=(panelId:number,kode:string,idx:number)=>{
+    const key=`${panelId}_${kode}`;
+    setStagedFotoWiring(prev=>{
+      const arr=prev[key]||[];
+      URL.revokeObjectURL(arr[idx]?.previewUrl);
+      return{...prev,[key]:arr.filter((_,i)=>i!==idx)};
+    });
+  };
+  const simpanFotoWiring=async(panelId:number,kode:string)=>{
+    const key=`${panelId}_${kode}`;
+    const staged=stagedFotoWiring[key]||[];
+    if(staged.length===0)return;
+    const panel=panelsMap[panelId];
+    if(!panel)return;
+    setSavingFotoWiring(key);
+    try{
+      const cl=panel.checklist?.[kode]||{};
+      const existing=cl.fotoPemasangan||[];
+      const fotoTerupload:any[]=[];
+      for(const s of staged){
+        const blob=await compressImageNp(s.file);
+        const path=`${panelId}/${kode}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+        const{error:upErr}=await supabase.storage.from("wiring-komponen-photos").upload(path,blob,{contentType:"image/jpeg"});
+        if(upErr){alert(`Gagal upload salah satu foto: ${upErr.message}`);continue;}
+        const{data:urlData}=supabase.storage.from("wiring-komponen-photos").getPublicUrl(path);
+        fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+      }
+      const newFoto=[...existing,...fotoTerupload];
+      const newChecklist={...panel.checklist,[kode]:{...cl,fotoPemasangan:newFoto}};
+      await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
+      setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
+      staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
+      setStagedFotoWiring(prev=>{const next={...prev};delete next[key];return next;});
+    }catch(err:any){
+      alert("Terjadi kesalahan: "+err.message);
+    }
+    setSavingFotoWiring(null);
+  };
+
+  // Foto Pemasangan Pasang Komponen (Assembling Luar) - PER PANEL (bukan per-kode, satu
+  // galeri buat seluruh pemasangan panel itu), disimpan di kolom panels.pasang_komponen_photos.
+  const[stagedFotoPk,setStagedFotoPk]=useState<Record<number,{file:File,previewUrl:string}[]>>({});
+  const[savingFotoPk,setSavingFotoPk]=useState<number|null>(null);
+  const[fotoViewerPk,setFotoViewerPk]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
+
+  const pilihFotoPk=(panelId:number,fileList:FileList|null)=>{
+    if(!fileList||fileList.length===0)return;
+    const dipilih=Array.from(fileList).map(file=>({file,previewUrl:URL.createObjectURL(file)}));
+    setStagedFotoPk(prev=>({...prev,[panelId]:[...(prev[panelId]||[]),...dipilih]}));
+  };
+  const batalkanFotoPk=(panelId:number,idx:number)=>{
+    setStagedFotoPk(prev=>{
+      const arr=prev[panelId]||[];
+      URL.revokeObjectURL(arr[idx]?.previewUrl);
+      return{...prev,[panelId]:arr.filter((_,i)=>i!==idx)};
+    });
+  };
+  const simpanFotoPk=async(panelId:number)=>{
+    const staged=stagedFotoPk[panelId]||[];
+    if(staged.length===0)return;
+    const panel=panelsMap[panelId];
+    if(!panel)return;
+    setSavingFotoPk(panelId);
+    try{
+      const existing=panel.pasang_komponen_photos||[];
+      const fotoTerupload:any[]=[];
+      for(const s of staged){
+        const blob=await compressImageNp(s.file);
+        const path=`${panelId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+        const{error:upErr}=await supabase.storage.from("pasang-komponen-photos").upload(path,blob,{contentType:"image/jpeg"});
+        if(upErr){alert(`Gagal upload salah satu foto: ${upErr.message}`);continue;}
+        const{data:urlData}=supabase.storage.from("pasang-komponen-photos").getPublicUrl(path);
+        fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+      }
+      const newFoto=[...existing,...fotoTerupload];
+      await supabase.from("panels").update({pasang_komponen_photos:newFoto}).eq("id",panelId);
+      setPanelsMap(prev=>({...prev,[panelId]:{...panel,pasang_komponen_photos:newFoto}}));
+      staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
+      setStagedFotoPk(prev=>{const next={...prev};delete next[panelId];return next;});
+    }catch(err:any){
+      alert("Terjadi kesalahan: "+err.message);
+    }
+    setSavingFotoPk(null);
   };
 
   // Kunci progress — simpan ke Supabase
@@ -4198,21 +4298,89 @@ function OperatorView({user,viewMode}:any){
                     {proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"&&(()=>{
                       const panelPk=panelsMap[r.panelId];
                       const fotoArr=panelPk?.pasang_komponen_photos||[];
+                      const staged=stagedFotoPk[r.panelId]||[];
+                      const saving=savingFotoPk===r.panelId;
                       return(
                         <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,marginTop:2}}>
                           <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4,marginBottom:6}}>SECTION 2 · PEMASANGAN (FOTO)</div>
-                          {fotoArr.length===0?(
+                          {fotoArr.length===0&&staged.length===0?(
                             <div style={{fontSize:11,color:"#94a3b8",padding:"2px 0 6px"}}>Belum ada foto</div>
                           ):(
                             <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
                               {fotoArr.map((f:any,fi:number)=>(
-                                <img key={fi} src={f.url} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0"}}/>
+                                <img key={`saved_${fi}`} onClick={()=>setFotoViewerPk({fotos:fotoArr,startIndex:fi,label:`Pasang Komponen_${r.panel.nama}`})}
+                                  src={f.url} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                              ))}
+                              {staged.map((s,si)=>(
+                                <div key={`staged_${si}`} style={{position:"relative" as const}}>
+                                  <img src={s.previewUrl} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1.5px dashed #0891b2"}}/>
+                                  <button onClick={()=>batalkanFotoPk(r.panelId,si)}
+                                    style={{position:"absolute" as const,top:-6,right:-6,width:16,height:16,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                    <i className="ti ti-x" style={{fontSize:9}}/>
+                                  </button>
+                                </div>
                               ))}
                             </div>
                           )}
-                          <button disabled style={{fontSize:11,fontWeight:700,color:"#94a3b8",background:"#f8fafc",border:"1px dashed #cbd5e1",borderRadius:6,padding:"6px 10px",cursor:"not-allowed"}}>
-                            + Tambah Foto (aktif Tahap 3)
-                          </button>
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
+                            <label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#0891b2",background:"#ecfeff",border:"1px dashed #67e8f9",borderRadius:6,padding:"6px 10px",
+                                cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}>
+                              + Tambah Foto
+                              <input type="file" accept="image/*" multiple disabled={saving} style={{display:"none"}}
+                                onChange={(e:any)=>{pilihFotoPk(r.panelId,e.target.files);e.target.value="";}}/>
+                            </label>
+                            {staged.length>0&&(
+                              <button onClick={()=>simpanFotoPk(r.panelId)} disabled={saving}
+                                style={{fontSize:11,fontWeight:700,color:"#fff",background:saving?"#94a3b8":"#0891b2",border:"none",borderRadius:6,padding:"6px 12px",cursor:saving?"not-allowed":"pointer"}}>
+                                {saving?"⏳ Menyimpan...":"💾 Simpan Foto"}
+                              </button>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })()}
+                    {proses==="WIRING CONTROL"&&WIRING_KOMPONEN_FOTO_NAMA.includes(r.item?.nama)&&(()=>{
+                      const cl=panelsMap[r.panelId]?.checklist?.[r.kode];
+                      const fotoArr=cl?.fotoPemasangan||[];
+                      const keyFoto=`${r.panelId}_${r.kode}`;
+                      const staged=stagedFotoWiring[keyFoto]||[];
+                      const saving=savingFotoWiring===keyFoto;
+                      return(
+                        <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,marginTop:2}}>
+                          <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4,marginBottom:6}}>FOTO PEMASANGAN</div>
+                          {fotoArr.length===0&&staged.length===0?(
+                            <div style={{fontSize:11,color:"#94a3b8",padding:"2px 0 6px"}}>Belum ada foto</div>
+                          ):(
+                            <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
+                              {fotoArr.map((f:any,fi:number)=>(
+                                <img key={`saved_${fi}`} onClick={()=>setFotoViewerWiring({fotos:fotoArr,startIndex:fi,label:`${r.item?.nama}_${r.panel.nama}`})}
+                                  src={f.url} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                              ))}
+                              {staged.map((s,si)=>(
+                                <div key={`staged_${si}`} style={{position:"relative" as const}}>
+                                  <img src={s.previewUrl} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1.5px dashed #4f46e5"}}/>
+                                  <button onClick={()=>batalkanFotoWiring(r.panelId,r.kode,si)}
+                                    style={{position:"absolute" as const,top:-6,right:-6,width:16,height:16,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                    <i className="ti ti-x" style={{fontSize:9}}/>
+                                  </button>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
+                            <label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#4f46e5",background:"#eef2ff",border:"1px dashed #a5b4fc",borderRadius:6,padding:"6px 10px",
+                                cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}>
+                              + Tambah Foto
+                              <input type="file" accept="image/*" multiple disabled={saving} style={{display:"none"}}
+                                onChange={(e:any)=>{pilihFotoWiring(r.panelId,r.kode,e.target.files);e.target.value="";}}/>
+                            </label>
+                            {staged.length>0&&(
+                              <button onClick={()=>simpanFotoWiring(r.panelId,r.kode)} disabled={saving}
+                                style={{fontSize:11,fontWeight:700,color:"#fff",background:saving?"#94a3b8":"#4f46e5",border:"none",borderRadius:6,padding:"6px 12px",cursor:saving?"not-allowed":"pointer"}}>
+                                {saving?"⏳ Menyimpan...":"💾 Simpan Foto"}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       );
                     })()}
@@ -4578,6 +4746,12 @@ function OperatorView({user,viewMode}:any){
             </div>
           </div>
         </div>
+      )}
+      {fotoViewerWiring&&(
+        <FotoZoomViewerPekerja fotos={fotoViewerWiring.fotos} startIndex={fotoViewerWiring.startIndex} label={fotoViewerWiring.label} onClose={()=>setFotoViewerWiring(null)}/>
+      )}
+      {fotoViewerPk&&(
+        <FotoZoomViewerPekerja fotos={fotoViewerPk.fotos} startIndex={fotoViewerPk.startIndex} label={fotoViewerPk.label} onClose={()=>setFotoViewerPk(null)}/>
       )}
     </div>
   );
