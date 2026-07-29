@@ -2395,7 +2395,7 @@ function ReviewPotongView(){
                             {p.items.map((r:any,i:number)=>(
                               <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
                                 <div style={{flex:1,minWidth:0}}>
-                                  <div style={{fontSize:11.5,color:"#334155"}}>{r.kode} - {r.namaKomponen}</div>
+                                  <div style={{fontSize:11.5,color:"#334155"}}>{r.namaKomponen}</div>
                                   <div style={{display:"flex",gap:5,flexWrap:"wrap" as const,marginTop:3,alignItems:"center"}}>
                                     <span style={{background:r.shift==="2"?"#ede9fe":"#eff6ff",color:r.shift==="2"?"#6d28d9":"#1d4ed8",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>Shift {r.shift}</span>
                                     {r.operators.map((op:string)=>(
