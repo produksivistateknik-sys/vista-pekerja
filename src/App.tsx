@@ -2723,6 +2723,25 @@ function OperatorView({user,viewMode}:any){
     // boleh ikut nimpa/ngerusak status shift sesi kerja yang sebenarnya lagi berjalan.
     try{localStorage.setItem(wsKey,JSON.stringify({tanggal:hariKerjaAwal,shift,shiftSet}));}catch{}
   },[shift,shiftSet,wsKey,hariKerjaAwal]);
+  useEffect(()=>{
+    // localStorage dishare otomatis antar tab SATU browser/device (native), tapi React state di
+    // tab lain gak otomatis ke-refresh - kalau operator buka 2 tab & ganti shift di tab A, tab B
+    // tetep mikir shift lama sampai reload manual. Dengerin event "storage" bawaan browser (cuma
+    // fire di tab LAIN, bukan tab yang nulis sendiri) buat nyamain shift/shiftSet live antar tab.
+    // Gak nyentuh viewDate (itu murni navigasi lihat-lihat, bukan status sesi kerja).
+    const onStorage=(e:StorageEvent)=>{
+      if(e.key!==wsKey||!e.newValue)return;
+      try{
+        const saved=JSON.parse(e.newValue);
+        if(saved.tanggal===hariKerjaAwal){
+          if(saved.shift)setShift(saved.shift);
+          setShiftSet(!!saved.shiftSet);
+        }
+      }catch{}
+    };
+    window.addEventListener("storage",onStorage);
+    return()=>window.removeEventListener("storage",onStorage);
+  },[wsKey,hariKerjaAwal]);
   const [catatan,setCatatan]=useState<Record<string,string>>({});
   const [savedNote,setSavedNote]=useState<Record<string,boolean>>({});
   const [lockMsg,setLockMsg]=useState(false);
