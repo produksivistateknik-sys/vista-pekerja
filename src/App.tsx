@@ -2944,7 +2944,19 @@ function OperatorView({user,viewMode}:any){
     const timerChannel=supabase.channel("realtime-timer-kerja-pekerja")
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},()=>{fetchTimerData();})
       .subscribe();
-    return()=>{supabase.removeChannel(timerChannel);};
+    // Kalau HP di-background (pindah app lain / kunci layar) lama, socket realtime bisa diam2
+    // putus - event fcs_timer_kerja yang kejadian pas offline itu kelewat, timerAktif bisa
+    // nyangkut di state basi (ghost timer di UI) sampai ada event lain yang gak sengaja
+    // nge-trigger refetch. fetchTimerData() silent (gak ada spinner/loadingData), jadi aman
+    // dipanggil tiap kali tab balik aktif tanpa bikin UI kedip-kedip kayak loadData() penuh.
+    const onVisible=()=>{
+      if(document.visibilityState==="visible")fetchTimerData();
+    };
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>{
+      supabase.removeChannel(timerChannel);
+      document.removeEventListener("visibilitychange",onVisible);
+    };
   },[viewDate]);
 
   const loadData=async()=>{
