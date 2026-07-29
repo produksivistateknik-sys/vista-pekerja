@@ -2220,19 +2220,23 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
-// REVIEW POTONG - histori read-only "kemarin motong apa aja", dikelompokkan per
-// tanggal lalu per shift. Sumber data: panels.checklist[kode].history.POTONG
-// (bukan raw_schedule/jejak - itu murni penjadwalan, gak punya shift/qty per
-// checkpoint). Tiap entry history sudah {ts,pct,shift,tanggal} - tanggal/shift
-// di situ udah otomatis benar sesuai logic hariKerjaAwal (shift 2 lewat tengah
-// malam) karena ditulis pakai logic yang sama pas operator submit progress -
-// jadi di sini tinggal pakai apa adanya, gak perlu hitung ulang.
-// Qty per checkpoint dihitung dari SELISIH persentase antar-checkpoint berurutan
-// (checkpoint sebelumnya start dari 0%).
+// REVIEW POTONG - histori read-only "hari ini/kemarin motong apa aja", navigasi
+// per tanggal tunggal, dikelompokkan PROYEK -> PANEL -> semua komponen yang
+// dipotong di tanggal itu (shift jadi badge per-baris, bukan level grouping -
+// biar 1 panel yang kerja lintas shift tetap muncul SATU kali aja, gak duplikat).
+// Sumber data: panels.checklist[kode].history.POTONG (bukan raw_schedule/jejak -
+// itu murni penjadwalan, gak punya shift/qty per checkpoint). Tiap entry history
+// sudah {ts,pct,shift,tanggal} - tanggal/shift di situ udah otomatis benar sesuai
+// logic hariKerjaAwal (shift 2 lewat tengah malam) karena ditulis pakai logic
+// yang sama pas operator submit progress - jadi di sini tinggal pakai apa
+// adanya, gak perlu hitung ulang. Qty per checkpoint dihitung dari SELISIH
+// persentase antar-checkpoint berurutan (checkpoint sebelumnya start dari 0%).
 function ReviewPotongView(){
   const[loading,setLoading]=useState(true);
   const[entries,setEntries]=useState<any[]>([]);
-  const[hariRange,setHariRange]=useState(7);
+  const[viewDate,setViewDate]=useState(TODAY);
+  const[expandedProyek,setExpandedProyek]=useState<Record<string,boolean>>({});
+  const[expandedPanel,setExpandedPanel]=useState<Record<string,boolean>>({});
 
   const kodeNamaMap=useMemo(()=>{
     const map:Record<string,string>={};
@@ -2259,24 +2263,27 @@ function ReviewPotongView(){
       const woMap:Record<number,any>={};
       (wos||[]).forEach((w:any)=>{woMap[w.id]=w;});
 
-      const batasTanggal=addDays(TODAY,-(hariRange-1));
       const rows:any[]=[];
       allPanels.forEach((p:any)=>{
         Object.entries(p.checklist||{}).forEach(([kode,cl]:any)=>{
-          const hist=(cl?.history?.POTONG||[]).filter((h:any)=>h.tanggal>=batasTanggal);
-          if(hist.length===0)return;
-          const sorted=[...hist].sort((a:any,b:any)=>String(a.ts).localeCompare(String(b.ts)));
+          const histSemua=cl?.history?.POTONG||[];
+          const histSampaiHariIni=histSemua.filter((h:any)=>h.tanggal<=viewDate);
+          const histHariIni=histSemua.filter((h:any)=>h.tanggal===viewDate);
+          if(histHariIni.length===0)return;
+          // Urutkan SEMUA checkpoint (bukan cuma hari ini) biar qty delta dihitung dari
+          // checkpoint sebelumnya yang bener (bisa aja checkpoint sebelumnya itu H-1/H-2).
+          const sortedSemua=[...histSampaiHariIni].sort((a:any,b:any)=>String(a.ts).localeCompare(String(b.ts)));
           const qtyTotal=Number(cl.qty)||0;
-          let pctSebelum=0;
-          sorted.forEach((h:any)=>{
+          sortedSemua.forEach((h:any,idx:number)=>{
+            if(h.tanggal!==viewDate)return;
+            const pctSebelum=idx>0?Number(sortedSemua[idx-1].pct)||0:0;
             const qtySkrg=Math.round((Number(h.pct)||0)/100*qtyTotal);
             const qtySblm=Math.round(pctSebelum/100*qtyTotal);
             const delta=qtySkrg-qtySblm;
-            pctSebelum=Number(h.pct)||0;
             if(delta<=0)return;
             rows.push({
               tanggal:h.tanggal,shift:h.shift||"1",panelId:p.id,panelNama:p.nama,
-              proyek:woMap[p.wo_id]?.proyek||"",wo:woMap[p.wo_id]?.wo||"",
+              proyek:woMap[p.wo_id]?.proyek||"(Tanpa Proyek)",wo:woMap[p.wo_id]?.wo||"",
               kode,namaKomponen:kodeNamaMap[kode]||kode,qtyDelta:delta,ts:h.ts,
             });
           });
@@ -2285,7 +2292,7 @@ function ReviewPotongView(){
 
       const panelIdsRelevan=[...new Set(rows.map((r:any)=>r.panelId))];
       const{data:timers}=panelIdsRelevan.length>0
-        ?await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,tanggal,pekerja:pekerja_id(nama)").eq("proses","POTONG").in("panel_id",panelIdsRelevan).gte("tanggal",batasTanggal)
+        ?await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,tanggal,pekerja:pekerja_id(nama)").eq("proses","POTONG").in("panel_id",panelIdsRelevan).eq("tanggal",viewDate)
         :{data:[]};
       const operatorMap:Record<string,Set<string>>={};
       (timers||[]).forEach((t:any)=>{
@@ -2301,49 +2308,35 @@ function ReviewPotongView(){
       if(!cancelled){setEntries(rows);setLoading(false);}
     })();
     return()=>{cancelled=true;};
-  },[hariRange,kodeNamaMap]);
+  },[viewDate,kodeNamaMap]);
 
-  const grouped=useMemo(()=>{
-    const byTanggal:Record<string,{"1":any[],"2":any[]}>={};
+  const naturalKodeSort=(a:string,b:string)=>{
+    const parse=(k:string)=>{const m=k.match(/^(.*?)(\d+)$/);return m?{prefix:m[1],num:parseInt(m[2],10)}:{prefix:k,num:0};};
+    const pa=parse(a),pb=parse(b);
+    if(pa.prefix!==pb.prefix)return pa.prefix.localeCompare(pb.prefix);
+    return pa.num-pb.num;
+  };
+
+  // PROYEK -> PANEL -> list komponen (flat, gak dipecah shift lagi - shift jadi
+  // badge per-baris di bawah, biar 1 panel gak muncul dobel walau kerja lintas shift).
+  const groupedProyek=useMemo(()=>{
+    const byProyek:Record<string,{wo:string,panels:Record<string,{panelId:number,panelNama:string,items:any[]}>}>={};
     entries.forEach((r:any)=>{
-      if(!byTanggal[r.tanggal])byTanggal[r.tanggal]={"1":[],"2":[]};
-      byTanggal[r.tanggal][r.shift==="2"?"2":"1"].push(r);
+      if(!byProyek[r.proyek])byProyek[r.proyek]={wo:r.wo,panels:{}};
+      const panelKey=String(r.panelId);
+      if(!byProyek[r.proyek].panels[panelKey])byProyek[r.proyek].panels[panelKey]={panelId:r.panelId,panelNama:r.panelNama,items:[]};
+      byProyek[r.proyek].panels[panelKey].items.push(r);
     });
-    return Object.entries(byTanggal).sort((a,b)=>b[0].localeCompare(a[0]));
+    return Object.entries(byProyek).sort((a,b)=>a[0].localeCompare(b[0])).map(([proyek,data])=>({
+      proyek,wo:data.wo,
+      panels:Object.values(data.panels).sort((a,b)=>a.panelNama.localeCompare(b.panelNama)).map(p=>({
+        ...p,items:p.items.sort((a:any,b:any)=>naturalKodeSort(a.kode,b.kode)),
+      })),
+    }));
   },[entries]);
 
-  const shiftSection=(label:string,items:any[])=>{
-    if(items.length===0)return null;
-    return(
-      <div style={{marginBottom:10}}>
-        <div style={{fontSize:11,fontWeight:800,color:"#64748b",marginBottom:6,textTransform:"uppercase" as const,letterSpacing:.4}}>{label}</div>
-        <div style={{display:"flex",flexDirection:"column" as const,gap:6}}>
-          {items.map((r:any,i:number)=>(
-            <div key={i} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 12px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontSize:11,color:"#94a3b8"}}>{r.proyek}{r.wo?" · WO "+r.wo:""}</div>
-                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{r.panelNama}</div>
-                  <div style={{fontSize:12,color:"#475569",marginTop:2}}>{r.kode} — {r.namaKomponen}</div>
-                  {r.operators.length>0&&(
-                    <div style={{display:"flex",gap:4,flexWrap:"wrap" as const,marginTop:6}}>
-                      {r.operators.map((op:string)=>(
-                        <span key={op} style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>👤 {op}</span>
-                      ))}
-                    </div>
-                  )}
-                </div>
-                <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"4px 10px",textAlign:"center" as const,flexShrink:0}}>
-                  <div style={{fontWeight:800,fontSize:15,color:"#d97706"}}>{r.qtyDelta}</div>
-                  <div style={{fontSize:8,color:"#92400e",fontWeight:700}}>PCS</div>
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </div>
-    );
-  };
+  const toggleProyek=(proyek:string)=>setExpandedProyek(prev=>({...prev,[proyek]:!(prev[proyek]??true)}));
+  const togglePanel=(key:string)=>setExpandedPanel(prev=>({...prev,[key]:!(prev[key]??true)}));
 
   return(
     <div style={{padding:16,maxWidth:560,margin:"0 auto"}} className="fi">
@@ -2351,17 +2344,17 @@ function ReviewPotongView(){
         <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#f59e0b,#d97706)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 3px 10px #d9770644"}}>📋</div>
         <div>
           <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>Review Potong</div>
-          <div style={{fontSize:11,color:"#64748b"}}>Riwayat komponen yang sudah dipotong, per shift</div>
+          <div style={{fontSize:11,color:"#64748b"}}>Riwayat komponen yang sudah dipotong</div>
         </div>
       </div>
 
-      <div style={{display:"flex",gap:6,marginBottom:16}}>
-        {[7,14,30].map(n=>(
-          <button key={n} onClick={()=>setHariRange(n)}
-            style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${hariRange===n?"#d97706":"#e2e8f0"}`,
-              background:hariRange===n?"#fffbeb":"#fff",color:hariRange===n?"#d97706":"#64748b",
-              fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{n} Hari</button>
-        ))}
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,background:"#fff",borderRadius:12,padding:"10px 14px",border:"1.5px solid #e2e8f0"}}>
+        <button onClick={()=>setViewDate(addDays(viewDate,-1))} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#475569"}}>‹</button>
+        <div style={{flex:1,textAlign:"center" as const}}>
+          <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📅 {fmtDate(viewDate)}</div>
+          {viewDate===TODAY&&<div style={{fontSize:10,color:"#d97706",fontWeight:700,marginTop:2}}>Hari Ini</div>}
+        </div>
+        <button onClick={()=>setViewDate(addDays(viewDate,1))} disabled={viewDate>=TODAY} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:viewDate>=TODAY?"#f1f5f9":"#f8fafc",cursor:viewDate>=TODAY?"not-allowed":"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:viewDate>=TODAY?"#cbd5e1":"#475569"}}>›</button>
       </div>
 
       {loading?(
@@ -2369,23 +2362,60 @@ function ReviewPotongView(){
           <div style={{fontSize:24,marginBottom:8}}>⏳</div>
           Memuat riwayat...
         </div>
-      ):grouped.length===0?(
+      ):groupedProyek.length===0?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
           <div style={{fontSize:32,marginBottom:8}}>📭</div>
           <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>Belum ada riwayat</div>
-          <div style={{fontSize:12,marginTop:4}}>Belum ada komponen yang dipotong dalam {hariRange} hari terakhir</div>
+          <div style={{fontSize:12,marginTop:4}}>Belum ada komponen yang dipotong di tanggal ini</div>
         </div>
       ):(
-        grouped.map(([tanggal,shifts])=>(
-          <div key={tanggal} style={{marginBottom:18}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-              <span style={{fontWeight:800,fontSize:13,color:"#1e293b"}}>{fmtDate(tanggal)}</span>
-              {tanggal===TODAY&&<span style={{background:"#fffbeb",color:"#d97706",borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:700}}>Hari Ini</span>}
+        groupedProyek.map(({proyek,wo,panels})=>{
+          const isProyekOpen=expandedProyek[proyek]??true;
+          return(
+            <div key={proyek} style={{marginBottom:10,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+              <div onClick={()=>toggleProyek(proyek)} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",cursor:"pointer",background:"#f8fafc"}}>
+                <span style={{fontSize:11,color:"#94a3b8"}}>{isProyekOpen?"▾":"▸"}</span>
+                <span style={{fontWeight:800,fontSize:13,color:"#1e293b",flex:1}}>{proyek}{wo?" - WO "+wo:""}</span>
+                <span style={{background:"#fffbeb",color:"#d97706",borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:700}}>{panels.length} panel</span>
+              </div>
+              {isProyekOpen&&(
+                <div style={{padding:"6px 10px 10px"}}>
+                  {panels.map(p=>{
+                    const panelKey=proyek+"|"+p.panelId;
+                    const isPanelOpen=expandedPanel[panelKey]??true;
+                    return(
+                      <div key={p.panelId} style={{marginTop:6}}>
+                        <div onClick={()=>togglePanel(panelKey)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 6px",cursor:"pointer"}}>
+                          <span style={{fontSize:10,color:"#94a3b8"}}>{isPanelOpen?"▾":"▸"}</span>
+                          <span style={{fontWeight:700,fontSize:12,color:"#334155",flex:1}}>{p.panelNama}</span>
+                          <span style={{fontSize:10,color:"#94a3b8"}}>{p.items.length} komponen</span>
+                        </div>
+                        {isPanelOpen&&(
+                          <div style={{display:"flex",flexDirection:"column" as const,gap:5,paddingLeft:18,marginTop:2}}>
+                            {p.items.map((r:any,i:number)=>(
+                              <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontSize:11.5,color:"#334155"}}>{r.kode} - {r.namaKomponen}</div>
+                                  <div style={{display:"flex",gap:5,flexWrap:"wrap" as const,marginTop:3,alignItems:"center"}}>
+                                    <span style={{background:r.shift==="2"?"#ede9fe":"#eff6ff",color:r.shift==="2"?"#6d28d9":"#1d4ed8",borderRadius:20,padding:"1px 7px",fontSize:9,fontWeight:700}}>Shift {r.shift}</span>
+                                    {r.operators.map((op:string)=>(
+                                      <span key={op} style={{fontSize:10,color:"#64748b",fontWeight:600}}>👤 {op}</span>
+                                    ))}
+                                  </div>
+                                </div>
+                                <div style={{fontWeight:800,fontSize:13,color:"#d97706",flexShrink:0}}>{r.qtyDelta} <span style={{fontSize:9,fontWeight:700,color:"#92400e"}}>pcs</span></div>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
-            {shiftSection("Shift 1",shifts["1"])}
-            {shiftSection("Shift 2",shifts["2"])}
-          </div>
-        ))
+          );
+        })
       )}
     </div>
   );
