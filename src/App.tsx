@@ -2219,6 +2219,207 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// REVIEW POTONG - histori read-only "kemarin motong apa aja", dikelompokkan per
+// tanggal lalu per shift. Sumber data: panels.checklist[kode].history.POTONG
+// (bukan raw_schedule/jejak - itu murni penjadwalan, gak punya shift/qty per
+// checkpoint). Tiap entry history sudah {ts,pct,shift,tanggal} - tanggal/shift
+// di situ udah otomatis benar sesuai logic hariKerjaAwal (shift 2 lewat tengah
+// malam) karena ditulis pakai logic yang sama pas operator submit progress -
+// jadi di sini tinggal pakai apa adanya, gak perlu hitung ulang.
+// Qty per checkpoint dihitung dari SELISIH persentase antar-checkpoint berurutan
+// (checkpoint sebelumnya start dari 0%).
+function ReviewPotongView(){
+  const[loading,setLoading]=useState(true);
+  const[entries,setEntries]=useState<any[]>([]);
+  const[hariRange,setHariRange]=useState(7);
+
+  const kodeNamaMap=useMemo(()=>{
+    const map:Record<string,string>={};
+    Object.values(PANEL_TYPES).forEach((cfg:any)=>{
+      cfg.wps.forEach((w:any)=>w.items.forEach((it:any)=>{map[it.kode]=it.nama;}));
+    });
+    return map;
+  },[]);
+
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      setLoading(true);
+      let allPanels:any[]=[];
+      let from=0;
+      while(true){
+        const{data}=await supabase.from("panels").select("id,nama,tipe,wo_id,checklist").range(from,from+999);
+        allPanels=allPanels.concat(data||[]);
+        if(!data||data.length<1000)break;
+        from+=1000;
+      }
+      const woIds=[...new Set(allPanels.map((p:any)=>p.wo_id).filter(Boolean))];
+      const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek").in("id",woIds):{data:[]};
+      const woMap:Record<number,any>={};
+      (wos||[]).forEach((w:any)=>{woMap[w.id]=w;});
+
+      const batasTanggal=addDays(TODAY,-(hariRange-1));
+      const rows:any[]=[];
+      allPanels.forEach((p:any)=>{
+        Object.entries(p.checklist||{}).forEach(([kode,cl]:any)=>{
+          const hist=(cl?.history?.POTONG||[]).filter((h:any)=>h.tanggal>=batasTanggal);
+          if(hist.length===0)return;
+          const sorted=[...hist].sort((a:any,b:any)=>String(a.ts).localeCompare(String(b.ts)));
+          const qtyTotal=Number(cl.qty)||0;
+          let pctSebelum=0;
+          sorted.forEach((h:any)=>{
+            const qtySkrg=Math.round((Number(h.pct)||0)/100*qtyTotal);
+            const qtySblm=Math.round(pctSebelum/100*qtyTotal);
+            const delta=qtySkrg-qtySblm;
+            pctSebelum=Number(h.pct)||0;
+            if(delta<=0)return;
+            rows.push({
+              tanggal:h.tanggal,shift:h.shift||"1",panelId:p.id,panelNama:p.nama,
+              proyek:woMap[p.wo_id]?.proyek||"",wo:woMap[p.wo_id]?.wo||"",
+              kode,namaKomponen:kodeNamaMap[kode]||kode,qtyDelta:delta,ts:h.ts,
+            });
+          });
+        });
+      });
+
+      const panelIdsRelevan=[...new Set(rows.map((r:any)=>r.panelId))];
+      const{data:timers}=panelIdsRelevan.length>0
+        ?await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,tanggal,pekerja:pekerja_id(nama)").eq("proses","POTONG").in("panel_id",panelIdsRelevan).gte("tanggal",batasTanggal)
+        :{data:[]};
+      const operatorMap:Record<string,Set<string>>={};
+      (timers||[]).forEach((t:any)=>{
+        const key=`${t.panel_id}|${t.kode_komponen}|${t.tanggal}`;
+        if(!operatorMap[key])operatorMap[key]=new Set();
+        if(t.pekerja?.nama)operatorMap[key].add(t.pekerja.nama);
+      });
+      rows.forEach((r:any)=>{
+        const key=`${r.panelId}|${r.kode}|${r.tanggal}`;
+        r.operators=[...(operatorMap[key]||new Set())];
+      });
+
+      if(!cancelled){setEntries(rows);setLoading(false);}
+    })();
+    return()=>{cancelled=true;};
+  },[hariRange,kodeNamaMap]);
+
+  const grouped=useMemo(()=>{
+    const byTanggal:Record<string,{"1":any[],"2":any[]}>={};
+    entries.forEach((r:any)=>{
+      if(!byTanggal[r.tanggal])byTanggal[r.tanggal]={"1":[],"2":[]};
+      byTanggal[r.tanggal][r.shift==="2"?"2":"1"].push(r);
+    });
+    return Object.entries(byTanggal).sort((a,b)=>b[0].localeCompare(a[0]));
+  },[entries]);
+
+  const shiftSection=(label:string,items:any[])=>{
+    if(items.length===0)return null;
+    return(
+      <div style={{marginBottom:10}}>
+        <div style={{fontSize:11,fontWeight:800,color:"#64748b",marginBottom:6,textTransform:"uppercase" as const,letterSpacing:.4}}>{label}</div>
+        <div style={{display:"flex",flexDirection:"column" as const,gap:6}}>
+          {items.map((r:any,i:number)=>(
+            <div key={i} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 12px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,color:"#94a3b8"}}>{r.proyek}{r.wo?" · WO "+r.wo:""}</div>
+                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{r.panelNama}</div>
+                  <div style={{fontSize:12,color:"#475569",marginTop:2}}>{r.kode} — {r.namaKomponen}</div>
+                  {r.operators.length>0&&(
+                    <div style={{display:"flex",gap:4,flexWrap:"wrap" as const,marginTop:6}}>
+                      {r.operators.map((op:string)=>(
+                        <span key={op} style={{background:"#eff6ff",border:"1px solid #bfdbfe",color:"#1d4ed8",borderRadius:20,padding:"2px 8px",fontSize:10,fontWeight:700}}>👤 {op}</span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <div style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"4px 10px",textAlign:"center" as const,flexShrink:0}}>
+                  <div style={{fontWeight:800,fontSize:15,color:"#d97706"}}>{r.qtyDelta}</div>
+                  <div style={{fontSize:8,color:"#92400e",fontWeight:700}}>PCS</div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
+
+  return(
+    <div style={{padding:16,maxWidth:560,margin:"0 auto"}} className="fi">
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#f59e0b,#d97706)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 3px 10px #d9770644"}}>📋</div>
+        <div>
+          <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>Review Potong</div>
+          <div style={{fontSize:11,color:"#64748b"}}>Riwayat komponen yang sudah dipotong, per shift</div>
+        </div>
+      </div>
+
+      <div style={{display:"flex",gap:6,marginBottom:16}}>
+        {[7,14,30].map(n=>(
+          <button key={n} onClick={()=>setHariRange(n)}
+            style={{flex:1,padding:"8px",borderRadius:8,border:`1.5px solid ${hariRange===n?"#d97706":"#e2e8f0"}`,
+              background:hariRange===n?"#fffbeb":"#fff",color:hariRange===n?"#d97706":"#64748b",
+              fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>{n} Hari</button>
+        ))}
+      </div>
+
+      {loading?(
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{fontSize:24,marginBottom:8}}>⏳</div>
+          Memuat riwayat...
+        </div>
+      ):grouped.length===0?(
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{fontSize:32,marginBottom:8}}>📭</div>
+          <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>Belum ada riwayat</div>
+          <div style={{fontSize:12,marginTop:4}}>Belum ada komponen yang dipotong dalam {hariRange} hari terakhir</div>
+        </div>
+      ):(
+        grouped.map(([tanggal,shifts])=>(
+          <div key={tanggal} style={{marginBottom:18}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+              <span style={{fontWeight:800,fontSize:13,color:"#1e293b"}}>{fmtDate(tanggal)}</span>
+              {tanggal===TODAY&&<span style={{background:"#fffbeb",color:"#d97706",borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:700}}>Hari Ini</span>}
+            </div>
+            {shiftSection("Shift 1",shifts["1"])}
+            {shiftSection("Shift 2",shifts["2"])}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+// Wrapper tab switcher "Tugas Saya" / "Review" - komponen TERPISAH dari
+// OperatorView (bukan state internal di dalamnya) supaya gak ada resiko urutan
+// hooks React berubah pas toggle tab (OperatorView isinya banyak hook, early
+// return bersyarat di tengah function itu bisa bikin "rendered fewer hooks than
+// expected" kalau tab-nya di-switch pas beberapa hook di bawah belum sempat
+// jalan). Dengan swap komponen (bukan swap konten di dalam 1 komponen), tiap
+// komponen punya hook-nya sendiri, aman.
+function OperatorHome({user,viewMode}:any){
+  const[mainTab,setMainTab]=useState<"tugas"|"review">("tugas");
+  const bisaReview=user.divisi==="mekanik"&&user.sub_bagian==="Potong";
+
+  return(
+    <div>
+      {bisaReview&&(
+        <div style={{display:"flex",gap:2,padding:"8px 16px 0",background:"#fff",borderBottom:"1px solid #f1f5f9"}}>
+          {[{key:"tugas",label:"📋 Tugas Saya"},{key:"review",label:"🗂 Review"}].map(t=>(
+            <button key={t.key} onClick={()=>setMainTab(t.key as any)}
+              style={{padding:"8px 16px",fontSize:12,fontWeight:mainTab===t.key?800:600,
+                color:mainTab===t.key?"#d97706":"#94a3b8",cursor:"pointer",background:"none",
+                border:"none",borderBottom:mainTab===t.key?"2.5px solid #d97706":"2.5px solid transparent",
+                fontFamily:"inherit"}}>{t.label}</button>
+          ))}
+        </div>
+      )}
+      {bisaReview&&mainTab==="review"?<ReviewPotongView/>:<OperatorView user={user} viewMode={viewMode}/>}
+    </div>
+  );
+}
+
 function OperatorView({user,viewMode}:any){
   void viewMode; // dipake nanti buat render mobile vs desktop
   const wsKey=`vista_pekerja_ws_${user.divisi}_${user.sub_bagian||""}_${user.id||user.username||user.nama||""}`;
@@ -4958,7 +5159,7 @@ export default function App(){
             :user.divisi==="komponen"&&user.sub_bagian==="Warehouse"?<KomponenProgressView user={user} tugas={TUGAS_WAREHOUSE}/>
             :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS}/>
             :user.divisi==="komponen"?<TrackingKomponenView user={user}/>
-            :<OperatorView user={user} viewMode={viewMode}/>}
+            :<OperatorHome user={user} viewMode={viewMode}/>}
         </div>
         <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",
           display:"flex",minHeight:52,paddingBottom:"env(safe-area-inset-bottom)",zIndex:100,boxShadow:"0 -2px 10px #00000010"}}>
