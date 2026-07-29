@@ -2238,12 +2238,20 @@ function ReviewPotongView(){
   const[expandedProyek,setExpandedProyek]=useState<Record<string,boolean>>({});
   const[expandedPanel,setExpandedPanel]=useState<Record<string,boolean>>({});
 
-  const kodeNamaMap=useMemo(()=>{
+  // kode->nama komponen: bom_master (live, dikelola dari Master Data BOM Vista Teknik) jadi
+  // sumber UTAMA - PANEL_TYPES statis cuma fallback kalau kebetulan ada kode yang belum
+  // sempat ke-sync ke bom_master. Tanpa ini, komponen yang ditambah/diubah namanya setelah
+  // config statis terakhir di-update bakal nongol sebagai kode mentah (FS.27) doang.
+  const[kodeNamaMap,setKodeNamaMap]=useState<Record<string,string>>({});
+  useEffect(()=>{
     const map:Record<string,string>={};
     Object.values(PANEL_TYPES).forEach((cfg:any)=>{
       cfg.wps.forEach((w:any)=>w.items.forEach((it:any)=>{map[it.kode]=it.nama;}));
     });
-    return map;
+    supabase.from("bom_master").select("kode_komponen,nama_komponen").then(({data}:any)=>{
+      (data||[]).forEach((b:any)=>{map[b.kode_komponen]=b.nama_komponen;});
+      setKodeNamaMap({...map});
+    });
   },[]);
 
   useEffect(()=>{
