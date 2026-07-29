@@ -2506,7 +2506,14 @@ function KomponenTambahanView({user}:any){
     setLoading(false);
   };
 
-  useEffect(()=>{fetchWoList();fetchItems();},[]);
+  useEffect(()=>{
+    fetchWoList();
+    fetchItems();
+    const ch=supabase.channel("realtime-komponen-tambahan-pekerja")
+      .on("postgres_changes",{event:"*",schema:"public",table:"komponen_tambahan"},fetchItems)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
   useEffect(()=>{
     setSelectedPanelId(null);
     if(selectedWoId){fetchPanelList(selectedWoId);}else{setPanelList([]);}
