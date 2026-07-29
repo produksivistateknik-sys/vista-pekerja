@@ -5357,6 +5357,22 @@ export default function App(){
   };
   const isOperatorDivisi=user&&!["nameplate","qc","komponen"].includes(user.divisi);
 
+  // Session di-cache penuh di localStorage pas login, gak ada expiry - kalau admin ubah
+  // divisi/sub_bagian/nama operator ini dari Vista Teknik pas app-nya masih kebuka, sesi lama
+  // bakal nyangkut sampai logout-login manual. Dengerin perubahan row operator_users-nya sendiri
+  // biar role ke-refresh live tanpa perlu logout.
+  useEffect(()=>{
+    if(!user?.id)return;
+    const ch=supabase.channel("realtime-operator-session-"+user.id)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"operator_users",filter:"id=eq."+user.id},(payload:any)=>{
+        const fresh={...payload.new,name:payload.new.nama};
+        setUser(fresh);
+        try{localStorage.setItem("vista_pekerja_session",JSON.stringify(fresh));}catch{}
+      })
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[user?.id]);
+
   if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
   if(!user) return <Login onLogin={(u:any)=>{
     setUser(u);
