@@ -109,6 +109,11 @@ function getLocalDateStr(d:Date=new Date()){
   return `${y}-${m}-${day}`;
 }
 const TODAY = getLocalDateStr();
+// Duplikat kecil dari src/lib/dateHelpers.ts di vista-teknik (repo terpisah, gak ada shared
+// package) - persis pola yang udah dipakai di sini buat getLocalDateStr/TODAY/addDays/fmtDate.
+function daysUntil(t:string){ return Math.ceil((new Date(t).getTime()-new Date(TODAY).getTime())/86400000); }
+function isDelayed(t:string){ return daysUntil(t)<0; }
+function isUrgent(t:string){ const d=daysUntil(t); return d>=0&&d<=7; }
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS
@@ -241,7 +246,92 @@ function Btn({children,color="#2563eb",outline=false,style={},...p}:any){
     background:outline?"transparent":color,color:outline?color:"#fff",
     fontWeight:700,fontSize:13,...style}} {...p}>{children}</button>;
 }
-  
+
+// ─────────────────────────────────────────────────────────────────────────────
+// WO URGENT/TERLAMBAT BANNER - notifikasi read-only, se-perusahaan (bukan cuma WO operator
+// yang login), format mirip widget "Daftar Peringatan" di Dashboard.tsx Vista Teknik. Sengaja
+// CUMA cek tanggal target (bukan progress panel per komponen) - lebih ringan buat mobile, dan
+// WO yang telat submit progress cuma numpang lewat di banner ini gak berdampak (murni awareness,
+// bukan data kerja).
+function WoUrgentBanner(){
+  const [wos,setWos]=useState<any[]>([]);
+  const [expanded,setExpanded]=useState(false);
+
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      let all:any[]=[];
+      let from=0;
+      const pageSize=1000;
+      while(true){
+        const{data,error}=await supabase.from("work_orders").select("id,wo,proyek,target")
+          .or("is_archived.is.null,is_archived.eq.false").range(from,from+pageSize-1);
+        if(error||!data)break;
+        all=all.concat(data);
+        if(data.length<pageSize)break;
+        from+=pageSize;
+      }
+      if(!cancelled)setWos(all);
+    })();
+    return()=>{cancelled=true;};
+  },[]);
+
+  const alertWos=wos
+    .filter(w=>w.target&&(isDelayed(w.target)||isUrgent(w.target)))
+    .sort((a,b)=>daysUntil(a.target)-daysUntil(b.target));
+
+  if(alertWos.length===0)return null;
+
+  const worst=alertWos[0];
+  const worstLate=isDelayed(worst.target);
+  const anyDelayed=alertWos.some(w=>isDelayed(w.target));
+
+  return(
+    <div style={{marginBottom:16,borderRadius:10,border:`1.5px solid ${anyDelayed?"#fecaca":"#fde68a"}`,
+      background:anyDelayed?"#fef2f2":"#fffbeb",overflow:"hidden"}}>
+      <button onClick={()=>setExpanded(!expanded)}
+        style={{width:"100%",display:"flex",alignItems:"center",gap:8,padding:"9px 12px",
+          background:"none",border:"none",cursor:"pointer",textAlign:"left" as const,fontFamily:"inherit"}}>
+        <span style={{fontSize:14,flexShrink:0}}>{anyDelayed?"⛔":"⚠️"}</span>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{fontSize:11.5,fontWeight:700,color:anyDelayed?"#dc2626":"#d97706"}}>
+            {alertWos.length} WO perlu perhatian
+          </div>
+          {!expanded&&(
+            <div style={{fontSize:10.5,color:anyDelayed?"#7f1d1d":"#78350f",whiteSpace:"nowrap" as const,
+              overflow:"hidden" as const,textOverflow:"ellipsis" as const}}>
+              WO {worst.wo} — {worst.proyek} · {worstLate?"Terlambat "+Math.abs(daysUntil(worst.target))+" hari":"H-"+daysUntil(worst.target)+" Mendesak"}
+            </div>
+          )}
+        </div>
+        <span style={{fontSize:11,color:anyDelayed?"#dc2626":"#d97706",flexShrink:0}}>{expanded?"▲ Tutup":"▼ Lihat semua"}</span>
+      </button>
+      {expanded&&(
+        <div style={{maxHeight:220,overflowY:"auto" as const,borderTop:`1px solid ${anyDelayed?"#fecaca":"#fde68a"}`}}>
+          {alertWos.map(w=>{
+            const late=isDelayed(w.target);
+            const d=daysUntil(w.target);
+            return(
+              <div key={w.id} style={{display:"flex",alignItems:"center",gap:8,padding:"7px 12px",
+                borderBottom:`1px solid ${anyDelayed?"#fecaca":"#fde68a"}50`}}>
+                <span style={{color:late?"#dc2626":"#d97706",fontSize:12,flexShrink:0}}>●</span>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontSize:11,fontWeight:700,color:late?"#dc2626":"#d97706",whiteSpace:"nowrap" as const,overflow:"hidden" as const,textOverflow:"ellipsis" as const}}>
+                    WO {w.wo} — {w.proyek}
+                  </div>
+                  <div style={{fontSize:10,color:late?"#7f1d1d":"#78350f"}}>
+                    {late?"Terlambat "+Math.abs(d)+" hari":"H-"+d+" Mendesak"} · Target: {w.target}
+                  </div>
+                </div>
+                <Badge label={late?"Terlambat":"Mendesak"} color={late?"#dc2626":"#d97706"}/>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LANDING PAGE
@@ -3358,6 +3448,8 @@ function OperatorView({user,viewMode}:any){
           </button>
         </div>
       </div>
+
+      <WoUrgentBanner/>
 
       {/* stats per proses */}
       <div style={{display:"flex",gap:8,marginBottom:16,flexWrap:"wrap"}}>
