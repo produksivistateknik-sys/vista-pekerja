@@ -2492,7 +2492,7 @@ function KomponenTambahanView({user}:any){
     setSubmitting(true);
     const wo=woList.find((w:any)=>w.id===selectedWoId);
     const panel=panelList.find((p:any)=>p.id===selectedPanelId);
-    await supabase.from("komponen_tambahan").insert({
+    const{error}=await supabase.from("komponen_tambahan").insert({
       wo_id:selectedWoId,
       panel_id:selectedPanelId,
       proyek:wo?.proyek||null,
@@ -2505,9 +2505,13 @@ function KomponenTambahanView({user}:any){
       shift:sesiKerja.shift,
       status:"belum_mulai",
     });
+    setSubmitting(false);
+    if(error){
+      alert("Gagal menyimpan: "+error.message);
+      return;
+    }
     setNamaKomponen("");
     setQty("");
-    setSubmitting(false);
     fetchItems();
   };
 
