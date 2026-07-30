@@ -3388,7 +3388,11 @@ function OperatorView({user,viewMode}:any){
           rowsSatuTask.forEach(r=>{
             if(r.tahap){
               // BUSBAR per-tahap: merge ke object nested, JANGAN timpa tahap lain yang udah keisi.
-              const existingForKode=(baseMap[r.kode]&&typeof baseMap[r.kode]==="object"&&!Array.isArray(baseMap[r.kode]))?baseMap[r.kode]:{};
+              // WAJIB baca existing dari newMap (akumulator yang lagi jalan), BUKAN baseMap (state
+              // awal sebelum batch ini) - kalau baca dari baseMap, beberapa tahap dari KODE YANG
+              // SAMA dalam SATU batch (kejadian nyata pas bulk-assign operator BUSBAR sekaligus ke
+              // semua tahap) bakal saling timpa satu sama lain, cuma tahap TERAKHIR yang keselamet.
+              const existingForKode=(newMap[r.kode]&&typeof newMap[r.kode]==="object"&&!Array.isArray(newMap[r.kode]))?newMap[r.kode]:{};
               newMap[r.kode]={...existingForKode,[r.tahap]:getPekerjaIds(r)};
             } else {
               newMap[r.kode]=getPekerjaIds(r);
@@ -3415,6 +3419,13 @@ function OperatorView({user,viewMode}:any){
     // bersamaan (gak saling timpa), lihat catatan nested-merge di updatePekerjaPerKomponenBatch.
     const updateOperatorBusbarTahap=async(taskId:number,kode:string,tahap:string,pekerjaIds:number[])=>{
       await updatePekerjaPerKomponenBatch([{task:{id:taskId},kode,tahap}],()=>pekerjaIds);
+    };
+    // Assign operator SEKALIGUS ke SEMUA tahap dari SEMUA komponen dalam satu grup BUSBAR (satu
+    // kali pilih, bukan per kartu/per tahap) - expand tiap row jadi (kode,tahap) flat lalu
+    // didelegasikan ke batch writer yang sama (nested-merge per tahap-nya otomatis kejaga).
+    const bulkAssignBusbarOperator=async(rowsGroup:any[],pekerjaIds:number[])=>{
+      const flatRows=rowsGroup.flatMap((r:any)=>getUrutanTahapBusbar(r.kode).map((tahap:string)=>({task:r.task,kode:r.kode,tahap})));
+      await updatePekerjaPerKomponenBatch(flatRows,()=>pekerjaIds);
     };
 
     const bulkAssignAndStart=async(_proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
@@ -4640,19 +4651,23 @@ function OperatorView({user,viewMode}:any){
           </div>
           {isOpen&&(
             <div style={{padding:"0 14px 14px 14px",display:"flex",flexDirection:"column",gap:10}}>
-              {proses!=="POTONG"&&proses!=="RENDAM"&&proses!=="PAINTING"&&!operatorPerKartu&&proses!=="BUSBAR"&&(
+              {proses!=="POTONG"&&proses!=="RENDAM"&&proses!=="PAINTING"&&!operatorPerKartu&&(
                 <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);}}
                   style={{padding:"10px",minHeight:44,borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
                   Pilih Operator ({group.rows.length} komponen)
                 </button>
               )}
-              {proses!=="POTONG"&&proses!=="RENDAM"&&proses!=="PAINTING"&&!operatorPerKartu&&proses!=="BUSBAR"&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
+              {proses!=="POTONG"&&proses!=="RENDAM"&&proses!=="PAINTING"&&!operatorPerKartu&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
                   onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);}}>
                   <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
                     onClick={(e:any)=>e.stopPropagation()}>
                     <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-set untuk SEMUA {group.rows.length} "{group.namaKomponen}" di {panelCount} panel (menimpa operator lama kalau ada). Timer tetap diklik manual per komponen.</div>
+                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>
+                      {proses==="BUSBAR"
+                        ?`Operator akan di-set untuk SEMUA tahap (Fabrikasi/Plating/Heat-Shrink/Pasang) dari SEMUA ${group.rows.length} "${group.namaKomponen}" di ${panelCount} panel sekaligus (menimpa operator lama kalau ada, gak perlu pilih satu-satu per kartu). Timer tetap diklik manual per tahap.`
+                        :`Operator akan di-set untuk SEMUA ${group.rows.length} "${group.namaKomponen}" di ${panelCount} panel (menimpa operator lama kalau ada). Timer tetap diklik manual per komponen.`}
+                    </div>
                     <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
                       {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
                         const checked=tempBulkPekerjaIds.includes(p.id);
@@ -4670,7 +4685,8 @@ function OperatorView({user,viewMode}:any){
                         style={{flex:1,minHeight:44,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
                       <button disabled={tempBulkPekerjaIds.length===0}
                         onClick={async()=>{
-                          await bulkAssignAndStart(proses,group.rows,tempBulkPekerjaIds);
+                          if(proses==="BUSBAR")await bulkAssignBusbarOperator(group.rows,tempBulkPekerjaIds);
+                          else await bulkAssignAndStart(proses,group.rows,tempBulkPekerjaIds);
                           setBulkAssignProses(null);
                           setBulkAssignGroupKey(null);
                         }}
