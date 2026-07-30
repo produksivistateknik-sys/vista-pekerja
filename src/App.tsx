@@ -2848,6 +2848,50 @@ function OperatorView({user,viewMode}:any){
       });
   },[operatorModal]);
   const [timerAktif,setTimerAktif]=useState<Record<string,any>>({});
+
+  // Reminder timer kerja yang udah lama jalan tanpa update progress (dikirim server-side lewat
+  // cron timer-reminder-check tiap 30 menit ke fcs_notifikasi tipe='timer_reminder') - routing
+  // ke device yang tepat dilakukan DI SINI (client), bukan di server, karena satu device/tablet
+  // divisi bisa dipakai bareng beberapa pekerja_id (operator "pilih sendiri di tablet") - jadi
+  // yang relevan buat ditampilin adalah SEMUA reminder yang proses-nya masuk divisi/sub_bagian
+  // sesi ini, bukan cocokin ke satu pekerja_id spesifik. Non-blocking (poin #4) - cuma banner
+  // kecil yang bisa diabaikan, bukan modal wajib direspon.
+  const prosesTermasukDivisi=(proses:string,divisi:string):boolean=>{
+    const dcfg=DIVISI_CONFIG[divisi];
+    if(!dcfg)return false;
+    if(dcfg.proses&&dcfg.proses.includes(proses))return true;
+    if(dcfg.subBagianProses)return Object.values(dcfg.subBagianProses).some((arr:any)=>arr.includes(proses));
+    return false;
+  };
+  const [timerReminders,setTimerReminders]=useState<any[]>([]);
+  useEffect(()=>{
+    const fetchReminders=async()=>{
+      const{data}=await supabase.from("fcs_notifikasi").select("*").eq("tipe","timer_reminder").eq("dibaca",false).order("created_at",{ascending:false});
+      setTimerReminders((data||[]).filter((n:any)=>prosesTermasukDivisi(n.proses,user.divisi)));
+    };
+    fetchReminders();
+    const ch=supabase.channel("realtime-timer-reminder-"+user.divisi)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_notifikasi",filter:"tipe=eq.timer_reminder"},fetchReminders)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[user.divisi]);
+
+  const dismissReminder=async(id:number)=>{
+    setTimerReminders(prev=>prev.filter(r=>r.id!==id)); // optimistic, non-blocking
+    await supabase.from("fcs_notifikasi").update({dibaca:true}).eq("id",id);
+  };
+  // "Selesai, saya lupa matikan" - operasi inti SAMA PERSIS kayak stopTimer() (update `selesai`
+  // by id, progress terakhir yang tercatat gak disentuh sama sekali) - dipanggil langsung by
+  // timer_id (bukan lewat state timerAktif lokal, karena reminder ini bisa muncul buat timer
+  // yang kartunya lagi gak ke-load di state saat ini) - tapi TETAP sinkronin timerAktif kalau
+  // kebetulan key-nya lagi ke-load, biar UI kartu yang lagi kebuka gak nunjukin timer aktif palsu.
+  const selesaikanDariReminder=async(reminder:any)=>{
+    await supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",reminder.timer_id).is("selesai",null);
+    const key=timerKey(reminder.panel_id,reminder.kode_komponen,reminder.proses,reminder.pekerja_id);
+    setTimerAktif(prev=>{const n={...prev};delete n[key];return n;});
+    await dismissReminder(reminder.id);
+  };
+
   const [timerPernahMulai,setTimerPernahMulai]=useState<Record<string,boolean>>({});
   const [timerSelesaiHariIni,setTimerSelesaiHariIni]=useState<Record<string,boolean>>({});
   const [timerDurasiSelesai,setTimerDurasiSelesai]=useState<Record<string,number>>({});
@@ -3928,6 +3972,30 @@ function OperatorView({user,viewMode}:any){
   // ── Main tabel ──
   return(
     <div style={{padding:16}} className="fi">
+      {/* Reminder timer lama - non-blocking, bisa diabaikan (poin #4), gak nutup layar */}
+      {timerReminders.length>0&&(
+        <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:16}}>
+          {timerReminders.map(r=>(
+            <div key={r.id} style={{background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"10px 12px",display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+              <span style={{fontSize:18,flexShrink:0}}>⏰</span>
+              <div style={{flex:1,minWidth:180}}>
+                <div style={{fontSize:12.5,fontWeight:700,color:"#92400e"}}>{r.catatan}</div>
+                <div style={{fontSize:10.5,color:"#a16207"}}>{r.panel_nama} · {r.pekerja_nama}</div>
+              </div>
+              <div style={{display:"flex",gap:6,flexShrink:0}}>
+                <button onClick={()=>dismissReminder(r.id)}
+                  style={{fontSize:11,fontWeight:700,color:"#92400e",background:"#fef3c7",border:"1px solid #fde68a",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>
+                  Ya, masih dikerjakan
+                </button>
+                <button onClick={()=>selesaikanDariReminder(r)}
+                  style={{fontSize:11,fontWeight:700,color:"#fff",background:"#d97706",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>
+                  Selesai, saya lupa matikan
+                </button>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
       {/* header */}
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:16,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:10}}>
