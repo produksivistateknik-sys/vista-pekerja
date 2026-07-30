@@ -2683,23 +2683,48 @@ function OperatorView({user,viewMode}:any){
   const [viewDate,setViewDate]=useState(hariKerjaAwal);
   const [bomPanelTypes,setBomPanelTypes]=useState<any>({});
   useEffect(()=>{
-    supabase.from("bom_master").select("*").then(({data}:any)=>{
+    Promise.all([
+      supabase.from("bom_master").select("*"),
+      supabase.from("panel_type_meta").select("*"),
+      supabase.from("panel_wp_meta").select("*"),
+    ]).then(([bomRes,typeMetaRes,wpMetaRes]:any)=>{
+      const data=bomRes.data;
       if(!data||data.length===0)return;
       const grouped:any={};
       data.forEach((b:any)=>{
         if(!grouped[b.tipe_panel])grouped[b.tipe_panel]={};
         if(!grouped[b.tipe_panel][b.wp])grouped[b.tipe_panel][b.wp]=[];
-        grouped[b.tipe_panel][b.wp].push({kode:b.kode_komponen,nama:b.nama_komponen});
+        grouped[b.tipe_panel][b.wp].push({kode:b.kode_komponen,nama:b.nama_komponen,urutan:b.urutan});
       });
       const result:any={};
       Object.entries(grouped).forEach(([tipe,wpMap]:any)=>{
         const origCfg=(PANEL_TYPES as any)[tipe];
-        if(!origCfg)return;
-        const wps=origCfg.wps.map((origWp:any)=>{
-          const items=(wpMap[origWp.wp]||[]).sort((a:any,b:any)=>String(a.kode).localeCompare(String(b.kode),undefined,{numeric:true}));
-          return{...origWp,items:items.length>0?items:origWp.items};
+        if(origCfg){
+          // Tipe udah dikenal config statis - perilaku lama, cuma refresh nama/kode komponen tiap WP.
+          const wps=origCfg.wps.map((origWp:any)=>{
+            const items=(wpMap[origWp.wp]||[]).sort((a:any,b:any)=>String(a.kode).localeCompare(String(b.kode),undefined,{numeric:true}));
+            return{...origWp,items:items.length>0?items:origWp.items};
+          });
+          result[tipe]={...origCfg,wps};
+          return;
+        }
+        // Tipe BARU yang belum pernah ditambahin ke PANEL_TYPES statis (mis. WM_SS) - dulu ke-skip
+        // total di sini gara-gara origCfg undefined, jadi panel tipe ini invisible di app operator
+        // sama sekali (task-nya gak pernah muncul walau udah dijadwalkan & dirilis beres di Vista
+        // Teknik). Sekarang bangun config-nya langsung dari bom_master+panel_type_meta+
+        // panel_wp_meta - sama persis pola buildPanelTypesFromBom yang udah kepake di Vista Teknik.
+        const typeMeta=(typeMetaRes.data||[]).find((m:any)=>m.tipe_panel===tipe);
+        const wpMetas=(wpMetaRes.data||[]).filter((m:any)=>m.tipe_panel===tipe).slice().sort((a:any,b:any)=>String(a.wp).localeCompare(String(b.wp)));
+        if(wpMetas.length===0)return;
+        const wps=wpMetas.map((wpMeta:any)=>{
+          const items=(wpMap[wpMeta.wp]||[]).slice().sort((a:any,b:any)=>{
+            const ua=Number(a.urutan)||0,ub=Number(b.urutan)||0;
+            if(ua!==ub)return ua-ub;
+            return String(a.kode).localeCompare(String(b.kode),undefined,{numeric:true});
+          }).map((it:any)=>({kode:it.kode,nama:it.nama}));
+          return{wp:wpMeta.wp,color:wpMeta.color,range:wpMeta.range_label,items};
         });
-        result[tipe]={...origCfg,wps};
+        result[tipe]={label:typeMeta?.label||tipe,wps};
       });
       setBomPanelTypes(result);
     });
