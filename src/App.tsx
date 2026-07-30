@@ -2912,6 +2912,11 @@ function OperatorView({user,viewMode}:any){
   const [expandedPanel,setExpandedPanel]=useState<Record<string,string|null>>({});
   const [bulkAssignGroupKey,setBulkAssignGroupKey]=useState<string|null>(null);
   const [tempBulkPekerjaIds,setTempBulkPekerjaIds]=useState<number[]>([]);
+  // Khusus BUSBAR: bulk-assign HARUS pilih satu tahap spesifik dulu (bukan ke-4 tahap sekaligus)
+  // - alur kerja lapangan-nya per-tahap secara terpisah (misal fabrikasi banyak part sekaligus
+  // dalam satu sesi, plating/pasang biasanya sesi lain/orang lain) - beda dari proses lain yang
+  // satu operator ngerjain satu komponen utuh dari awal sampai akhir.
+  const [bulkAssignTahap,setBulkAssignTahap]=useState<string|null>(null);
 
   const cfg=DIVISI_CONFIG[user.divisi];
   const isQtyBased=QTY_DIVISI.includes(user.divisi);
@@ -3420,12 +3425,20 @@ function OperatorView({user,viewMode}:any){
     const updateOperatorBusbarTahap=async(taskId:number,kode:string,tahap:string,pekerjaIds:number[])=>{
       await updatePekerjaPerKomponenBatch([{task:{id:taskId},kode,tahap}],()=>pekerjaIds);
     };
-    // Assign operator SEKALIGUS ke SEMUA tahap dari SEMUA komponen dalam satu grup BUSBAR (satu
-    // kali pilih, bukan per kartu/per tahap) - expand tiap row jadi (kode,tahap) flat lalu
-    // didelegasikan ke batch writer yang sama (nested-merge per tahap-nya otomatis kejaga).
-    const bulkAssignBusbarOperator=async(rowsGroup:any[],pekerjaIds:number[])=>{
-      const flatRows=rowsGroup.flatMap((r:any)=>getUrutanTahapBusbar(r.kode).map((tahap:string)=>({task:r.task,kode:r.kode,tahap})));
+    // Assign operator + LANGSUNG start timer buat SATU tahap spesifik (misal FABRIKASI) di SEMUA
+    // komponen dalam satu grup BUSBAR sekaligus - satu kali pilih tahap+operator, gak perlu klik
+    // Mulai satu-satu per panel lagi. Sengaja per-SATU-tahap (bukan ke-4 sekaligus) karena alur
+    // kerja lapangan-nya emang gitu: fabrikasi banyak part dalam satu sesi, plating/pasang
+    // biasanya sesi/orang lain - beda dari proses lain yang satu operator ngerjain satu komponen
+    // utuh dari awal sampai akhir.
+    const bulkAssignBusbarOperatorAndStart=async(rowsGroup:any[],tahap:string,pekerjaIds:number[])=>{
+      const flatRows=rowsGroup.map((r:any)=>({task:r.task,kode:r.kode,tahap}));
       await updatePekerjaPerKomponenBatch(flatRows,()=>pekerjaIds);
+      for(const r of rowsGroup){
+        for(const pid of pekerjaIds){
+          await startTimer(pid,r.panelId,r.kode,"BUSBAR",viewDate,tahap);
+        }
+      }
     };
 
     const bulkAssignAndStart=async(_proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
@@ -4652,22 +4665,36 @@ function OperatorView({user,viewMode}:any){
           {isOpen&&(
             <div style={{padding:"0 14px 14px 14px",display:"flex",flexDirection:"column",gap:10}}>
               {proses!=="POTONG"&&proses!=="RENDAM"&&proses!=="PAINTING"&&!operatorPerKartu&&(
-                <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);}}
+                <button onClick={()=>{setBulkAssignProses(proses);setBulkAssignGroupKey(groupKey);setTempBulkPekerjaIds([]);setBulkAssignTahap(null);}}
                   style={{padding:"10px",minHeight:44,borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                  Pilih Operator ({group.rows.length} komponen)
+                  {proses==="BUSBAR"?`Mulai Bareng (${group.rows.length} komponen)`:`Pilih Operator (${group.rows.length} komponen)`}
                 </button>
               )}
               {proses!=="POTONG"&&proses!=="RENDAM"&&proses!=="PAINTING"&&!operatorPerKartu&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
-                  onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);}}>
+                  onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);setBulkAssignTahap(null);}}>
                   <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
                     onClick={(e:any)=>e.stopPropagation()}>
-                    <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
+                    <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>{proses==="BUSBAR"?"Mulai Bareng - Pilih Tahap & Operator":"Pilih Operator"}</div>
                     <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>
                       {proses==="BUSBAR"
-                        ?`Operator akan di-set untuk SEMUA tahap (Fabrikasi/Plating/Heat-Shrink/Pasang) dari SEMUA ${group.rows.length} "${group.namaKomponen}" di ${panelCount} panel sekaligus (menimpa operator lama kalau ada, gak perlu pilih satu-satu per kartu). Timer tetap diklik manual per tahap.`
+                        ?`Timer bakal LANGSUNG MULAI buat SATU tahap yang dipilih, di SEMUA ${group.rows.length} "${group.namaKomponen}" di ${panelCount} panel sekaligus - gak perlu klik Mulai satu-satu per panel lagi. Cocok buat kerja borongan (misal fabrikasi banyak part sekaligus).`
                         :`Operator akan di-set untuk SEMUA ${group.rows.length} "${group.namaKomponen}" di ${panelCount} panel (menimpa operator lama kalau ada). Timer tetap diklik manual per komponen.`}
                     </div>
+                    {proses==="BUSBAR"&&(
+                      <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
+                        <div style={{fontSize:11,fontWeight:700,color:"#475569"}}>Tahap:</div>
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                          {getUrutanTahapBusbar(group.rows[0]?.kode).map((t:string)=>(
+                            <button key={t} onClick={()=>setBulkAssignTahap(t)}
+                              style={{padding:"8px 12px",borderRadius:8,border:`1.5px solid ${bulkAssignTahap===t?"#2563eb":"#e2e8f0"}`,
+                                background:bulkAssignTahap===t?"#eff6ff":"#fff",color:bulkAssignTahap===t?"#1d4ed8":"#64748b",fontWeight:700,fontSize:12,cursor:"pointer"}}>
+                              {BUSBAR_TAHAP_LABEL[t]}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                     <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
                       {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
                         const checked=tempBulkPekerjaIds.includes(p.id);
@@ -4681,19 +4708,20 @@ function OperatorView({user,viewMode}:any){
                       })}
                     </div>
                     <div style={{display:"flex",gap:8}}>
-                      <button onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);}}
+                      <button onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);setBulkAssignTahap(null);}}
                         style={{flex:1,minHeight:44,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
-                      <button disabled={tempBulkPekerjaIds.length===0}
+                      <button disabled={tempBulkPekerjaIds.length===0||(proses==="BUSBAR"&&!bulkAssignTahap)}
                         onClick={async()=>{
-                          if(proses==="BUSBAR")await bulkAssignBusbarOperator(group.rows,tempBulkPekerjaIds);
+                          if(proses==="BUSBAR"&&bulkAssignTahap)await bulkAssignBusbarOperatorAndStart(group.rows,bulkAssignTahap,tempBulkPekerjaIds);
                           else await bulkAssignAndStart(proses,group.rows,tempBulkPekerjaIds);
                           setBulkAssignProses(null);
                           setBulkAssignGroupKey(null);
+                          setBulkAssignTahap(null);
                         }}
                         style={{flex:1,minHeight:44,padding:"10px",borderRadius:10,border:"none",
-                          background:tempBulkPekerjaIds.length===0?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
-                          cursor:tempBulkPekerjaIds.length===0?"not-allowed":"pointer"}}>
-                        Simpan ({tempBulkPekerjaIds.length})
+                          background:(tempBulkPekerjaIds.length===0||(proses==="BUSBAR"&&!bulkAssignTahap))?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
+                          cursor:(tempBulkPekerjaIds.length===0||(proses==="BUSBAR"&&!bulkAssignTahap))?"not-allowed":"pointer"}}>
+                        {proses==="BUSBAR"?`▶ Mulai (${tempBulkPekerjaIds.length})`:`Simpan (${tempBulkPekerjaIds.length})`}
                       </button>
                     </div>
                   </div>
