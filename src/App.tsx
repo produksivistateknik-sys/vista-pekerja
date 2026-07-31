@@ -2757,70 +2757,6 @@ function OperatorHome({user,viewMode}:any){
   );
 }
 
-// Dropdown anchor-positioned (bukan modal tengah layar + overlay gelap) - KHUSUS dipakai buat
-// 3 field: Nama Operator (operatorModal), Nama Panel (komponenPopupJenis), Nama Komponen
-// (komponenPopup). SENGAJA gak reuse buat modal LAIN yang judulnya kebetulan mirip
-// (bulkAssignProses, dkk) - itu tetap modal seperti sebelumnya, fitur beda.
-// Isi/logic internal ketiga picker (checkbox, Pilih Semua, tombol Konfirmasi) TIDAK berubah -
-// komponen ini cuma ganti wrapper posisinya, konten di dalamnya tetap children apa adanya.
-//
-// anchorEl: REFERENSI LIVE ke elemen trigger (bukan snapshot rect sekali hitung) - posisinya
-// dihitung ulang tiap scroll/resize (capture:true biar kena juga scroll di container internal
-// yang scrollable sendiri, bukan cuma scroll halaman), jadi dropdown BENERAN ikut nempel ke
-// field-nya walau halaman/container-nya discroll, bukan cuma nutup begitu aja. Kalau elemen
-// trigger-nya sampai ke-unmount (list-nya re-render di tempat lain) selagi dropdown kebuka,
-// otomatis nutup sendiri (isConnected jadi false) drpd nampilin posisi ngaco di 0,0.
-function AnchoredPicker({anchorEl,onClose,children,width=320}:{anchorEl:HTMLElement,onClose:()=>void,children:any,width?:number}){
-  const[rect,setRect]=useState<DOMRect>(()=>anchorEl.getBoundingClientRect());
-  useEffect(()=>{
-    let raf=0;
-    const recompute=()=>{
-      raf=0;
-      if(!anchorEl.isConnected){onClose();return;}
-      setRect(anchorEl.getBoundingClientRect());
-    };
-    const onScrollOrResize=()=>{if(!raf)raf=requestAnimationFrame(recompute);};
-    recompute();
-    window.addEventListener("scroll",onScrollOrResize,true);
-    window.addEventListener("resize",onScrollOrResize);
-    return()=>{
-      if(raf)cancelAnimationFrame(raf);
-      window.removeEventListener("scroll",onScrollOrResize,true);
-      window.removeEventListener("resize",onScrollOrResize);
-    };
-  },[anchorEl,onClose]);
-  const vh=window.innerHeight,vw=window.innerWidth;
-  const GAP=6;
-  // spaceBelow/spaceAbove di-clamp minimal 0 - kalau field-nya kebetulan udah sebagian di luar
-  // viewport (rect.bottom>vh dkk), jangan sampai jadi negatif dan bikin perhitungan flip salah.
-  const spaceBelow=Math.max(0,vh-rect.bottom-GAP);
-  const spaceAbove=Math.max(0,rect.top-GAP);
-  // Flip ke atas cuma kalau bawah beneran sempit (<160) DAN atas emang lebih luas - BUKAN
-  // sekadar "di bawah 220px", biar gak salah pilih sisi yang justru lebih sempit.
-  const flipUp=spaceBelow<160&&spaceAbove>spaceBelow;
-  const available=flipUp?spaceAbove:spaceBelow;
-  // PENTING: maxHeight TIDAK PERNAH dipaksa minimal (dulu ada Math.max(160,...) yang bisa
-  // bikin dropdown "dipaksa" setinggi 160px walau ruang yang beneran tersedia cuma sedikit -
-  // itu yang bikin dropdown ke-render keluar viewport & keliatan hilang). Sekarang di-cap
-  // KETAT ke ruang yang beneran ada - dropdown-nya boleh pendek (tetap bisa discroll di
-  // dalamnya), yang penting gak pernah nongol di luar layar.
-  const maxHeight=Math.min(360,available);
-  const effectiveWidth=Math.min(width,vw-16);
-  const left=Math.max(8,Math.min(rect.left,vw-effectiveWidth-8));
-  const posStyle:any=flipUp?{bottom:vh-rect.top+GAP,left,maxHeight}:{top:rect.bottom+GAP,left,maxHeight};
-  return(
-    <>
-      <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:998}}/>
-      <div onClick={(e:any)=>e.stopPropagation()}
-        style={{position:"fixed",...posStyle,width:effectiveWidth,background:"#fff",borderRadius:12,
-          border:"1px solid #e2e8f0",boxShadow:"0 10px 32px rgba(15,23,42,0.16)",
-          display:"flex",flexDirection:"column" as const,overflow:"hidden",zIndex:999}}>
-        {children}
-      </div>
-    </>
-  );
-}
-
 function OperatorView({user,viewMode}:any){
   void viewMode; // dipake nanti buat render mobile vs desktop
   const wsKey=`vista_pekerja_ws_${user.divisi}_${user.sub_bagian||""}_${user.id||user.username||user.nama||""}`;
@@ -2951,11 +2887,11 @@ function OperatorView({user,viewMode}:any){
   useEffect(()=>{
     try{localStorage.setItem(wsKey+"_komp",JSON.stringify({tanggal:TODAY,data:selectedKomponen}));}catch{}
   },[selectedKomponen,wsKey]);
-  const [komponenPopup,setKomponenPopup]=useState<{proses:string,panelId:number,anchorEl:HTMLElement}|null>(null);
+  const [komponenPopup,setKomponenPopup]=useState<{proses:string,panelId:number}|null>(null);
   const [tempSelectedKomponen,setTempSelectedKomponen]=useState<string[]>([]);
   // Khusus BENDING/STEL mobile: titik awal pilih komponen dibalik jadi Jenis Komponen -> Panel
   // (bukan Panel -> Komponen). Sumber datanya tetap selectedKomponen yang sama persis.
-  const [komponenPopupJenis,setKomponenPopupJenis]=useState<{proses:string,namaKomponen:string,anchorEl:HTMLElement}|null>(null);
+  const [komponenPopupJenis,setKomponenPopupJenis]=useState<{proses:string,namaKomponen:string}|null>(null);
   const [tempSelectedPanelJenis,setTempSelectedPanelJenis]=useState<number[]>([]);
   // Flash "Tersimpan" sesaat di tombol Simpan Progress buat proses yg blm ada feedback visual saat disimpan <100%.
   const [savedFlash,setSavedFlash]=useState<Record<string,boolean>>({});
@@ -4432,7 +4368,7 @@ function OperatorView({user,viewMode}:any){
                     const groupSudahTuntas=groupAllRows.length>0&&groupAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
                     return(
                       <button key={jg.namaKomponen} disabled={groupSudahTuntas}
-                        onClick={(e:any)=>{setKomponenPopupJenis({proses,namaKomponen:jg.namaKomponen,anchorEl:e.currentTarget});setTempSelectedPanelJenis(selRows.map((r:any)=>r.panelId));}}
+                        onClick={()=>{setKomponenPopupJenis({proses,namaKomponen:jg.namaKomponen});setTempSelectedPanelJenis(selRows.map((r:any)=>r.panelId));}}
                         style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
                           padding:"6px 12px",borderRadius:8,border:groupSudahTuntas?"1px solid #e2e8f0":selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
                           background:groupSudahTuntas?"#f8fafc":selCount>0?"#eef2ff":"#fff",
@@ -4485,7 +4421,7 @@ function OperatorView({user,viewMode}:any){
                     const panelSudahTuntas=panelAllRows.length>0&&panelAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
                     return(
                       <button key={pg.panelId} disabled={panelSudahTuntas}
-                        onClick={(e:any)=>{setKomponenPopup({proses,panelId:pg.panelId,anchorEl:e.currentTarget});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
+                        onClick={()=>{setKomponenPopup({proses,panelId:pg.panelId});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
                         style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
                           padding:"6px 12px",borderRadius:8,border:panelSudahTuntas?"1px solid #e2e8f0":selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
                           background:panelSudahTuntas?"#f8fafc":selCount>0?"#eef2ff":"#fff",
@@ -4514,7 +4450,9 @@ function OperatorView({user,viewMode}:any){
               const panelRows=rows.filter((r:any)=>r.panelId===komponenPopup.panelId);
               const panelInfo=panelRows[0];
               return(
-                <AnchoredPicker anchorEl={komponenPopup.anchorEl} onClose={()=>setKomponenPopup(null)}>
+                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
+                  onClick={()=>setKomponenPopup(null)}>
+                  <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
                     <div style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
                       <div style={{fontSize:11,color:"#94a3b8"}}>{panelInfo?.task.proyek}</div>
                       <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{panelInfo?.panel.nama}</div>
@@ -4588,13 +4526,16 @@ function OperatorView({user,viewMode}:any){
                         Konfirmasi ({tempSelectedKomponen.length})
                       </button>
                     </div>
-                </AnchoredPicker>
+                  </div>
+                </div>
               );
             })()}
             {komponenPopupJenis&&komponenPopupJenis.proses===proses&&(()=>{
               const groupRows=rows.filter((r:any)=>(r.item?.nama||r.kode)===komponenPopupJenis.namaKomponen);
               return(
-                <AnchoredPicker anchorEl={komponenPopupJenis.anchorEl} onClose={()=>setKomponenPopupJenis(null)}>
+                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
+                  onClick={()=>setKomponenPopupJenis(null)}>
+                  <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
                     <div style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
                       <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{komponenPopupJenis.namaKomponen}</div>
                       <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Pilih panel yang mau dikerjakan</div>
@@ -4673,7 +4614,8 @@ function OperatorView({user,viewMode}:any){
                         Konfirmasi ({tempSelectedPanelJenis.length})
                       </button>
                     </div>
-                </AnchoredPicker>
+                  </div>
+                </div>
               );
             })()}
             {viewMode==='desktop'&&PROSES_KUMPUL_DULU_DESKTOP.includes(proses)&&visibleRows.length>0&&(
@@ -4995,7 +4937,7 @@ function OperatorView({user,viewMode}:any){
                                 {stTahap.sudahDisimpan100?"✅ ":""}{ti+1}. {BUSBAR_TAHAP_LABEL[t]}
                               </div>
                               {workersTahap.length===0?(
-                                <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t,anchorEl:e.currentTarget});setTempPekerjaIds(idsKompTahap);}}
+                                <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t});setTempPekerjaIds(idsKompTahap);}}
                                   style={{fontSize:11,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:8,padding:"8px 10px",cursor:"pointer",textAlign:"center"}}>
                                   + Pilih Operator {BUSBAR_TAHAP_LABEL[t]}
                                 </button>
@@ -5008,7 +4950,7 @@ function OperatorView({user,viewMode}:any){
                                       {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
                                     </span>
                                   ))}
-                                  <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t,anchorEl:e.currentTarget});setTempPekerjaIds(idsKompTahap);}}
+                                  <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t});setTempPekerjaIds(idsKompTahap);}}
                                     style={{fontSize:9,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"3px 7px",cursor:"pointer"}}>
                                     ✏️ Edit
                                   </button>
@@ -5069,7 +5011,7 @@ function OperatorView({user,viewMode}:any){
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {workers.length===0&&(
                         operatorPerKartu?(
-                          <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,anchorEl:e.currentTarget});setTempPekerjaIds(idsKomp);}}
+                          <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
                             style={{fontSize:12,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center"}}>
                             + Pilih Operator
                           </button>
@@ -5116,7 +5058,7 @@ function OperatorView({user,viewMode}:any){
                                 </span>
                               ))}
                               {operatorPerKartu&&(
-                                <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,anchorEl:e.currentTarget});setTempPekerjaIds(idsKomp);}}
+                                <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
                                   style={{fontSize:10,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"4px 8px",cursor:"pointer"}}>
                                   ✏️ Edit Operator
                                 </button>
@@ -5579,7 +5521,7 @@ function OperatorView({user,viewMode}:any){
                                   );
                                 })}
                                 {proses!=="POTONG"&&(
-                                  <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,anchorEl:e.currentTarget});setTempPekerjaIds(idsKomp);}}
+                                  <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
                                     style={{fontSize:9,color:"#94a3b8",fontWeight:600,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"2px 6px",cursor:"pointer"}}>
                                     {workers.length>0?"+ Edit":"+ Pilih Operator"}
                                   </button>
@@ -5670,8 +5612,11 @@ function OperatorView({user,viewMode}:any){
       )}
 
       {operatorModal&&(
-        <AnchoredPicker anchorEl={operatorModal.anchorEl} onClose={()=>setOperatorModal(null)}>
-          <div style={{padding:16,overflowY:"auto" as const}}>
+        <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,
+          display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
+          onClick={()=>setOperatorModal(null)}>
+          <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
+            onClick={(e:any)=>e.stopPropagation()}>
             <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
             <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Bisa pilih lebih dari satu orang</div>
             <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
@@ -5701,7 +5646,7 @@ function OperatorView({user,viewMode}:any){
                 style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>Simpan</button>
             </div>
           </div>
-        </AnchoredPicker>
+        </div>
       )}
       {fotoViewerWiring&&(
         <FotoZoomViewerPekerja fotos={fotoViewerWiring.fotos} startIndex={fotoViewerWiring.startIndex} label={fotoViewerWiring.label} onClose={()=>setFotoViewerWiring(null)}/>
