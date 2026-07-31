@@ -2757,32 +2757,46 @@ function OperatorHome({user,viewMode}:any){
   );
 }
 
-type AnchorRect={top:number,bottom:number,left:number,right:number,width:number};
-const rectOf=(el:HTMLElement):AnchorRect=>{const r=el.getBoundingClientRect();return{top:r.top,bottom:r.bottom,left:r.left,right:r.right,width:r.width};};
 // Dropdown anchor-positioned (bukan modal tengah layar + overlay gelap) - KHUSUS dipakai buat
 // 3 field: Nama Operator (operatorModal), Nama Panel (komponenPopupJenis), Nama Komponen
 // (komponenPopup). SENGAJA gak reuse buat modal LAIN yang judulnya kebetulan mirip
 // (bulkAssignProses, dkk) - itu tetap modal seperti sebelumnya, fitur beda.
 // Isi/logic internal ketiga picker (checkbox, Pilih Semua, tombol Konfirmasi) TIDAK berubah -
 // komponen ini cuma ganti wrapper posisinya, konten di dalamnya tetap children apa adanya.
-function AnchoredPicker({anchor,onClose,children,width=320}:{anchor:AnchorRect,onClose:()=>void,children:any,width?:number}){
-  const[vh,setVh]=useState(()=>window.innerHeight);
-  const[vw,setVw]=useState(()=>window.innerWidth);
+//
+// anchorEl: REFERENSI LIVE ke elemen trigger (bukan snapshot rect sekali hitung) - posisinya
+// dihitung ulang tiap scroll/resize (capture:true biar kena juga scroll di container internal
+// yang scrollable sendiri, bukan cuma scroll halaman), jadi dropdown BENERAN ikut nempel ke
+// field-nya walau halaman/container-nya discroll, bukan cuma nutup begitu aja. Kalau elemen
+// trigger-nya sampai ke-unmount (list-nya re-render di tempat lain) selagi dropdown kebuka,
+// otomatis nutup sendiri (isConnected jadi false) drpd nampilin posisi ngaco di 0,0.
+function AnchoredPicker({anchorEl,onClose,children,width=320}:{anchorEl:HTMLElement,onClose:()=>void,children:any,width?:number}){
+  const[rect,setRect]=useState<DOMRect>(()=>anchorEl.getBoundingClientRect());
   useEffect(()=>{
-    const onResize=()=>{setVh(window.innerHeight);setVw(window.innerWidth);};
-    window.addEventListener("resize",onResize);
-    // Scroll pas dropdown lagi kebuka - tutup aja (pola umum di banyak app), lebih aman drpd coba
-    // live-reposition elemen trigger yang bisa aja ikut tergeser/hilang dari layar pas discroll.
-    window.addEventListener("scroll",onClose,true);
-    return()=>{window.removeEventListener("resize",onResize);window.removeEventListener("scroll",onClose,true);};
-  },[onClose]);
+    let raf=0;
+    const recompute=()=>{
+      raf=0;
+      if(!anchorEl.isConnected){onClose();return;}
+      setRect(anchorEl.getBoundingClientRect());
+    };
+    const onScrollOrResize=()=>{if(!raf)raf=requestAnimationFrame(recompute);};
+    recompute();
+    window.addEventListener("scroll",onScrollOrResize,true);
+    window.addEventListener("resize",onScrollOrResize);
+    return()=>{
+      if(raf)cancelAnimationFrame(raf);
+      window.removeEventListener("scroll",onScrollOrResize,true);
+      window.removeEventListener("resize",onScrollOrResize);
+    };
+  },[anchorEl,onClose]);
+  const vh=window.innerHeight,vw=window.innerWidth;
   const GAP=6;
-  const spaceBelow=vh-anchor.bottom-GAP;
-  const spaceAbove=anchor.top-GAP;
+  const spaceBelow=vh-rect.bottom-GAP;
+  const spaceAbove=rect.top-GAP;
   const flipUp=spaceBelow<220&&spaceAbove>spaceBelow;
   const maxHeight=Math.max(160,Math.min(360,flipUp?spaceAbove:spaceBelow));
-  const left=Math.min(Math.max(8,anchor.left),vw-width-8);
-  const posStyle:any=flipUp?{bottom:vh-anchor.top+GAP,left,maxHeight}:{top:anchor.bottom+GAP,left,maxHeight};
+  const left=Math.min(Math.max(8,rect.left),vw-width-8);
+  const posStyle:any=flipUp?{bottom:vh-rect.top+GAP,left,maxHeight}:{top:rect.bottom+GAP,left,maxHeight};
   return(
     <>
       <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:998}}/>
@@ -2926,11 +2940,11 @@ function OperatorView({user,viewMode}:any){
   useEffect(()=>{
     try{localStorage.setItem(wsKey+"_komp",JSON.stringify({tanggal:TODAY,data:selectedKomponen}));}catch{}
   },[selectedKomponen,wsKey]);
-  const [komponenPopup,setKomponenPopup]=useState<{proses:string,panelId:number,anchor:AnchorRect}|null>(null);
+  const [komponenPopup,setKomponenPopup]=useState<{proses:string,panelId:number,anchorEl:HTMLElement}|null>(null);
   const [tempSelectedKomponen,setTempSelectedKomponen]=useState<string[]>([]);
   // Khusus BENDING/STEL mobile: titik awal pilih komponen dibalik jadi Jenis Komponen -> Panel
   // (bukan Panel -> Komponen). Sumber datanya tetap selectedKomponen yang sama persis.
-  const [komponenPopupJenis,setKomponenPopupJenis]=useState<{proses:string,namaKomponen:string,anchor:AnchorRect}|null>(null);
+  const [komponenPopupJenis,setKomponenPopupJenis]=useState<{proses:string,namaKomponen:string,anchorEl:HTMLElement}|null>(null);
   const [tempSelectedPanelJenis,setTempSelectedPanelJenis]=useState<number[]>([]);
   // Flash "Tersimpan" sesaat di tombol Simpan Progress buat proses yg blm ada feedback visual saat disimpan <100%.
   const [savedFlash,setSavedFlash]=useState<Record<string,boolean>>({});
@@ -4407,7 +4421,7 @@ function OperatorView({user,viewMode}:any){
                     const groupSudahTuntas=groupAllRows.length>0&&groupAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
                     return(
                       <button key={jg.namaKomponen} disabled={groupSudahTuntas}
-                        onClick={(e:any)=>{setKomponenPopupJenis({proses,namaKomponen:jg.namaKomponen,anchor:rectOf(e.currentTarget)});setTempSelectedPanelJenis(selRows.map((r:any)=>r.panelId));}}
+                        onClick={(e:any)=>{setKomponenPopupJenis({proses,namaKomponen:jg.namaKomponen,anchorEl:e.currentTarget});setTempSelectedPanelJenis(selRows.map((r:any)=>r.panelId));}}
                         style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
                           padding:"6px 12px",borderRadius:8,border:groupSudahTuntas?"1px solid #e2e8f0":selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
                           background:groupSudahTuntas?"#f8fafc":selCount>0?"#eef2ff":"#fff",
@@ -4460,7 +4474,7 @@ function OperatorView({user,viewMode}:any){
                     const panelSudahTuntas=panelAllRows.length>0&&panelAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
                     return(
                       <button key={pg.panelId} disabled={panelSudahTuntas}
-                        onClick={(e:any)=>{setKomponenPopup({proses,panelId:pg.panelId,anchor:rectOf(e.currentTarget)});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
+                        onClick={(e:any)=>{setKomponenPopup({proses,panelId:pg.panelId,anchorEl:e.currentTarget});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
                         style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
                           padding:"6px 12px",borderRadius:8,border:panelSudahTuntas?"1px solid #e2e8f0":selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
                           background:panelSudahTuntas?"#f8fafc":selCount>0?"#eef2ff":"#fff",
@@ -4489,7 +4503,7 @@ function OperatorView({user,viewMode}:any){
               const panelRows=rows.filter((r:any)=>r.panelId===komponenPopup.panelId);
               const panelInfo=panelRows[0];
               return(
-                <AnchoredPicker anchor={komponenPopup.anchor} onClose={()=>setKomponenPopup(null)}>
+                <AnchoredPicker anchorEl={komponenPopup.anchorEl} onClose={()=>setKomponenPopup(null)}>
                     <div style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
                       <div style={{fontSize:11,color:"#94a3b8"}}>{panelInfo?.task.proyek}</div>
                       <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{panelInfo?.panel.nama}</div>
@@ -4569,7 +4583,7 @@ function OperatorView({user,viewMode}:any){
             {komponenPopupJenis&&komponenPopupJenis.proses===proses&&(()=>{
               const groupRows=rows.filter((r:any)=>(r.item?.nama||r.kode)===komponenPopupJenis.namaKomponen);
               return(
-                <AnchoredPicker anchor={komponenPopupJenis.anchor} onClose={()=>setKomponenPopupJenis(null)}>
+                <AnchoredPicker anchorEl={komponenPopupJenis.anchorEl} onClose={()=>setKomponenPopupJenis(null)}>
                     <div style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
                       <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{komponenPopupJenis.namaKomponen}</div>
                       <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Pilih panel yang mau dikerjakan</div>
@@ -4970,7 +4984,7 @@ function OperatorView({user,viewMode}:any){
                                 {stTahap.sudahDisimpan100?"✅ ":""}{ti+1}. {BUSBAR_TAHAP_LABEL[t]}
                               </div>
                               {workersTahap.length===0?(
-                                <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t,anchor:rectOf(e.currentTarget)});setTempPekerjaIds(idsKompTahap);}}
+                                <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t,anchorEl:e.currentTarget});setTempPekerjaIds(idsKompTahap);}}
                                   style={{fontSize:11,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:8,padding:"8px 10px",cursor:"pointer",textAlign:"center"}}>
                                   + Pilih Operator {BUSBAR_TAHAP_LABEL[t]}
                                 </button>
@@ -4983,7 +4997,7 @@ function OperatorView({user,viewMode}:any){
                                       {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
                                     </span>
                                   ))}
-                                  <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t,anchor:rectOf(e.currentTarget)});setTempPekerjaIds(idsKompTahap);}}
+                                  <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t,anchorEl:e.currentTarget});setTempPekerjaIds(idsKompTahap);}}
                                     style={{fontSize:9,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"3px 7px",cursor:"pointer"}}>
                                     ✏️ Edit
                                   </button>
@@ -5044,7 +5058,7 @@ function OperatorView({user,viewMode}:any){
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {workers.length===0&&(
                         operatorPerKartu?(
-                          <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,anchor:rectOf(e.currentTarget)});setTempPekerjaIds(idsKomp);}}
+                          <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,anchorEl:e.currentTarget});setTempPekerjaIds(idsKomp);}}
                             style={{fontSize:12,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center"}}>
                             + Pilih Operator
                           </button>
@@ -5091,7 +5105,7 @@ function OperatorView({user,viewMode}:any){
                                 </span>
                               ))}
                               {operatorPerKartu&&(
-                                <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,anchor:rectOf(e.currentTarget)});setTempPekerjaIds(idsKomp);}}
+                                <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,anchorEl:e.currentTarget});setTempPekerjaIds(idsKomp);}}
                                   style={{fontSize:10,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"4px 8px",cursor:"pointer"}}>
                                   ✏️ Edit Operator
                                 </button>
@@ -5554,7 +5568,7 @@ function OperatorView({user,viewMode}:any){
                                   );
                                 })}
                                 {proses!=="POTONG"&&(
-                                  <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,anchor:rectOf(e.currentTarget)});setTempPekerjaIds(idsKomp);}}
+                                  <button onClick={(e:any)=>{setOperatorModal({taskId:r.task.id,kode:r.kode,anchorEl:e.currentTarget});setTempPekerjaIds(idsKomp);}}
                                     style={{fontSize:9,color:"#94a3b8",fontWeight:600,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"2px 6px",cursor:"pointer"}}>
                                     {workers.length>0?"+ Edit":"+ Pilih Operator"}
                                   </button>
@@ -5645,7 +5659,7 @@ function OperatorView({user,viewMode}:any){
       )}
 
       {operatorModal&&(
-        <AnchoredPicker anchor={operatorModal.anchor} onClose={()=>setOperatorModal(null)}>
+        <AnchoredPicker anchorEl={operatorModal.anchorEl} onClose={()=>setOperatorModal(null)}>
           <div style={{padding:16,overflowY:"auto" as const}}>
             <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
             <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Bisa pilih lebih dari satu orang</div>
