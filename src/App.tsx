@@ -2791,17 +2791,28 @@ function AnchoredPicker({anchorEl,onClose,children,width=320}:{anchorEl:HTMLElem
   },[anchorEl,onClose]);
   const vh=window.innerHeight,vw=window.innerWidth;
   const GAP=6;
-  const spaceBelow=vh-rect.bottom-GAP;
-  const spaceAbove=rect.top-GAP;
-  const flipUp=spaceBelow<220&&spaceAbove>spaceBelow;
-  const maxHeight=Math.max(160,Math.min(360,flipUp?spaceAbove:spaceBelow));
-  const left=Math.min(Math.max(8,rect.left),vw-width-8);
+  // spaceBelow/spaceAbove di-clamp minimal 0 - kalau field-nya kebetulan udah sebagian di luar
+  // viewport (rect.bottom>vh dkk), jangan sampai jadi negatif dan bikin perhitungan flip salah.
+  const spaceBelow=Math.max(0,vh-rect.bottom-GAP);
+  const spaceAbove=Math.max(0,rect.top-GAP);
+  // Flip ke atas cuma kalau bawah beneran sempit (<160) DAN atas emang lebih luas - BUKAN
+  // sekadar "di bawah 220px", biar gak salah pilih sisi yang justru lebih sempit.
+  const flipUp=spaceBelow<160&&spaceAbove>spaceBelow;
+  const available=flipUp?spaceAbove:spaceBelow;
+  // PENTING: maxHeight TIDAK PERNAH dipaksa minimal (dulu ada Math.max(160,...) yang bisa
+  // bikin dropdown "dipaksa" setinggi 160px walau ruang yang beneran tersedia cuma sedikit -
+  // itu yang bikin dropdown ke-render keluar viewport & keliatan hilang). Sekarang di-cap
+  // KETAT ke ruang yang beneran ada - dropdown-nya boleh pendek (tetap bisa discroll di
+  // dalamnya), yang penting gak pernah nongol di luar layar.
+  const maxHeight=Math.min(360,available);
+  const effectiveWidth=Math.min(width,vw-16);
+  const left=Math.max(8,Math.min(rect.left,vw-effectiveWidth-8));
   const posStyle:any=flipUp?{bottom:vh-rect.top+GAP,left,maxHeight}:{top:rect.bottom+GAP,left,maxHeight};
   return(
     <>
       <div onClick={onClose} style={{position:"fixed",inset:0,zIndex:998}}/>
       <div onClick={(e:any)=>e.stopPropagation()}
-        style={{position:"fixed",...posStyle,width,background:"#fff",borderRadius:12,
+        style={{position:"fixed",...posStyle,width:effectiveWidth,background:"#fff",borderRadius:12,
           border:"1px solid #e2e8f0",boxShadow:"0 10px 32px rgba(15,23,42,0.16)",
           display:"flex",flexDirection:"column" as const,overflow:"hidden",zIndex:999}}>
         {children}
