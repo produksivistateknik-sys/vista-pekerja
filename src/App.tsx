@@ -5683,33 +5683,34 @@ export default function App(){
     <div style={{minHeight:"100vh",background:"#f1f5f9"}}>
       <style>{GCss}</style>
       <div style={{display:"flex",flexDirection:"column",minHeight:"100vh"}}>
-        <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",padding:"0 16px",
-          minHeight:52,paddingTop:"max(0px, env(safe-area-inset-top))",display:"flex",alignItems:"center",justifyContent:"space-between",
+        <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",padding:"6px 16px",
+          minHeight:52,paddingTop:"max(6px, env(safe-area-inset-top))",display:"flex",alignItems:"center",justifyContent:"space-between",
+          flexWrap:"wrap",rowGap:6,
           position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 4px #00000008"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
             <span style={{fontSize:18}}>⚡</span>
             <span style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>PROSES PRODUKSI</span>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:6}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",rowGap:6,justifyContent:"flex-end"}}>
             <KoneksiBadge/>
             <span style={{background:cfg?.bg,color:cfg?.color,border:`1px solid ${cfg?.color}30`,
               borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</span>
             {isOperatorDivisi&&(
               <button onClick={toggleViewMode} title={viewMode==="desktop"?"Ganti ke tampilan Mobile":"Ganti ke tampilan Desktop"}
-                style={{width:40,height:40,border:"1px solid #e2e8f0",borderRadius:8,
+                style={{width:40,height:40,flexShrink:0,border:"1px solid #e2e8f0",borderRadius:8,
                   background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",
                   cursor:"pointer",fontSize:15,color:"#64748b"}}>
                 {viewMode==="desktop"?"📱":"🖥️"}
               </button>
             )}
             <button onClick={()=>window.location.reload()} title="Refresh"
-              style={{width:40,height:40,border:"1px solid #e2e8f0",borderRadius:8,
+              style={{width:40,height:40,flexShrink:0,border:"1px solid #e2e8f0",borderRadius:8,
                 background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",
                 cursor:"pointer",fontSize:15,color:"#64748b"}}>
               🔄
             </button>
             <button onClick={()=>{setUser(null);try{localStorage.removeItem("vista_pekerja_session");}catch{}setPage("landing");}}
-              style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#64748b",
+              style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#64748b",flexShrink:0,whiteSpace:"nowrap",
                 borderRadius:8,padding:"10px 14px",minHeight:40,cursor:"pointer",fontSize:12,fontWeight:600}}>Keluar</button>
           </div>
         </div>
