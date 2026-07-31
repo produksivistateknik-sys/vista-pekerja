@@ -3581,6 +3581,19 @@ function OperatorView({user,viewMode}:any){
     try{
       const{error}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId));
       if(error)throw error;
+      // FIX akar masalah "operator kosong": PCT_STEPS ini persist LANGSUNG ke DB seketika diklik,
+      // gak lewat "Kunci Progress" (lockSingleKomponen) yang baru nyatet progress_checkpoint_log -
+      // jadi progress bisa kesimpen tanpa jejak operator SAMA SEKALI. Catat checkpoint di sini juga,
+      // tiap kali persentase >0% disimpan, biar selalu ada yang bisa ditelusuri di Rencana Harian.
+      if(pct>0){
+        const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses===proses&&(t.komponen||[]).includes(kode));
+        const idsKomp=(task?.pekerja_per_komponen||{})[kode]||[];
+        const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
+        const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
+        await withRetry(()=>supabase.from('progress_checkpoint_log').insert({
+          panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
+        }));
+      }
     }catch{
       alert("Gagal simpan progress ke server - koneksi lambat. Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.");
     }
