@@ -123,6 +123,47 @@ function withTimeout<T>(promise:PromiseLike<T>, ms:number):Promise<T>{
     new Promise<T>((_,reject)=>setTimeout(()=>reject(new Error("Request timeout - koneksi lambat")),ms)),
   ]);
 }
+
+// ── Status koneksi global - dilaporkan withRetry() tiap kali ada request, dibaca badge kecil di
+// header lewat useKoneksiStatus(). Module-level pub-sub sederhana (bukan Context - belum ada pola
+// itu di file ini), biar OperatorView/NameplateView/dkk yang manggil withRetry gak perlu prop-
+// drilling status ke komponen lain yang render badge-nya.
+type KoneksiStatus="ok"|"lambat"|"putus";
+let koneksiListeners:((s:KoneksiStatus)=>void)[]=[];
+function laporKoneksi(s:KoneksiStatus){ koneksiListeners.forEach(fn=>fn(s)); }
+function useKoneksiStatus():KoneksiStatus{
+  const[status,setStatus]=useState<KoneksiStatus>("ok");
+  useEffect(()=>{
+    koneksiListeners.push(setStatus);
+    return()=>{koneksiListeners=koneksiListeners.filter(fn=>fn!==setStatus);};
+  },[]);
+  return status;
+}
+
+// ── Retry singkat dgn backoff pendek buat aksi PENTING (kunci progress, update qty, dll) - selain
+// startTimer/stopTimer (yang punya penanganan sendiri, sengaja lebih hati-hati/non-optimistic).
+// Ditimeout+retry SEBELUM ngaku gagal ke user, biar tahan sinyal lemot/putus-putus sekejap tanpa
+// bikin user nunggu lama. Melaporkan status ke badge koneksi lewat laporKoneksi().
+const RETRY_ATTEMPTS=3;
+const RETRY_BACKOFF_MS=[500,1500,3000];
+const SLOW_THRESHOLD_MS=5000;
+async function withRetry<T>(fn:()=>PromiseLike<T>, timeoutMs:number=TIMER_REQUEST_TIMEOUT_MS):Promise<T>{
+  let lastErr:any;
+  for(let i=0;i<RETRY_ATTEMPTS;i++){
+    const mulai=Date.now();
+    try{
+      const hasil=await withTimeout(fn(),timeoutMs);
+      laporKoneksi(Date.now()-mulai>SLOW_THRESHOLD_MS?"lambat":"ok");
+      return hasil;
+    }catch(err){
+      lastErr=err;
+      laporKoneksi("lambat");
+      if(i<RETRY_ATTEMPTS-1)await new Promise(r=>setTimeout(r,RETRY_BACKOFF_MS[i]));
+    }
+  }
+  laporKoneksi("putus");
+  throw lastErr;
+}
 // Key timer client-side: sama kayak sebelumnya buat semua proses (gak ada suffix), TAPI
 // buat BUSBAR (yang punya tahap FABRIKASI/PLATING/HEATSHRINK/PASANG) ditambah suffix tahap
 // biar tiap tahap punya status Mulai/Selesai sendiri-sendiri, gak ketuker.
@@ -221,6 +262,18 @@ input::placeholder,textarea::placeholder{color:#94a3b8}
 function Badge({label,color,bg}:any){
   return <span style={{display:"inline-flex",alignItems:"center",padding:"2px 8px",borderRadius:20,
     fontSize:10,fontWeight:700,color,background:bg||color+"18",border:`1px solid ${color}30`,whiteSpace:"nowrap"}}>{label}</span>;
+}
+// Titik status koneksi kecil di header - "Tersambung"(hijau)/"Koneksi lambat"(kuning)/"Terputus"(merah),
+// dilaporkan otomatis dari withRetry() tiap ada request ke Supabase. Gak nyimpen data sendiri, cuma
+// baca status global lewat useKoneksiStatus().
+function KoneksiBadge(){
+  const status=useKoneksiStatus();
+  const cfg={ok:{dot:"#16a34a",label:"Tersambung"},lambat:{dot:"#ca8a04",label:"Koneksi lambat"},putus:{dot:"#dc2626",label:"Terputus"}}[status];
+  return <span title={cfg.label} style={{display:"inline-flex",alignItems:"center",gap:4,padding:"2px 8px",borderRadius:20,
+    fontSize:10,fontWeight:700,color:cfg.dot,background:cfg.dot+"14",border:`1px solid ${cfg.dot}30`,whiteSpace:"nowrap"}}>
+    <span style={{width:6,height:6,borderRadius:"50%",background:cfg.dot,display:"inline-block"}}/>
+    {status!=="ok"&&cfg.label}
+  </span>;
 }
 function Card({children,style={}}:any){
   return <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",
@@ -1615,6 +1668,7 @@ function NameplateView({user}:any){
   const kunciProgress=async(panelList:any[])=>{
     setLockLoading(true);
     let count=0;
+    const gagal:string[]=[];
     for(const p of panelList){
       const npHist=p.nameplate_history||[];
       const ymHist=p.yellowmark_history||[];
@@ -1629,15 +1683,26 @@ function NameplateView({user}:any){
       const newYmHist=[...ymHist];
       if(ymExistIdx>=0)newYmHist[ymExistIdx]={...newYmHist[ymExistIdx],pct:p.yellowmark_progress||0,ts:new Date().toISOString()};
       else newYmHist.push({tanggal:TODAY,pct:p.yellowmark_progress||0,oleh:user.nama,ts:new Date().toISOString()});
-      await supabase.from("panels").update({
-        nameplate_progress:p.nameplate_progress||0,nameplate_updated_by:user.nama,nameplate_updated_at:new Date().toISOString(),nameplate_history:newNpHist,
-        yellowmark_progress:p.yellowmark_progress||0,yellowmark_updated_by:user.nama,yellowmark_updated_at:new Date().toISOString(),yellowmark_history:newYmHist,
-      }).eq("id",p.id);
-      count++;
+      // Retry singkat + gak langsung refetch kalau ada yang gagal - biar angka yang udah diketik
+      // user gak ketiban timpa data lama dari server (fetchData() cuma dipanggil kalau SEMUA sukses).
+      try{
+        const{error}=await withRetry(()=>supabase.from("panels").update({
+          nameplate_progress:p.nameplate_progress||0,nameplate_updated_by:user.nama,nameplate_updated_at:new Date().toISOString(),nameplate_history:newNpHist,
+          yellowmark_progress:p.yellowmark_progress||0,yellowmark_updated_by:user.nama,yellowmark_updated_at:new Date().toISOString(),yellowmark_history:newYmHist,
+        }).eq("id",p.id));
+        if(error)throw error;
+        count++;
+      }catch{
+        gagal.push(p.nama||("Panel #"+p.id));
+      }
     }
     setLockLoading(false);
-    alert(count>0?`${count} panel berhasil dikunci`:"Tidak ada perubahan untuk dikunci");
-    fetchData();
+    if(gagal.length>0){
+      alert(count+" panel berhasil dikunci.\n\nGAGAL simpan "+gagal.length+" panel (koneksi lambat/putus): "+gagal.join(", ")+" - data yang sudah diketik TETAP ADA, coba tombol Kunci Progress lagi.");
+    }else{
+      alert(count>0?`${count} panel berhasil dikunci`:"Tidak ada perubahan untuk dikunci");
+      fetchData();
+    }
   };
 
   const urutanLevelNp:Record<string,number>={telat:0,mendesak:1,perhatian:2,normal:3};
@@ -1991,6 +2056,7 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
   const kunciProgress=async(panelList:any[])=>{
     setLockLoading(true);
     let count=0;
+    const gagal:string[]=[];
     for(const p of panelList){
       const hist=p[tugas.historyField]||[];
       const existIdx=hist.findIndex((h:any)=>h.tanggal===TODAY);
@@ -1999,17 +2065,28 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
       const newHist=[...hist];
       if(existIdx>=0)newHist[existIdx]={...newHist[existIdx],pct:p[tugas.progressField]||0,ts:new Date().toISOString()};
       else newHist.push({tanggal:TODAY,pct:p[tugas.progressField]||0,oleh:user.nama,ts:new Date().toISOString()});
-      await supabase.from("panels").update({
-        [tugas.progressField]:p[tugas.progressField]||0,
-        [tugas.updatedByField]:user.nama,
-        [tugas.updatedAtField]:new Date().toISOString(),
-        [tugas.historyField]:newHist,
-      }).eq("id",p.id);
-      dirtyProgressRef.current.delete(p.id);
-      count++;
+      // Retry singkat; dirtyProgressRef CUMA di-clear kalau beneran sukses, biar fetchData()
+      // (dipanggil channel realtime kapan aja) tetap pertahanin nilai lokal yang belum ke-simpan.
+      try{
+        const{error}=await withRetry(()=>supabase.from("panels").update({
+          [tugas.progressField]:p[tugas.progressField]||0,
+          [tugas.updatedByField]:user.nama,
+          [tugas.updatedAtField]:new Date().toISOString(),
+          [tugas.historyField]:newHist,
+        }).eq("id",p.id));
+        if(error)throw error;
+        dirtyProgressRef.current.delete(p.id);
+        count++;
+      }catch{
+        gagal.push(p.nama||("Panel #"+p.id));
+      }
     }
     setLockLoading(false);
-    alert(count>0?`${count} panel berhasil dikunci`:"Tidak ada perubahan untuk dikunci");
+    if(gagal.length>0){
+      alert(count+" panel berhasil dikunci.\n\nGAGAL simpan "+gagal.length+" panel (koneksi lambat/putus): "+gagal.join(", ")+" - data yang sudah diketik TETAP ADA, coba tombol Kunci Progress lagi.");
+    }else{
+      alert(count>0?`${count} panel berhasil dikunci`:"Tidak ada perubahan untuk dikunci");
+    }
     fetchData();
   };
 
@@ -3295,15 +3372,15 @@ function OperatorView({user,viewMode}:any){
         .select("*").eq("pekerja_id",pekerjaId).eq("panel_id",panelId)
         .eq("kode_komponen",kode).eq("proses",proses).is("selesai",null);
       q=tahap?q.eq("tahap",tahap):q.is("tahap",null);
-      const{data:existing}=await withTimeout(q.order("mulai",{ascending:false}).limit(1).maybeSingle(),TIMER_REQUEST_TIMEOUT_MS);
+      const{data:existing}=await withRetry(()=>q.order("mulai",{ascending:false}).limit(1).maybeSingle());
       if(existing){
         setTimerAktif(prev=>({...prev,[key]:existing}));
         setTimerPernahMulai(prev=>({...prev,[key]:true}));
         return;
       }
-      const{data,error}=await withTimeout(supabase.from("fcs_timer_kerja").insert({
+      const{data,error}=await withRetry(()=>supabase.from("fcs_timer_kerja").insert({
         pekerja_id:pekerjaId,panel_id:panelId,kode_komponen:kode,proses,tanggal,mulai:new Date().toISOString(),tahap:tahap||null
-      }).select().single(),TIMER_REQUEST_TIMEOUT_MS);
+      }).select().single());
       if(error){
         alert("Gagal mulai timer: "+error.message);
         return;
@@ -3325,7 +3402,7 @@ function OperatorView({user,viewMode}:any){
     if(!timer)return;
     setTimerLoading(key);
     try{
-      const{error}=await withTimeout(supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id),TIMER_REQUEST_TIMEOUT_MS);
+      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id));
       if(error){
         alert("Gagal selesai-in timer: "+error.message);
         return;
@@ -3492,8 +3569,16 @@ function OperatorView({user,viewMode}:any){
         progress:{...(cl.progress||{}),[proses]:pct},
       }
     };
+    // Optimistic - UI langsung kepake sebelum nunggu server, biar responsif walau koneksi lambat.
+    // Kalau ternyata gagal walau udah di-retry, state lokal ini SENGAJA gak di-revert (biar angka
+    // yang udah dipilih user gak hilang/harus pilih ulang) - cuma dikasih tau lewat alert.
     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
-    await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
+    try{
+      const{error}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId));
+      if(error)throw error;
+    }catch{
+      alert("Gagal simpan progress ke server - koneksi lambat. Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.");
+    }
   };
 
   // Foto Pemasangan buat Box Control/Pintu di WIRING CONTROL - disimpan per-kode di
@@ -3622,26 +3707,39 @@ function OperatorView({user,viewMode}:any){
       newChecklist[kode]={...cl,history:{...(cl.history||{}),[proses]:[...prevHist,newEntry]}};
       // TIDAK setLockedCells - biar qty tetap bisa diedit lanjut, cuma checkpoint aja yang disimpan
     }
-    await supabase.from('progress_checkpoint_log').insert([checkpointEntry]);
-    await supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId);
+    // Retry singkat dulu, BARU update state lokal kalau beneran sukses (bukan optimistic di sini -
+    // ini aksi "kunci"/final, konsisten sama prinsip timer: confirm ke server dulu).
+    try{
+      const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert([checkpointEntry]));
+      if(cpErr)throw cpErr;
+      const{error:panelErr}=await withRetry(()=>supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId));
+      if(panelErr)throw panelErr;
+    }catch{
+      alert('Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Kunci Progress lagi.');
+      return false;
+    }
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     if((proses==='WIRING CONTROL'||proses==='WIRING POWER')&&pct>=100){
-      const{data:rawRows}=await supabase.from('raw_schedule').select('id,schedule').eq('panel_id',panelId).eq('proses',proses);
-      for(const row of rawRows||[]){
-        let berubah=false;
-        const newSchedule:any={};
-        for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
-          const newEntries=entries.map((entry:any)=>{
-            const filteredKomp=(entry.komponen||[]).filter((k:string)=>k!==kode);
-            if(filteredKomp.length!==(entry.komponen||[]).length)berubah=true;
-            return{...entry,komponen:filteredKomp};
-          }).filter((entry:any)=>(entry.komponen||[]).length>0);
-          if(newEntries.length>0)newSchedule[tglKey]=newEntries;
+      // Best-effort - progress utama udah kesimpen di atas, ini cuma beres-beres jadwal, gak
+      // perlu ngeblok/gagal-in seluruh aksi kalau bagian ini yang kena koneksi lemot.
+      try{
+        const{data:rawRows}=await withRetry(()=>supabase.from('raw_schedule').select('id,schedule').eq('panel_id',panelId).eq('proses',proses));
+        for(const row of rawRows||[]){
+          let berubah=false;
+          const newSchedule:any={};
+          for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
+            const newEntries=entries.map((entry:any)=>{
+              const filteredKomp=(entry.komponen||[]).filter((k:string)=>k!==kode);
+              if(filteredKomp.length!==(entry.komponen||[]).length)berubah=true;
+              return{...entry,komponen:filteredKomp};
+            }).filter((entry:any)=>(entry.komponen||[]).length>0);
+            if(newEntries.length>0)newSchedule[tglKey]=newEntries;
+          }
+          if(berubah){
+            await withRetry(()=>supabase.from('raw_schedule').update({schedule:newSchedule}).eq('id',row.id));
+          }
         }
-        if(berubah){
-          await supabase.from('raw_schedule').update({schedule:newSchedule}).eq('id',row.id);
-        }
-      }
+      }catch{ /* best-effort, progress utama sudah aman */ }
     }
     return true;
   };
@@ -3675,8 +3773,14 @@ function OperatorView({user,viewMode}:any){
         progress:{...(cl.progress||{}),BUSBAR:combined},
       }
     };
+    // Sama kayak updatePctManual - optimistic, gak di-revert kalau retry akhirnya tetap gagal.
     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
-    await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
+    try{
+      const{error}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId));
+      if(error)throw error;
+    }catch{
+      alert("Gagal simpan progress ke server - koneksi lambat. Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.");
+    }
   };
   const canSimpanBusbarTahap=(task:any,panelId:number,kode:string,tahap:string):boolean=>{
     const ids=(task?.pekerja_per_komponen||{})[kode]?.[tahap]||[];
@@ -3725,8 +3829,15 @@ function OperatorView({user,viewMode}:any){
       newChecklist[kode]={...cl,...patchBase,history:{...(cl.history||{}),BUSBAR:[...prevHist,newEntry]}};
     }
 
-    await supabase.from('progress_checkpoint_log').insert([checkpointEntry]);
-    await supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId);
+    try{
+      const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert([checkpointEntry]));
+      if(cpErr)throw cpErr;
+      const{error:panelErr}=await withRetry(()=>supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId));
+      if(panelErr)throw panelErr;
+    }catch{
+      alert('Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Simpan Progress lagi.');
+      return false;
+    }
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     return true;
   };
@@ -3745,6 +3856,7 @@ function OperatorView({user,viewMode}:any){
     let count=0;
     const newLocked={...lockedCells};
     const checkpointLogEntries:any[]=[];
+    const panelGagal:string[]=[];
 
     for(const [panelId,panel] of Object.entries(panelsMap)){
       const relatedTasks=todayTasks.filter((t:any)=>(t.panel_id||t.panelId)===Number(panelId));
@@ -3825,42 +3937,55 @@ function OperatorView({user,viewMode}:any){
         });
         busbarProgressUpdate=newBusbarProgress;
       }
-      await supabase.from("panels").update({
-        checklist:newChecklist,
-        ...(busbarProgressUpdate?{busbar_progress:busbarProgressUpdate}:{})
-      }).eq("id",Number(panelId));
+      // Retry singkat; kalau tetap gagal, checklist panel ini DILEWATI (bukan dianggap sukses) -
+      // angka yang udah dipilih user tetap ada di panelsMap dari langkah pilih persentase
+      // sebelumnya (updatePctManual/dkk), cuma checkpoint "terkunci"-nya yang belum tersimpan.
+      try{
+        const{error}=await withRetry(()=>supabase.from("panels").update({
+          checklist:newChecklist,
+          ...(busbarProgressUpdate?{busbar_progress:busbarProgressUpdate}:{})
+        }).eq("id",Number(panelId)));
+        if(error)throw error;
+      }catch{
+        panelGagal.push(panel.nama||("Panel #"+panelId));
+        continue;
+      }
       setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist,
         ...(busbarProgressUpdate?{busbar_progress:busbarProgressUpdate}:{})}}));
 
       // Bersihkan komponen yang sudah 100% selesai dari SEMUA tanggal di raw_schedule (khusus WIRING CONTROL/POWER)
-      for(const proses of myProses){
-        if(proses!=="WIRING CONTROL"&&proses!=="WIRING POWER")continue;
-        const komponenSelesai=Object.keys(newChecklist).filter(kode=>
-          (newChecklist[kode]?.progress?.[proses]||0)>=100
-        );
-        if(komponenSelesai.length===0)continue;
-        const{data:rawRows}=await supabase.from("raw_schedule").select("id,schedule").eq("panel_id",Number(panelId)).eq("proses",proses);
-        for(const row of rawRows||[]){
-          let berubah=false;
-          const newSchedule:any={};
-          for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
-            const newEntries=entries.map((entry:any)=>{
-              const filteredKomp=(entry.komponen||[]).filter((k:string)=>!komponenSelesai.includes(k));
-              if(filteredKomp.length!==(entry.komponen||[]).length)berubah=true;
-              return{...entry,komponen:filteredKomp};
-            }).filter((entry:any)=>(entry.komponen||[]).length>0);
-            if(newEntries.length>0)newSchedule[tglKey]=newEntries;
-          }
-          if(berubah){
-            await supabase.from("raw_schedule").update({schedule:newSchedule}).eq("id",row.id);
+      // Best-effort - checklist utama panel ini sudah aman tersimpan di atas.
+      try{
+        for(const proses of myProses){
+          if(proses!=="WIRING CONTROL"&&proses!=="WIRING POWER")continue;
+          const komponenSelesai=Object.keys(newChecklist).filter(kode=>
+            (newChecklist[kode]?.progress?.[proses]||0)>=100
+          );
+          if(komponenSelesai.length===0)continue;
+          const{data:rawRows}=await withRetry(()=>supabase.from("raw_schedule").select("id,schedule").eq("panel_id",Number(panelId)).eq("proses",proses));
+          for(const row of rawRows||[]){
+            let berubah=false;
+            const newSchedule:any={};
+            for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
+              const newEntries=entries.map((entry:any)=>{
+                const filteredKomp=(entry.komponen||[]).filter((k:string)=>!komponenSelesai.includes(k));
+                if(filteredKomp.length!==(entry.komponen||[]).length)berubah=true;
+                return{...entry,komponen:filteredKomp};
+              }).filter((entry:any)=>(entry.komponen||[]).length>0);
+              if(newEntries.length>0)newSchedule[tglKey]=newEntries;
+            }
+            if(berubah){
+              await withRetry(()=>supabase.from("raw_schedule").update({schedule:newSchedule}).eq("id",row.id));
+            }
           }
         }
-      }
+      }catch{ /* best-effort, checklist utama sudah aman */ }
     }
 
     // simpan checkpoint log - siapa nyampein checkpoint berapa, buat riwayat kontribusi per operator
+    // Best-effort - progress utama sudah aman tersimpan di atas, ini cuma histori kontribusi.
     if(checkpointLogEntries.length>0){
-      await supabase.from("progress_checkpoint_log").insert(checkpointLogEntries);
+      try{ await withRetry(()=>supabase.from("progress_checkpoint_log").insert(checkpointLogEntries)); }catch{ /* best-effort */ }
     }
 
     // simpan catatan ke tabel kendala - 1 baris per (proses, panel) supaya bisa dikelompokkan per proyek/panel
@@ -3884,26 +4009,32 @@ function OperatorView({user,viewMode}:any){
       kendalaLogged.add(comboKey);
       const catatanTrim=catatan[proses].trim();
       if(existingKendalaMap.get(comboKey)===catatanTrim)continue;
-      await supabase.from("kendala").insert({
-        divisi:user.divisi,
-        divisi_label:cfg.label,
-        tanggal:viewDate,
-        proses,
-        catatan:catatanTrim,
-        operator:user.nama,
-        ts:new Date().toISOString(),
-        proyek:task.proyek||null,
-        panel:task.panel||null,
-        panel_id:panelIdTask||null,
-      });
+      try{
+        await withRetry(()=>supabase.from("kendala").insert({
+          divisi:user.divisi,
+          divisi_label:cfg.label,
+          tanggal:viewDate,
+          proses,
+          catatan:catatanTrim,
+          operator:user.nama,
+          ts:new Date().toISOString(),
+          proyek:task.proyek||null,
+          panel:task.panel||null,
+          panel_id:panelIdTask||null,
+        }));
+      }catch{ /* best-effort, gak blok progress utama kalau cuma catatan kendala yang gagal */ }
     }
 
     // Hitung busbar tasks juga
     const busbarCount=todayTasks.filter((t:any)=>t.proses==="BUSBAR").length;
     if(count>0||busbarCount>0||Object.keys(catatan).some(k=>catatan[k]?.trim())){
       setLockedCells(newLocked);
-      setLockMsg(true);
-      setTimeout(()=>setLockMsg(false),2500);
+      if(panelGagal.length===0){
+        setLockMsg(true);
+        setTimeout(()=>setLockMsg(false),2500);
+      }else{
+        alert("Sebagian progress berhasil dikunci. GAGAL simpan "+panelGagal.length+" panel (koneksi lambat/putus): "+panelGagal.join(", ")+" - data yang sudah dipilih TETAP ADA, coba tekan Kunci Progress lagi.");
+      }
     }
     // Selalu set pernahDikunci=true setiap kali tombol diklik (terlepas ada perubahan atau tidak)
     setPernahDikunci(true);
@@ -5560,6 +5691,7 @@ export default function App(){
             <span style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>PROSES PRODUKSI</span>
           </div>
           <div style={{display:"flex",alignItems:"center",gap:6}}>
+            <KoneksiBadge/>
             <span style={{background:cfg?.bg,color:cfg?.color,border:`1px solid ${cfg?.color}30`,
               borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</span>
             {isOperatorDivisi&&(
