@@ -2307,7 +2307,12 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
                     <label style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:tugas.color,background:`${tugas.color}0f`,border:`1.5px dashed ${tugas.color}55`,borderRadius:10,padding:"9px 13px",
                         cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}>
                       <i className="ti ti-camera-plus" style={{fontSize:14}}/> Tambah Foto
+                      {/* capture="environment" khusus QS - operator QS ambil foto pakai kamera langsung,
+                          beberapa HP kebuka galeri kalau atribut ini gak ada. SENGAJA cuma di-scope ke QS
+                          (tugas.field==="qs") - Warehouse pakai komponen yang sama (KomponenProgressView)
+                          tapi TIDAK diubah perilakunya, biar gak ada efek samping ke sub-bagian lain. */}
                       <input type="file" accept="image/*" multiple disabled={saving} style={{display:"none"}}
+                        capture={tugas.field==="qs"?"environment":undefined}
                         onChange={(e:any)=>{pilihFotoStaged(p.id,e.target.files);e.target.value="";}}/>
                     </label>
                     <button onClick={()=>simpanProgressPanel(p)} disabled={saving}
