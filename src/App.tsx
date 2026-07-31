@@ -82,8 +82,12 @@ const DIVISI_CONFIG: Record<string,any> = {
     subBagianPassword:{Potong:"potong123",Bending:"bending123",Stel:"stel123",Finishing:"finishing123"},
     subBagianProses:{Potong:["POTONG"],Bending:["BENDING"],Stel:["STEL"],Finishing:["FINISHING"]}},
   painting:   {label:"Painting",      icon:"🎨", color:"#7c3aed",bg:"#f5f3ff",proses:null,manualName:true,
-    subBagianPassword:{Rendam:"rendam123",Painting:"painting123"},
-    subBagianProses:{Rendam:["RENDAM"],Painting:["PAINTING"]}},
+    // Rendam+Painting digabung jadi 1 login "Painting" (pola sama kayak Assembling Luar yang
+    // gabungin RAKIT+PASANG KOMPONEN) - proses produksinya TETAP terpisah di raw_schedule/
+    // kapasitas/Outstanding, cuma akses login-nya yang disatukan. Password "rendam123" lama
+    // sengaja gak dipertahankan lagi.
+    subBagianPassword:{Painting:"painting123"},
+    subBagianProses:{Painting:["RENDAM","PAINTING"]}},
   assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",proses:null,manualName:true,
     subBagianPassword:{"Assembling Luar":"asmluar123","Assembling Dalam":"asmdalam123"},
     subBagianProses:{"Assembling Luar":["RAKIT","PASANG KOMPONEN"],"Assembling Dalam":["BUSBAR"]}},
