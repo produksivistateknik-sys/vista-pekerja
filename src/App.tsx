@@ -1,5 +1,6 @@
 ﻿import { useState, useMemo, useEffect, useRef } from "react";
 import { supabase } from "./lib/supabase";
+import { isPushSupported, getPushPermissionState, subscribeToPush } from "./lib/pushNotif";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS (sama persis dengan vista-teknik)
@@ -5713,6 +5714,32 @@ export default function App(){
   };
   const isOperatorDivisi=user&&!["nameplate","qc","komponen"].includes(user.divisi);
 
+  // Banner ajakan aktifkan push notification pengingat Maintenance Rutin - subscribe di-key ke
+  // `divisi` (bukan per-orang, device login pakai password bersama per sub-bagian). Cuma muncul
+  // sekali per device (localStorage) kalau browser dukung & izin belum diputuskan.
+  const PUSH_BANNER_KEY="vista_pekerja_push_banner_dismissed";
+  const [showPushBanner,setShowPushBanner]=useState(false);
+  const [pushLoading,setPushLoading]=useState(false);
+  useEffect(()=>{
+    if(!user)return;
+    if(!isPushSupported())return;
+    if(localStorage.getItem(PUSH_BANNER_KEY))return;
+    if(getPushPermissionState()==="default")setShowPushBanner(true);
+  },[user]);
+  const aktifkanPush=async()=>{
+    if(!user?.divisi)return;
+    setPushLoading(true);
+    const res=await subscribeToPush(user.divisi);
+    setPushLoading(false);
+    setShowPushBanner(false);
+    localStorage.setItem(PUSH_BANNER_KEY,"1");
+    if(!res.success)alert("Gagal aktifkan notifikasi: "+(res.error||"unknown error"));
+  };
+  const tutupPushBanner=()=>{
+    setShowPushBanner(false);
+    localStorage.setItem(PUSH_BANNER_KEY,"1");
+  };
+
   // Session di-cache penuh di localStorage pas login, gak ada expiry - kalau admin ubah
   // divisi/sub_bagian/nama operator ini dari Vista Teknik pas app-nya masih kebuka, sesi lama
   // bakal nyangkut sampai logout-login manual. Dengerin perubahan row operator_users-nya sendiri
@@ -5771,6 +5798,17 @@ export default function App(){
                 borderRadius:8,padding:"10px 14px",minHeight:40,cursor:"pointer",fontSize:12,fontWeight:600}}>Keluar</button>
           </div>
         </div>
+        {showPushBanner&&(
+          <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"#eff6ff",borderBottom:"1px solid #bfdbfe"}}>
+            <div style={{fontSize:18}}>🔔</div>
+            <div style={{flex:1,fontSize:11,color:"#1e3a5f"}}>
+              <div style={{fontWeight:700,marginBottom:1}}>Aktifkan notifikasi maintenance?</div>
+              <div style={{color:"#475569"}}>Dapat pengingat langsung ke device ini kalau ada mesin di divisi {cfg?.label||"ini"} yang jadwal maintenance-nya jatuh tempo.</div>
+            </div>
+            <button onClick={aktifkanPush} disabled={pushLoading} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{pushLoading?"...":"Aktifkan"}</button>
+            <button onClick={tutupPushBanner} style={{padding:"7px 12px",borderRadius:8,border:"1px solid #cbd5e1",background:"#fff",color:"#64748b",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Nanti</button>
+          </div>
+        )}
         <div style={{flex:1,overflowY:"auto"}}>
           {user.divisi==="nameplate"?<NameplateView user={user}/>
             :user.divisi==="qc"?<QCChecklistTab user={user}/>
