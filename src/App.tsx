@@ -3345,9 +3345,22 @@ function OperatorView({user,viewMode}:any){
     // penulisan ke Supabase di-debounce - cuma 1 request yang akhirnya dikirim per jeda ngetik
     const debounceKey=`${panelId}_${kode}_${proses}`;
     if(qtyWriteTimers.current[debounceKey])clearTimeout(qtyWriteTimers.current[debounceKey]);
-    qtyWriteTimers.current[debounceKey]=setTimeout(()=>{
+    qtyWriteTimers.current[debounceKey]=setTimeout(async()=>{
       delete qtyWriteTimers.current[debounceKey];
-      supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
+      await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
+      // FIX akar masalah "operator kosong" (audit investigasi-operator-kosong.md) - path INI
+      // (ketik qty manual) persist LANGSUNG ke DB kayak PCT_STEPS lama, gak lewat "Kunci
+      // Progress" yang nyatet progress_checkpoint_log - jadi progress bisa kesimpen tanpa jejak
+      // operator SAMA SEKALI. Catat checkpoint di sini juga, sama persis pola updatePctManual.
+      if(pct>0){
+        const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses===proses&&(t.komponen||[]).includes(kode));
+        const idsKomp=(task?.pekerja_per_komponen||{})[kode]||[];
+        const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
+        const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
+        await supabase.from('progress_checkpoint_log').insert({
+          panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
+        });
+      }
     },600);
   };
 
@@ -3807,6 +3820,21 @@ function OperatorView({user,viewMode}:any){
     try{
       const{error}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId));
       if(error)throw error;
+      // FIX akar masalah "operator kosong" (audit investigasi-operator-kosong.md) - SAMA kayak
+      // updatePctManual (non-BUSBAR): tahap ini persist LANGSUNG ke progress.BUSBAR gabungan
+      // seketika diklik, TIDAK nunggu "Simpan Progress" - jadi kalau user gak sempat/lupa klik
+      // Simpan, progress udah kesimpen permanen tanpa jejak operator sama sekali. Catat
+      // checkpoint di sini juga tiap kali progress gabungan BUSBAR berubah.
+      if(combined>0){
+        const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses==="BUSBAR"&&(t.komponen||[]).includes(kode));
+        const idsKomp=(task?.pekerja_per_komponen||{})[kode]||[];
+        const flatIds=Array.isArray(idsKomp)?idsKomp:(idsKomp&&typeof idsKomp==="object"?Object.values(idsKomp).flat():[]);
+        const workerObjs=(flatIds as number[]).map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
+        const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
+        await withRetry(()=>supabase.from('progress_checkpoint_log').insert({
+          panel_id:panelId,kode_komponen:kode,proses:"BUSBAR",checkpoint:combined,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
+        }));
+      }
     }catch{
       alert("Gagal simpan progress ke server - koneksi lambat. Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.");
     }
