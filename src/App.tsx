@@ -809,15 +809,8 @@ function QCChecklistTab({user}:any){
     const uploadKey=`${panelId}_${itemKey}`;
     setUploadingId(uploadKey);
     try{
-      // FIX bug "thumbnail blur, lightbox tajam": foto QC sebelumnya diupload MENTAH langsung dari
-      // kamera HP (bisa 4000px+/beberapa MB) tanpa kompresi - beda dari upload Nameplate/Wiring dkk
-      // yang sudah pakai compressImageNp. Grid thumbnail kecil maksa browser downscale ekstrem dari
-      // resolusi mentah itu, bikin blur; lightbox (satu gambar besar penuh layar) tetap tajam
-      // karena render utuh. Resize max 1600px + JPEG quality 0.8 (sama pola upload lain) - masih
-      // tajam kalau di-zoom (viewport gak pernah lebih lebar dari itu), file jauh lebih kecil.
-      const blob=await compressImageNp(file);
-      const fileName=`${panelId}_${itemKey}_${Date.now()}.jpg`;
-      const{error:upErr}=await supabase.storage.from("qc-photos").upload(fileName,blob,{contentType:"image/jpeg"});
+      const fileName=`${panelId}_${itemKey}_${Date.now()}_${file.name}`;
+      const{error:upErr}=await supabase.storage.from("qc-photos").upload(fileName,file);
       if(upErr){alert("Gagal upload: "+upErr.message);setUploadingId(null);return;}
       const{data:urlData}=supabase.storage.from("qc-photos").getPublicUrl(fileName);
       const panel=panelsList.find((p:any)=>p.id===panelId);
