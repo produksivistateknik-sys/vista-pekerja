@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
-import { PANEL_TYPES } from "../lib/panelTypes";
+import { PANEL_TYPES, PROSES_COLOR } from "../lib/panelTypes";
 import { TODAY, addDays, fmtDate } from "../lib/dateHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -120,7 +120,6 @@ export function ReviewPaintingView(){
   const toggleSection=(key:string)=>setExpandedSection(prev=>({...prev,[key]:!(prev[key]??true)}));
   const fmtJam=(iso:string)=>iso?new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"–";
   const PROSES_ICON:Record<string,string>={RENDAM:"💧",PAINTING:"🎨"};
-  const PROSES_HEADER_COLOR:Record<string,string>={RENDAM:"#0ea5e9",PAINTING:"#8b5cf6"};
 
   return(
     <div style={{padding:16,maxWidth:560,margin:"0 auto"}} className="fi">
@@ -154,7 +153,7 @@ export function ReviewPaintingView(){
         </div>
       ):(
         groupedProses.map(({proses,sections})=>{
-          const pc=PROSES_HEADER_COLOR[proses]||"#7c3aed";
+          const pc=PROSES_COLOR[proses]||"#7c3aed";
           const totalQtyProses=sections.reduce((s:number,sec:any)=>s+sec.items.reduce((s2:number,r:any)=>s2+r.qtyDelta,0),0);
           return(
           <div key={proses} style={{marginBottom:18}}>
