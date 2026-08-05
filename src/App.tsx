@@ -546,12 +546,14 @@ function Login({onLogin}:any){
     if(!username){setErr("Pilih nama!");return;}
     if(!pwd){setErr("Masukkan password!");return;}
     setLoading(true);
-    const{data,error}=await supabase.from("operator_users").select("*")
-      .eq("username",username).eq("password",pwd).eq("is_active",true).single();
+    // Password di-hash (bcrypt) - verifikasi lewat RPC yang compare pakai crypt() di server,
+    // bukan compare plaintext di WHERE client-side kayak sebelumnya.
+    const{data,error}=await supabase.rpc("verify_operator_login",{p_username:username,p_password:pwd}).single();
     if(error||!data){setErr("Password salah!");setLoading(false);return;}
-    await supabase.from("operator_users").update({last_login:new Date().toISOString()}).eq("id",data.id);
+    await supabase.from("operator_users").update({last_login:new Date().toISOString()}).eq("id",(data as any).id);
+    const{password:_pw,...safeData}=data as any;
     setSuccess(true);
-    setTimeout(()=>onLogin({...data,name:data.nama}),800);
+    setTimeout(()=>onLogin({...safeData,name:safeData.nama}),800);
     setLoading(false);
   };
 
