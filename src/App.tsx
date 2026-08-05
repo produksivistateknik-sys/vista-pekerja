@@ -4160,16 +4160,29 @@ function OperatorView({user,viewMode}:any){
     if((proses==='WIRING CONTROL'||proses==='WIRING POWER')&&pct>=100){
       // Best-effort - progress utama udah kesimpen di atas, ini cuma beres-beres jadwal, gak
       // perlu ngeblok/gagal-in seluruh aksi kalau bagian ini yang kena koneksi lemot.
+      // BUG FIX (5 Agu 2026): dua masalah dalam 1 root cause yang sama -
+      // (a) tanggal yang SUDAH LEWAT dulu ikut dibersihkan juga, padahal proses lain gak pernah
+      //     nge-prune riwayat lamanya sama sekali - itu sebabnya Rencana Harian kehilangan jejak
+      //     WIRING yang udah selesai. Sekarang tanggal < TODAY dibiarkan utuh, gak disentuh.
+      // (b) token __wiring_{n}org_{bobot} (badge bobot, nempel di array komponen yang sama
+      //     dengan kode asli) gak ikut dihapus begitu SEMUA kode asli di entry itu udah selesai -
+      //     entry jadi "isinya cuma token doang", gak pernah kehitung kosong (length>0), jadi
+      //     nyangkut selamanya di raw_schedule dan bikin baris Raw Schedule kelihatan kosong pas
+      //     dirender (token gak bisa di-resolve ke nama/qty komponen asli). Sekarang token ikut
+      //     dibersihkan begitu gak ada lagi kode asli yang nemenin di entry itu.
       try{
         const{data:rawRows}=await withRetry(()=>supabase.from('raw_schedule').select('id,schedule').eq('panel_id',panelId).eq('proses',proses));
         for(const row of rawRows||[]){
           let berubah=false;
           const newSchedule:any={};
           for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
+            if(tglKey<TODAY){newSchedule[tglKey]=entries;continue;}
             const newEntries=entries.map((entry:any)=>{
               const filteredKomp=(entry.komponen||[]).filter((k:string)=>k!==kode);
-              if(filteredKomp.length!==(entry.komponen||[]).length)berubah=true;
-              return{...entry,komponen:filteredKomp};
+              const sisaKodeAsli=filteredKomp.filter((k:string)=>!k.startsWith('__wiring_'));
+              const finalKomp=sisaKodeAsli.length>0?filteredKomp:sisaKodeAsli;
+              if(finalKomp.length!==(entry.komponen||[]).length)berubah=true;
+              return{...entry,komponen:finalKomp};
             }).filter((entry:any)=>(entry.komponen||[]).length>0);
             if(newEntries.length>0)newSchedule[tglKey]=newEntries;
           }
@@ -4630,8 +4643,11 @@ function OperatorView({user,viewMode}:any){
       setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist,
         ...(busbarProgressUpdate?{busbar_progress:busbarProgressUpdate}:{})}}));
 
-      // Bersihkan komponen yang sudah 100% selesai dari SEMUA tanggal di raw_schedule (khusus WIRING CONTROL/POWER)
+      // Bersihkan komponen yang sudah 100% selesai dari raw_schedule (khusus WIRING CONTROL/POWER)
       // Best-effort - checklist utama panel ini sudah aman tersimpan di atas.
+      // BUG FIX (5 Agu 2026): sama persis pola fix di lockSingleKomponen - (a) tanggal < TODAY
+      // dibiarkan utuh (jangan hapus jejak riwayat), (b) token __wiring_ ikut dibersihkan begitu
+      // gak ada lagi kode asli yang tersisa di entry itu (biar gak nyangkut jadi "row kosong").
       try{
         for(const proses of myProses){
           if(proses!=="WIRING CONTROL"&&proses!=="WIRING POWER")continue;
@@ -4644,10 +4660,13 @@ function OperatorView({user,viewMode}:any){
             let berubah=false;
             const newSchedule:any={};
             for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
+              if(tglKey<TODAY){newSchedule[tglKey]=entries;continue;}
               const newEntries=entries.map((entry:any)=>{
                 const filteredKomp=(entry.komponen||[]).filter((k:string)=>!komponenSelesai.includes(k));
-                if(filteredKomp.length!==(entry.komponen||[]).length)berubah=true;
-                return{...entry,komponen:filteredKomp};
+                const sisaKodeAsli=filteredKomp.filter((k:string)=>!k.startsWith('__wiring_'));
+                const finalKomp=sisaKodeAsli.length>0?filteredKomp:sisaKodeAsli;
+                if(finalKomp.length!==(entry.komponen||[]).length)berubah=true;
+                return{...entry,komponen:finalKomp};
               }).filter((entry:any)=>(entry.komponen||[]).length>0);
               if(newEntries.length>0)newSchedule[tglKey]=newEntries;
             }
