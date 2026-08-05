@@ -4457,11 +4457,70 @@ function OperatorView({user,viewMode}:any){
 
   // Khusus POTONG: simpan checkpoint progress buat SEMUA komponen terkumpul sekaligus
   // (skip yang masih 0% - biar gak keluar alert berulang per baris).
+  // BUG FIX (Sprint 4, 5 Agu 2026): dulu manggil lockSingleKomponen() satu-satu berurutan - tiap
+  // panggilan nulis update() checklist sendiri dibangun dari panelsMap yang sama/stale (dibaca
+  // sekali per panggilan, gak ikut ke-update oleh panggilan sebelumnya dalam loop yang sama).
+  // Kalau 2+ komponen eligible ada di PANEL YANG SAMA, yang diproses belakangan nimpa balik hasil
+  // tulis komponen sebelumnya di panel itu - persis root cause yang ditemukan & diperbaiki di
+  // simpanSectionPaintingRendam (Section PAINTING/RENDAM). Sekarang digrup per panel dulu - kalau
+  // cuma 1 komponen eligible di panel itu, tetap lewat lockSingleKomponen (gak ada resiko timpa-
+  // menimpa, gak perlu ubah jalur yang udah kepakai luas); kalau 2+, satu update checklist per
+  // panel yang nyakup semua komponennya sekaligus.
   const lockBulkKomponen=async(proses:string,rows:any[])=>{
     const eligible=rows.filter((r:any)=>r.pct>0);
     if(eligible.length===0){alert("Belum ada progress yang bisa disimpan.");return;}
-    for(const r of eligible){
-      await lockSingleKomponen(r.panelId,r.kode,proses);
+    const byPanel=new Map<number,any[]>();
+    eligible.forEach((r:any)=>{
+      if(!byPanel.has(r.panelId))byPanel.set(r.panelId,[]);
+      byPanel.get(r.panelId)!.push(r);
+    });
+    for(const[panelId,panelRows] of byPanel){
+      if(panelRows.length===1){
+        await lockSingleKomponen(panelId,panelRows[0].kode,proses);
+        continue;
+      }
+      const panel=panelsMap[panelId];
+      if(!panel)continue;
+      const newChecklist={...panel.checklist};
+      const checkpointEntries:any[]=[];
+      let adaPerubahan=false;
+      for(const r of panelRows){
+        const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses===proses&&(t.komponen||[]).includes(r.kode));
+        if(!task)continue;
+        if(!canLockKomponen(task,r.kode,panelId,proses))continue;
+        const cl=newChecklist[r.kode];
+        if(!cl||cl.qty===0)continue;
+        const pct=getProgressOnDate(cl,proses,viewDate);
+        if(pct===0)continue;
+        const prevHist=cl.history?.[proses]||[];
+        const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
+        const idsKomp=(task.pekerja_per_komponen||{})[r.kode]||[];
+        const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
+        const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
+        if(existIdx>=0){
+          if(prevHist[existIdx].pct===pct)continue;
+          const updatedHist=[...prevHist];
+          updatedHist[existIdx]={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
+          newChecklist[r.kode]={...cl,history:{...(cl.history||{}),[proses]:updatedHist}};
+        } else {
+          const newEntry={pct,tanggal:viewDate,shift,ts:new Date().toISOString()};
+          newChecklist[r.kode]={...cl,history:{...(cl.history||{}),[proses]:[...prevHist,newEntry]}};
+        }
+        adaPerubahan=true;
+        checkpointEntries.push({panel_id:panelId,kode_komponen:r.kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate});
+      }
+      if(!adaPerubahan)continue;
+      try{
+        if(checkpointEntries.length>0){
+          const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert(checkpointEntries));
+          if(cpErr)throw cpErr;
+        }
+        const{error:panelErr}=await withRetry(()=>supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId));
+        if(panelErr)throw panelErr;
+        setPanelsMap((prev:any)=>({...prev,[panelId]:{...prev[panelId],checklist:newChecklist}}));
+      }catch{
+        alert('Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Simpan Semua Progress lagi.');
+      }
     }
   };
 
