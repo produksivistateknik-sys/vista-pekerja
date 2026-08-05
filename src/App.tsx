@@ -239,6 +239,23 @@ function renderNamaKomponen(nama:string){
     </>
   );
 }
+// Supabase/PostgREST default-nya cuma balikin maks 1000 baris tanpa .range() - panels sekarang
+// cuma puluhan baris jadi belum kelihatan gejalanya, tapi begitu proyek nambah dan lewat 1000
+// panel, fetch tanpa ini bakal diam-diam kepotong (persis bug renhar/activity_log yang sudah
+// pernah kejadian). Dipakai di tempat yang masih fetch panels().select("*") tanpa filter apa pun.
+async function fetchAllPanels(select:string="*"):Promise<any[]>{
+  let all:any[]=[];
+  let from=0;
+  const step=1000;
+  while(true){
+    const{data}=await supabase.from("panels").select(select).range(from,from+step-1);
+    if(!data)break;
+    all=all.concat(data);
+    if(data.length<step)break;
+    from+=step;
+  }
+  return all;
+}
 function addDays(s:string,n:number){ const d=new Date(s); d.setDate(d.getDate()+n); return d.toISOString().slice(0,10); }
 function fmtDate(s:string){ return new Date(s).toLocaleDateString("id-ID",{weekday:"short",day:"numeric",month:"short",year:"numeric"}); }
 function fmtShort(s:string){ return new Date(s).toLocaleDateString("id-ID",{day:"numeric",month:"short"}); }
@@ -766,7 +783,7 @@ function QCChecklistTab({user}:any){
 
   const fetchData=async()=>{
     setLoading(true);
-    const{data:panels}=await supabase.from("panels").select("*");
+    const panels=await fetchAllPanels();
     const woIds=[...new Set((panels??[]).map((p:any)=>p.wo_id).filter(Boolean))];
     const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target,is_archived").in("id",woIds):{data:[]};
     const woMap:Record<number,any>={};
@@ -1652,7 +1669,7 @@ function NameplateView({user}:any){
 
   const fetchData=async()=>{
     setLoading(true);
-    const{data:panels}=await supabase.from("panels").select("*");
+    const panels=await fetchAllPanels();
     const woIds=[...new Set((panels??[]).map((p:any)=>p.wo_id).filter(Boolean))];
     const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target,is_archived").in("id",woIds):{data:[]};
     const woMap:Record<number,any>={};
@@ -2030,7 +2047,7 @@ function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:s
 
   const fetchData=async()=>{
     setLoading(true);
-    const{data:panels}=await supabase.from("panels").select("*");
+    const panels=await fetchAllPanels();
     const woIds=[...new Set((panels??[]).map((p:any)=>p.wo_id).filter(Boolean))];
     const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target,is_archived").in("id",woIds):{data:[]};
     const woMap:Record<number,any>={};
@@ -3419,32 +3436,49 @@ function OperatorView({user,viewMode}:any){
   const PROSES_AUTO_ASSIGN_SAAT_QTY=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN"];
   const myProses:string[]=(user.sub_bagian&&cfg.subBagianProses?.[user.sub_bagian])||cfg.proses||[];
 
+  // Ambil semua timer aktif (lintas tanggal) + semua timer hari ini (aktif maupun sudah selesai).
+  // BUG FIX (Sprint 3, 5 Agu 2026): dulu .select("*") tanpa .range() - fcs_timer_kerja bukan
+  // tabel kecil (sudah ribuan baris dari histori timer semua operator lintas divisi/panel, filter
+  // "selesai IS NULL" di sini juga gak dibatasi tanggal sama sekali), jadi rawan kena cap diam-diam
+  // 1000 baris Supabase begitu jumlahnya lewat itu - persis kelas bug renhar/activity_log yang
+  // sudah pernah kejadian. Dipakai bareng di 2 useEffect (load awal + refresh abis realtime event).
+  const refreshTimerData=async()=>{
+    let all:any[]=[];
+    let from=0;
+    const step=1000;
+    while(true){
+      const{data}=await supabase.from("fcs_timer_kerja").select("*").or(`selesai.is.null,tanggal.eq.${viewDate}`).range(from,from+step-1);
+      if(!data)break;
+      all=all.concat(data);
+      if(data.length<step)break;
+      from+=step;
+    }
+    const mapAktif:Record<string,any>={};
+    const mapPernahMulai:Record<string,boolean>={};
+    const mapSelesaiHariIni:Record<string,boolean>={};
+    const mapDurasiSelesai:Record<string,number>={};
+    all.forEach((t:any)=>{
+      const key=timerKey(t.panel_id,t.kode_komponen,t.proses,t.pekerja_id,t.tahap);
+      if(!t.selesai&&t.tanggal===viewDate)mapAktif[key]=t;
+      mapPernahMulai[key]=true;
+      if(t.tanggal===viewDate&&t.selesai){
+        mapSelesaiHariIni[key]=true;
+        mapDurasiSelesai[key]=(mapDurasiSelesai[key]||0)+Number(t.durasi_menit||0);
+      }
+    });
+    setTimerAktif(mapAktif);
+    setTimerPernahMulai(mapPernahMulai);
+    setTimerSelesaiHariIni(mapSelesaiHariIni);
+    setTimerDurasiSelesai(mapDurasiSelesai);
+  };
+
   // Load data dari Supabase
   useEffect(()=>{
     setPernahDikunci(false);
     loadData();
     // load semua pekerja untuk kolom OPERATOR
     supabase.from("pekerja").select("id,nama,divisi").then(({data})=>setPekerjaList(data??[]));
-    // Ambil semua timer aktif (lintas tanggal) + semua timer hari ini (aktif maupun sudah selesai)
-    supabase.from("fcs_timer_kerja").select("*").or(`selesai.is.null,tanggal.eq.${viewDate}`).then(({data})=>{
-      const mapAktif:Record<string,any>={};
-      const mapPernahMulai:Record<string,boolean>={};
-      const mapSelesaiHariIni:Record<string,boolean>={};
-      const mapDurasiSelesai:Record<string,number>={};
-      (data??[]).forEach((t:any)=>{
-        const key=timerKey(t.panel_id,t.kode_komponen,t.proses,t.pekerja_id,t.tahap);
-        if(!t.selesai&&t.tanggal===viewDate)mapAktif[key]=t;
-        mapPernahMulai[key]=true;
-        if(t.tanggal===viewDate&&t.selesai){
-          mapSelesaiHariIni[key]=true;
-          mapDurasiSelesai[key]=(mapDurasiSelesai[key]||0)+Number(t.durasi_menit||0);
-        }
-      });
-      setTimerAktif(mapAktif);
-      setTimerPernahMulai(mapPernahMulai);
-      setTimerSelesaiHariIni(mapSelesaiHariIni);
-      setTimerDurasiSelesai(mapDurasiSelesai);
-    });
+    refreshTimerData();
 
     const renharChannel=supabase.channel("realtime-renhar-pekerja")
       .on("postgres_changes",{event:"*",schema:"public",table:"renhar"},(payload:any)=>{
@@ -3476,37 +3510,16 @@ function OperatorView({user,viewMode}:any){
   },[viewDate,user.divisi]);
 
   useEffect(()=>{
-    const fetchTimerData=()=>{
-      supabase.from("fcs_timer_kerja").select("*").or(`selesai.is.null,tanggal.eq.${viewDate}`).then(({data})=>{
-        const mapAktif:Record<string,any>={};
-        const mapPernahMulai:Record<string,boolean>={};
-        const mapSelesaiHariIni:Record<string,boolean>={};
-        const mapDurasiSelesai:Record<string,number>={};
-        (data??[]).forEach((t:any)=>{
-          const key=timerKey(t.panel_id,t.kode_komponen,t.proses,t.pekerja_id,t.tahap);
-          if(!t.selesai&&t.tanggal===viewDate)mapAktif[key]=t;
-          mapPernahMulai[key]=true;
-          if(t.tanggal===viewDate&&t.selesai){
-            mapSelesaiHariIni[key]=true;
-            mapDurasiSelesai[key]=(mapDurasiSelesai[key]||0)+Number(t.durasi_menit||0);
-          }
-        });
-        setTimerAktif(mapAktif);
-        setTimerPernahMulai(mapPernahMulai);
-        setTimerSelesaiHariIni(mapSelesaiHariIni);
-        setTimerDurasiSelesai(mapDurasiSelesai);
-      });
-    };
     const timerChannel=supabase.channel("realtime-timer-kerja-pekerja")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},()=>{fetchTimerData();})
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},()=>{refreshTimerData();})
       .subscribe();
     // Kalau HP di-background (pindah app lain / kunci layar) lama, socket realtime bisa diam2
     // putus - event fcs_timer_kerja yang kejadian pas offline itu kelewat, timerAktif bisa
     // nyangkut di state basi (ghost timer di UI) sampai ada event lain yang gak sengaja
-    // nge-trigger refetch. fetchTimerData() silent (gak ada spinner/loadingData), jadi aman
+    // nge-trigger refetch. refreshTimerData() silent (gak ada spinner/loadingData), jadi aman
     // dipanggil tiap kali tab balik aktif tanpa bikin UI kedip-kedip kayak loadData() penuh.
     const onVisible=()=>{
-      if(document.visibilityState==="visible")fetchTimerData();
+      if(document.visibilityState==="visible")refreshTimerData();
     };
     document.addEventListener("visibilitychange",onVisible);
     return()=>{
