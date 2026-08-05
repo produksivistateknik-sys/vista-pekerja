@@ -9,6 +9,7 @@ import {
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
 } from "../lib/panelHelpers";
 import { compressImageNp } from "../lib/fotoHelpers";
+import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { Badge, Card, Lbl, Inp, Btn } from "./ui/Primitives";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { WoUrgentBanner } from "./WoUrgentBanner";
@@ -2117,8 +2118,9 @@ export function OperatorView({user,viewMode}:any){
                                 {isDisabled&&(()=>{
                                   const pct=r.pct||0;
                                   const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
-                                  const statusBadgeColor=pct>=100?"#16a34a":pct>0?"#2563eb":"#94a3b8";
-                                  const statusBadgeBg=pct>=100?"#dcfce7":pct>0?"#dbeafe":"#f1f5f9";
+                                  const statusBadgeKey=pct>=100?"selesai":pct>0?"proses":"belum";
+                                  const statusBadgeColor=STATUS_TUGAS_NP[statusBadgeKey].color;
+                                  const statusBadgeBg=STATUS_TUGAS_NP[statusBadgeKey].bg;
                                   return(
                                     <span style={{fontSize:9,fontWeight:700,background:statusBadgeBg,color:statusBadgeColor,borderRadius:6,padding:"1px 6px"}}>
                                       {statusBadgeLabel}
@@ -2199,8 +2201,9 @@ export function OperatorView({user,viewMode}:any){
                                 {isDisabled&&(()=>{
                                   const pct=r.pct||0;
                                   const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
-                                  const statusBadgeColor=pct>=100?"#16a34a":pct>0?"#2563eb":"#94a3b8";
-                                  const statusBadgeBg=pct>=100?"#dcfce7":pct>0?"#dbeafe":"#f1f5f9";
+                                  const statusBadgeKey=pct>=100?"selesai":pct>0?"proses":"belum";
+                                  const statusBadgeColor=STATUS_TUGAS_NP[statusBadgeKey].color;
+                                  const statusBadgeBg=STATUS_TUGAS_NP[statusBadgeKey].bg;
                                   return(
                                     <span style={{fontSize:9,fontWeight:700,background:statusBadgeBg,color:statusBadgeColor,borderRadius:6,padding:"1px 6px"}}>
                                       {statusBadgeLabel}

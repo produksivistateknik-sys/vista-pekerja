@@ -191,7 +191,7 @@ export function TrackingKomponenView({user}:any){
             <div style={{display:"flex",gap:6}}>
               {[{k:"to_do",label:"To Do",icon:"⚪",color:"#64748b"},
                 {k:"in_progress",label:"Progress",icon:"🟠",color:"#ea580c"},
-                {k:"complete",label:"Complete",icon:"✅",color:"#0d9488"}].map((s:any)=>{
+                {k:"complete",label:"Complete",icon:"✅",color:"#16a34a"}].map((s:any)=>{
                 const active=myStatus===s.k;
                 return(
                   <button key={s.k} onClick={()=>updateKomponenStatus(selectedPanelId,s.k)}
