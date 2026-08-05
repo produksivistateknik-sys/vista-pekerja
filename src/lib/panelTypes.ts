@@ -66,6 +66,13 @@ export const PANEL_TYPES: Record<string,any> = {
 export const PCT_STEPS  = [25,50,75,90,100];
 export const QTY_DIVISI = ["mekanik","painting"];
 
+export const QC_ITEMS=[
+  {key:"fisik",label:"Pemeriksaan Fisik",desc:"Kelayakan kualitas fisik panel",icon:"🔍"},
+  {key:"spesifikasi",label:"Verifikasi Spesifikasi Komponen",desc:"Sesuai partlist",icon:"📋"},
+  {key:"baut",label:"Pengecekan Kekencangan Baut",desc:"",icon:"🔧"},
+  {key:"test",label:"QC Test",desc:"Tes elektrikal standar",icon:"⚡"},
+];
+
 export const PROSES_COLOR: Record<string,string> = {
   "POTONG":"#f59e0b","BENDING":"#10b981","STEL":"#3b82f6","FINISHING":"#0891b2","RENDAM":"#0ea5e9","PAINTING":"#8b5cf6",
   "RAKIT":"#ec4899","PASANG KOMPONEN":"#f97316","BUSBAR":"#06b6d4",
