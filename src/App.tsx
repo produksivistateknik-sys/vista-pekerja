@@ -2686,6 +2686,193 @@ function ReviewPotongView(){
   );
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// REVIEW PAINTING - histori read-only Section (RENDAM/PAINTING), REUSE pola navigasi tanggal
+// Review Potong PERSIS (1 tanggal per layar, ‹ › ) - bedanya di dalam 1 tanggal dikelompokkan
+// PROSES -> SECTION (bukan Proyek -> Panel), karena section bisa lintas proyek/panel (operator
+// collect dari mana aja). Sumber data SAMA seperti Review Potong: panels.checklist[kode].
+// history[proses] - entry yang dari section (ditulis simpanSectionPaintingRendam) punya field
+// tambahan `section`/`sectionMulai`, entry lama (kalau ada) tanpa field itu diabaikan di sini.
+function ReviewPaintingView(){
+  const[loading,setLoading]=useState(true);
+  const[entries,setEntries]=useState<any[]>([]);
+  const[viewDate,setViewDate]=useState(TODAY);
+  const[expandedSection,setExpandedSection]=useState<Record<string,boolean>>({});
+
+  const[kodeNamaMap,setKodeNamaMap]=useState<Record<string,string>>({});
+  useEffect(()=>{
+    const map:Record<string,string>={};
+    Object.values(PANEL_TYPES).forEach((cfg:any)=>{
+      cfg.wps.forEach((w:any)=>w.items.forEach((it:any)=>{map[it.kode]=it.nama;}));
+    });
+    supabase.from("bom_master").select("kode_komponen,nama_komponen").then(({data}:any)=>{
+      (data||[]).forEach((b:any)=>{map[b.kode_komponen]=b.nama_komponen;});
+      setKodeNamaMap({...map});
+    });
+  },[]);
+
+  useEffect(()=>{
+    let cancelled=false;
+    (async()=>{
+      setLoading(true);
+      let allPanels:any[]=[];
+      let from=0;
+      while(true){
+        const{data}=await supabase.from("panels").select("id,nama,tipe,wo_id,checklist").range(from,from+999);
+        allPanels=allPanels.concat(data||[]);
+        if(!data||data.length<1000)break;
+        from+=1000;
+      }
+      const woIds=[...new Set(allPanels.map((p:any)=>p.wo_id).filter(Boolean))];
+      const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek").in("id",woIds):{data:[]};
+      const woMap:Record<number,any>={};
+      (wos||[]).forEach((w:any)=>{woMap[w.id]=w;});
+
+      const rows:any[]=[];
+      allPanels.forEach((p:any)=>{
+        Object.entries(p.checklist||{}).forEach(([kode,cl]:any)=>{
+          ["RENDAM","PAINTING"].forEach((proses:string)=>{
+            const histSemua=cl?.history?.[proses]||[];
+            const histSampaiHariIni=histSemua.filter((h:any)=>h.tanggal<=viewDate);
+            const histHariIni=histSemua.filter((h:any)=>h.tanggal===viewDate&&typeof h.section==="number");
+            if(histHariIni.length===0)return;
+            const sortedSemua=[...histSampaiHariIni].sort((a:any,b:any)=>String(a.ts).localeCompare(String(b.ts)));
+            const qtyTotal=Number(cl.qty)||0;
+            sortedSemua.forEach((h:any,idx:number)=>{
+              if(h.tanggal!==viewDate||typeof h.section!=="number")return;
+              const pctSebelum=idx>0?Number(sortedSemua[idx-1].pct)||0:0;
+              const qtySkrg=Math.round((Number(h.pct)||0)/100*qtyTotal);
+              const qtySblm=Math.round(pctSebelum/100*qtyTotal);
+              const delta=qtySkrg-qtySblm;
+              if(delta<=0)return;
+              rows.push({
+                proses,section:h.section,sectionMulai:h.sectionMulai,tanggal:h.tanggal,
+                panelId:p.id,panelNama:p.nama,proyek:woMap[p.wo_id]?.proyek||"(Tanpa Proyek)",wo:woMap[p.wo_id]?.wo||"",
+                kode,namaKomponen:kodeNamaMap[kode]||kode,qtyDelta:delta,ts:h.ts,
+              });
+            });
+          });
+        });
+      });
+
+      const panelIdsRelevan=[...new Set(rows.map((r:any)=>r.panelId))];
+      const{data:timers}=panelIdsRelevan.length>0
+        ?await supabase.from("fcs_timer_kerja").select("panel_id,kode_komponen,proses,mulai,pekerja:pekerja_id(nama)").in("proses",["RENDAM","PAINTING"]).in("panel_id",panelIdsRelevan).eq("tanggal",viewDate)
+        :{data:[]};
+      rows.forEach((r:any)=>{
+        // Operator per SECTION (bukan per hari) - cocokkan timer yang mulainya jatuh di rentang
+        // [sectionMulai, ts section ini], biar komponen yang dikerjain 2 section beda hari yang
+        // sama gak ketuker operatornya.
+        const rentangBawah=r.sectionMulai||r.tanggal;
+        const ops=new Set<string>();
+        (timers||[]).forEach((t:any)=>{
+          if(t.panel_id!==r.panelId||t.kode_komponen!==r.kode||t.proses!==r.proses)return;
+          if(t.mulai>=rentangBawah&&t.mulai<=r.ts&&t.pekerja?.nama)ops.add(t.pekerja.nama);
+        });
+        r.operators=[...ops];
+      });
+
+      if(!cancelled){setEntries(rows);setLoading(false);}
+    })();
+    return()=>{cancelled=true;};
+  },[viewDate,kodeNamaMap]);
+
+  // PROSES -> SECTION -> list komponen (masing-masing section bisa lintas proyek/panel).
+  const groupedProses=useMemo(()=>{
+    const byProses:Record<string,Record<number,{section:number,mulai:string,selesai:string,items:any[]}>>={RENDAM:{},PAINTING:{}};
+    entries.forEach((r:any)=>{
+      if(!byProses[r.proses][r.section])byProses[r.proses][r.section]={section:r.section,mulai:r.sectionMulai,selesai:r.ts,items:[]};
+      const grp=byProses[r.proses][r.section];
+      if(r.ts>grp.selesai)grp.selesai=r.ts;
+      grp.items.push(r);
+    });
+    return["RENDAM","PAINTING"].map(proses=>({
+      proses,
+      sections:Object.values(byProses[proses]).sort((a,b)=>b.section-a.section),
+    })).filter(g=>g.sections.length>0);
+  },[entries]);
+
+  const toggleSection=(key:string)=>setExpandedSection(prev=>({...prev,[key]:!(prev[key]??true)}));
+  const fmtJam=(iso:string)=>iso?new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"–";
+  const PROSES_ICON:Record<string,string>={RENDAM:"💧",PAINTING:"🎨"};
+
+  return(
+    <div style={{padding:16,maxWidth:560,margin:"0 auto"}} className="fi">
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
+        <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#7c3aed,#5b21b6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 3px 10px #5b21b644"}}>🗂</div>
+        <div>
+          <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>Review Painting</div>
+          <div style={{fontSize:11,color:"#64748b"}}>Riwayat Section Rendam &amp; Painting</div>
+        </div>
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,background:"#fff",borderRadius:12,padding:"10px 14px",border:"1.5px solid #e2e8f0"}}>
+        <button onClick={()=>setViewDate(addDays(viewDate,-1))} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#475569"}}>‹</button>
+        <div style={{flex:1,textAlign:"center" as const}}>
+          <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📅 {fmtDate(viewDate)}</div>
+          {viewDate===TODAY&&<div style={{fontSize:10,color:"#7c3aed",fontWeight:700,marginTop:2}}>Hari Ini</div>}
+        </div>
+        <button onClick={()=>setViewDate(addDays(viewDate,1))} disabled={viewDate>=TODAY} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:viewDate>=TODAY?"#f1f5f9":"#f8fafc",cursor:viewDate>=TODAY?"not-allowed":"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:viewDate>=TODAY?"#cbd5e1":"#475569"}}>›</button>
+      </div>
+
+      {loading?(
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{fontSize:24,marginBottom:8}}>⏳</div>
+          Memuat riwayat...
+        </div>
+      ):groupedProses.length===0?(
+        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{fontSize:32,marginBottom:8}}>📭</div>
+          <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>Belum ada riwayat</div>
+          <div style={{fontSize:12,marginTop:4}}>Belum ada section yang disimpan di tanggal ini</div>
+        </div>
+      ):(
+        groupedProses.map(({proses,sections})=>(
+          <div key={proses} style={{marginBottom:14}}>
+            <div style={{fontWeight:800,fontSize:13,color:"#1e293b",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+              <span>{PROSES_ICON[proses]}</span>{proses}
+            </div>
+            {sections.map(sec=>{
+              const secKey=proses+"|"+sec.section;
+              const isOpen=expandedSection[secKey]??true;
+              const totalQty=sec.items.reduce((s:number,r:any)=>s+r.qtyDelta,0);
+              return(
+                <div key={secKey} style={{marginBottom:8,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+                  <div onClick={()=>toggleSection(secKey)} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",cursor:"pointer",background:"#f8fafc"}}>
+                    <span style={{fontSize:11,color:"#94a3b8"}}>{isOpen?"▾":"▸"}</span>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"#1e293b"}}>Section {sec.section}</div>
+                      <div style={{fontSize:10,color:"#64748b",marginTop:1}}>{fmtJam(sec.mulai)} – {fmtJam(sec.selesai)} · {sec.items.length} komponen · {totalQty} pcs</div>
+                    </div>
+                  </div>
+                  {isOpen&&(
+                    <div style={{display:"flex",flexDirection:"column" as const,gap:5,padding:"6px 12px 10px"}}>
+                      {sec.items.map((r:any,i:number)=>(
+                        <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
+                          <div style={{flex:1,minWidth:0}}>
+                            <div style={{fontSize:11.5,color:"#334155"}}>{r.namaKomponen}</div>
+                            <div style={{display:"flex",gap:5,flexWrap:"wrap" as const,marginTop:3,alignItems:"center"}}>
+                              <span style={{fontSize:10,color:"#94a3b8"}}>{r.panelNama} · {r.proyek}</span>
+                              {r.operators.map((op:string)=>(
+                                <span key={op} style={{fontSize:10,color:"#64748b",fontWeight:600}}>👤 {op}</span>
+                              ))}
+                            </div>
+                          </div>
+                          <div style={{fontWeight:800,fontSize:13,color:"#7c3aed",flexShrink:0}}>{r.qtyDelta} <span style={{fontSize:9,fontWeight:700,color:"#5b21b6"}}>pcs</span></div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
 // Komponen ad-hoc (di luar BOM/jadwal normal) - dipakai operator Potong buat
 // kasus darurat/tambahan yang gak kebagian slot di raw_schedule. Disimpan di
 // tabel TERPISAH (komponen_tambahan), sengaja gak nyentuh raw_schedule sama
@@ -2866,13 +3053,21 @@ function KomponenTambahanView({user}:any){
 // 1 komponen), tiap komponen punya hook-nya sendiri, aman.
 function OperatorHome({user,viewMode}:any){
   const[mainTab,setMainTab]=useState<"tugas"|"review"|"tambahan">("tugas");
-  const bisaReview=user.divisi==="mekanik"&&user.sub_bagian==="Potong";
+  const bisaReviewPotong=user.divisi==="mekanik"&&user.sub_bagian==="Potong";
+  // Sistem Section (RENDAM/PAINTING doang) - tab "Review" nunjukin ReviewPaintingView (Section-
+  // grouped), BUKAN ReviewPotongView. Tab "Tambahan" TETAP cuma buat mekanik/Potong seperti
+  // sebelumnya - proses lain (termasuk divisi painting ini) gak dapet tab itu.
+  const bisaReviewPainting=user.divisi==="painting";
+  const bisaReview=bisaReviewPotong||bisaReviewPainting;
+  const tabs=bisaReviewPotong
+    ?[{key:"tugas",label:"📋 Tugas Saya"},{key:"review",label:"🗂 Review"},{key:"tambahan",label:"➕ Tambahan"}]
+    :[{key:"tugas",label:"📋 Tugas Saya"},{key:"review",label:"🗂 Review"}];
 
   return(
     <div>
       {bisaReview&&(
         <div style={{display:"flex",gap:2,padding:"8px 16px 0",background:"#fff",borderBottom:"1px solid #f1f5f9"}}>
-          {[{key:"tugas",label:"📋 Tugas Saya"},{key:"review",label:"🗂 Review"},{key:"tambahan",label:"➕ Tambahan"}].map(t=>(
+          {tabs.map(t=>(
             <button key={t.key} onClick={()=>setMainTab(t.key as any)}
               style={{padding:"8px 16px",fontSize:12,fontWeight:mainTab===t.key?800:600,
                 color:mainTab===t.key?"#d97706":"#94a3b8",cursor:"pointer",background:"none",
@@ -2881,7 +3076,9 @@ function OperatorHome({user,viewMode}:any){
           ))}
         </div>
       )}
-      {bisaReview&&mainTab==="review"?<ReviewPotongView/>:bisaReview&&mainTab==="tambahan"?<KomponenTambahanView user={user}/>:<OperatorView user={user} viewMode={viewMode}/>}
+      {bisaReview&&mainTab==="review"?(bisaReviewPainting?<ReviewPaintingView/>:<ReviewPotongView/>)
+        :bisaReviewPotong&&mainTab==="tambahan"?<KomponenTambahanView user={user}/>
+        :<OperatorView user={user} viewMode={viewMode}/>}
     </div>
   );
 }
@@ -3016,6 +3213,30 @@ function OperatorView({user,viewMode}:any){
   useEffect(()=>{
     try{localStorage.setItem(wsKey+"_komp",JSON.stringify({tanggal:TODAY,data:selectedKomponen}));}catch{}
   },[selectedKomponen,wsKey]);
+  // Sistem Section (RENDAM/PAINTING doang - lihat simpanSectionPaintingRendam). carryOverPct =
+  // snapshot progress SEBELUM collect, dipasang begitu komponen dikonfirmasi collect - biar badge
+  // "Lanjutan X%" nunjukin angka BEKU dari section sebelumnya, bukan ikut berubah pas qty diketik
+  // ulang di section yang lagi jalan. sectionMulaiMap = timestamp lokal "Mulai" pertama kali buat
+  // section yang lagi terbuka (persisted per proses+tanggal, direset begitu section disimpan) -
+  // dipakai buat rentang waktu di Tab Review Painting.
+  const [carryOverPct,setCarryOverPct]=useState<Record<string,number>>(()=>{
+    try{
+      const saved=JSON.parse(localStorage.getItem(wsKey+"_carryOverPct")||"{}");
+      return saved.tanggal===TODAY&&saved.data?saved.data:{};
+    }catch{return {};}
+  });
+  useEffect(()=>{
+    try{localStorage.setItem(wsKey+"_carryOverPct",JSON.stringify({tanggal:TODAY,data:carryOverPct}));}catch{}
+  },[carryOverPct,wsKey]);
+  const [sectionMulaiMap,setSectionMulaiMap]=useState<Record<string,string>>(()=>{
+    try{
+      const saved=JSON.parse(localStorage.getItem(wsKey+"_sectionMulai")||"{}");
+      return saved.tanggal===TODAY&&saved.data?saved.data:{};
+    }catch{return {};}
+  });
+  useEffect(()=>{
+    try{localStorage.setItem(wsKey+"_sectionMulai",JSON.stringify({tanggal:TODAY,data:sectionMulaiMap}));}catch{}
+  },[sectionMulaiMap,wsKey]);
   const [komponenPopup,setKomponenPopup]=useState<{proses:string,panelId:number}|null>(null);
   const [tempSelectedKomponen,setTempSelectedKomponen]=useState<string[]>([]);
   // Khusus BENDING/STEL mobile: titik awal pilih komponen dibalik jadi Jenis Komponen -> Panel
@@ -4184,6 +4405,80 @@ function OperatorView({user,viewMode}:any){
     }
   };
 
+  // Sistem Section (RENDAM/PAINTING doang - "digabung 1 login Painting" tapi section counter
+  // TERPISAH per proses, karena keduanya sudah tampil sebagai band/card sendiri-sendiri).
+  // SENGAJA gak reuse lockSingleKomponen: fungsi itu nge-UPDATE entry history yang sudah ada
+  // buat tanggal+shift yang sama (existIdx merge) - tepat buat POTONG (1 checkpoint/hari), tapi
+  // SALAH buat section, karena 1 komponen yang lanjut di 2 section beda di hari yang sama HARUS
+  // jadi 2 entry history terpisah (masing-masing section number-nya sendiri), bukan ketimpa jadi
+  // 1. Nomor section dihitung dari section tertinggi yang sudah ada hari ini (baca dari
+  // panelsMap yang sudah termuat) - TIDAK ada tabel/counter terpisah.
+  const simpanSectionPaintingRendam=async(proses:string,rows:any[])=>{
+    const eligible=rows.filter((r:any)=>r.pct>0);
+    if(eligible.length===0){alert("Belum ada progress yang bisa disimpan.");return;}
+    // Stop semua timer yang masih jalan buat komponen-komponen ini dulu.
+    for(const r of eligible){
+      const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
+      for(const pid of idsKomp){
+        if(timerAktif[timerKey(r.panelId,r.kode,proses,pid)])await stopTimer(pid,r.panelId,r.kode,proses);
+      }
+    }
+    let maxSection=0;
+    Object.values(panelsMap).forEach((p:any)=>{
+      Object.values(p.checklist||{}).forEach((cl:any)=>{
+        (cl?.history?.[proses]||[]).forEach((h:any)=>{
+          if(h.tanggal===viewDate&&typeof h.section==="number"&&h.section>maxSection)maxSection=h.section;
+        });
+      });
+    });
+    const sectionNum=maxSection+1;
+    const sectionMulaiKey=`${proses}_${viewDate}`;
+    const sectionMulai=sectionMulaiMap[sectionMulaiKey]||new Date().toISOString();
+    const nowIso=new Date().toISOString();
+    let gagal=0;
+    for(const r of eligible){
+      const panel=panelsMap[r.panelId];
+      const cl=panel?.checklist?.[r.kode];
+      if(!panel||!cl)continue;
+      const prevHist=cl.history?.[proses]||[];
+      const newEntry={pct:r.pct,tanggal:viewDate,shift,ts:nowIso,section:sectionNum,sectionMulai};
+      const newChecklist={...panel.checklist,[r.kode]:{...cl,history:{...(cl.history||{}),[proses]:[...prevHist,newEntry]}}};
+      const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
+      const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
+      const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(", "):user.nama;
+      try{
+        const{error:cpErr}=await withRetry(()=>supabase.from("progress_checkpoint_log").insert([{panel_id:r.panelId,kode_komponen:r.kode,proses,checkpoint:r.pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate}]));
+        if(cpErr)throw cpErr;
+        const{error:panelErr}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",r.panelId));
+        if(panelErr)throw panelErr;
+        setPanelsMap((prev:any)=>({...prev,[r.panelId]:{...prev[r.panelId],checklist:newChecklist}}));
+      }catch{
+        gagal++;
+      }
+    }
+    if(gagal>0){
+      alert(`${gagal} komponen gagal tersimpan (koneksi bermasalah) - sisanya sudah tersimpan sebagai Section ${sectionNum}. Coba klik Simpan Progress lagi buat yang gagal.`);
+      return;
+    }
+    // Section ditutup - bersihin koleksi & carry-over snapshot punya proses ini, siap collect lagi buat section berikutnya.
+    setSelectedKomponen((prev:any)=>{
+      const next={...prev};
+      Object.keys(next).forEach(key=>{if(key.startsWith(`${proses}_`))delete next[key];});
+      return next;
+    });
+    setCarryOverPct((prev:any)=>{
+      const next={...prev};
+      eligible.forEach((r:any)=>{delete next[`${proses}_${r.panelId}_${r.kode}`];});
+      return next;
+    });
+    setSectionMulaiMap((prev:any)=>{
+      const next={...prev};
+      delete next[sectionMulaiKey];
+      return next;
+    });
+    alert(`Section ${sectionNum} tersimpan (${eligible.length} komponen).`);
+  };
+
   const lockProgress=async()=>{
     let count=0;
     const newLocked={...lockedCells};
@@ -4898,6 +5193,20 @@ function OperatorView({user,viewMode}:any){
                       <button onClick={()=>setKomponenPopupJenis(null)}
                         style={{padding:"8px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",cursor:"pointer"}}>Batal</button>
                       <button onClick={()=>{
+                          if(proses==="RENDAM"||proses==="PAINTING"){
+                            // Snapshot progress SEBELUM collect - badge "Lanjutan X%" pakai angka
+                            // beku ini, bukan pct yang ikut berubah pas qty diketik ulang.
+                            setCarryOverPct((prevCo:any)=>{
+                              const nextCo={...prevCo};
+                              groupRows.forEach((r:any)=>{
+                                const key=`${proses}_${r.panelId}_${r.kode}`;
+                                const wasSelected=(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode);
+                                const isSel=tempSelectedPanelJenis.includes(r.panelId);
+                                if(isSel&&!wasSelected&&r.pct>0)nextCo[key]=r.pct;
+                              });
+                              return nextCo;
+                            });
+                          }
                           setSelectedKomponen((prev:any)=>{
                             const next={...prev};
                             groupRows.forEach((r:any)=>{
@@ -5063,6 +5372,10 @@ function OperatorView({user,viewMode}:any){
             </button>
           )}
         </div>
+        <button onClick={()=>simpanSectionPaintingRendam(proses,visibleRows)}
+          style={{minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+          💾 Simpan Progress
+        </button>
         {bulkAssignProses===proses&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
             onClick={()=>setBulkAssignProses(null)}>
@@ -5087,6 +5400,12 @@ function OperatorView({user,viewMode}:any){
                   style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
                 <button disabled={tempBulkPekerjaIds.length===0}
                   onClick={async()=>{
+                    // Catat waktu mulai section HANYA kalau section ini belum punya (section yang
+                    // udah terbuka lanjut collect+mulai lagi TIDAK menggeser waktu mulainya).
+                    const sectionMulaiKey=`${proses}_${viewDate}`;
+                    if(!sectionMulaiMap[sectionMulaiKey]){
+                      setSectionMulaiMap((prev:any)=>({...prev,[sectionMulaiKey]:new Date().toISOString()}));
+                    }
                     await bulkAssignAndStartDesktop(proses,visibleRows,tempBulkPekerjaIds);
                     setBulkAssignProses(null);
                   }}
@@ -5548,7 +5867,16 @@ function OperatorView({user,viewMode}:any){
                       const locked=isCellLocked(r.panelId,r.kode,proses);
                       const floor=getLockedFloor(r.panelId,r.kode,proses);
                       const qtyLocked=PROSES_QTY_LOCK_SEBELUM_MULAI.includes(proses)&&!r.sudahPernahMulai;
+                      const lanjutanPct=(proses==="RENDAM"||proses==="PAINTING")?carryOverPct[`${proses}_${r.panelId}_${r.kode}`]:undefined;
                       return(
+                        <>
+                        {lanjutanPct!==undefined&&(
+                          <div style={{marginBottom:6}}>
+                            <span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:20,padding:"2px 8px"}}>
+                              ↻ Lanjutan {lanjutanPct}%
+                            </span>
+                          </div>
+                        )}
                         <div style={{display:"flex",alignItems:"center",gap:10}}>
                           {locked?(
                             <span style={{padding:"7px 10px",borderRadius:8,border:"1.5px solid #16a34a",background:"#f0fdf4",fontSize:13,fontWeight:700,color:"#16a34a"}}>{r.qtyProses} 🔒</span>
@@ -5576,6 +5904,7 @@ function OperatorView({user,viewMode}:any){
                           </div>
                           <span style={{fontWeight:800,color:pColor(r.pct),fontFamily:"'DM Mono',monospace",fontSize:13,minWidth:34}}>{r.pct}%</span>
                         </div>
+                        </>
                       );
                     })():isBusbarProses?null:(()=>{
                       // Pasang Komponen (Assembling Luar) pakai mode % - tapi tetap kunci
