@@ -2990,8 +2990,8 @@ export function OperatorView({user,viewMode}:any){
                                 <div key={`staged_${si}`} style={{position:"relative" as const}}>
                                   <img src={s.previewUrl} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1.5px dashed #0891b2"}}/>
                                   <button onClick={()=>batalkanFotoPk(r.panelId,si)}
-                                    style={{position:"absolute" as const,top:-7,right:-7,width:20,height:20,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                                    <i className="ti ti-x" style={{fontSize:11}}/>
+                                    style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                    <i className="ti ti-x" style={{fontSize:10}}/>
                                   </button>
                                 </div>
                               ))}
@@ -3614,8 +3614,8 @@ export function OperatorView({user,viewMode}:any){
                               <div key={`staged_${si}`} style={{position:"relative" as const}}>
                                 <img src={s.previewUrl} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1.5px dashed #ea580c"}}/>
                                 <button onClick={()=>batalkanFotoWiring(r.panelId,r.kode,si)}
-                                  style={{position:"absolute" as const,top:-7,right:-7,width:20,height:20,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                                  <i className="ti ti-x" style={{fontSize:11}}/>
+                                  style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                  <i className="ti ti-x" style={{fontSize:10}}/>
                                 </button>
                               </div>
                             ))}
