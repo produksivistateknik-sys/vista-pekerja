@@ -4894,6 +4894,15 @@ function OperatorView({user,viewMode}:any){
             const busbarItem=isBusbarKomp?{kode,nama:kode}:null;
             const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{},qtyProsesByDate:{}};
             const qtyKomp=isBusbarKomp?0:cl.qty||0;
+            // BUG FIX (5 Agu 2026): komponen dengan qty 0 (kode ada di BOM/task.komponen tapi gak
+            // dibutuhkan buat panel ini) sempat lolos tampil sebagai baris pekerjaan - ketauan dari
+            // laporan PANEL MCC SILO AGING (Sekatan Samping/Belakang/Kupingan Tutup Belakang, qty=0
+            // di checklist) muncul di PAINTING. Root cause di raw_schedule (kode-nya di-assign manual
+            // ke jadwal biarpun qty=0), TAPI filter di sini yang seharusnya jaga-jaga malah gak ada -
+            // affect SEMUA proses/divisi yang lewat loop ini (dicek: PACKING/BUSBAR/PAINTING/RENDAM/
+            // BENDING/RAKIT/POTONG/QC TEST semua kena di data hari ini). BUSBAR dikecualikan - proses
+            // itu emang gak punya konsep qty per-komponen sama sekali (qtyKomp selalu 0 by design).
+            if(!isBusbarKomp&&qtyKomp<=0)return;
             const qtyProses=isBusbarKomp?0:cl.qtyProsesByDate?.[proses]?.[viewDate]??cl.qtyProses?.[proses]??0;
             const pct=isBusbarKomp?(cl.progress?.[proses]||0):getProgressOnDate(cl,proses,viewDate);
             const wpDef=isBusbarKomp?null:panelCfg.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
@@ -6309,10 +6318,13 @@ function OperatorView({user,viewMode}:any){
             if(kode.startsWith("__wiring_"))return;
             const item=allItems.find((it:any)=>it.kode===kode);
             if(!item||!PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(item.nama))return;
+            const cl=panel.checklist?.[kode];
+            // BUG FIX (5 Agu 2026): sama seperti loop rows.push utama - komponen qty=0 gak boleh
+            // tampil jadi baris pekerjaan (lihat komentar lengkap di loop utama).
+            if(!(cl?.qty>0))return;
             const rowKey=`${panelId}_${kode}`;
             if(seenPkKeys.has(rowKey))return;
             seenPkKeys.add(rowKey);
-            const cl=panel.checklist?.[kode];
             const tahapState=getPasangKomponenTahapState(cl);
             const st=tahapState.WIRING||{progress:0,sudahDisimpan100:false};
             pkRows.push({task,panel,panelId,item,kode,pct:st.progress||0,sudahDisimpan100:st.sudahDisimpan100});
