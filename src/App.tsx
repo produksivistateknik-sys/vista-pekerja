@@ -2748,7 +2748,7 @@ function ReviewPaintingView(){
               rows.push({
                 proses,section:h.section,sectionMulai:h.sectionMulai,tanggal:h.tanggal,
                 panelId:p.id,panelNama:p.nama,proyek:woMap[p.wo_id]?.proyek||"(Tanpa Proyek)",wo:woMap[p.wo_id]?.wo||"",
-                kode,namaKomponen:kodeNamaMap[kode]||kode,qtyDelta:delta,ts:h.ts,
+                kode,namaKomponen:kodeNamaMap[kode]||kode,qtyDelta:delta,qtyTotal,ts:h.ts,
               });
             });
           });
@@ -2777,7 +2777,8 @@ function ReviewPaintingView(){
     return()=>{cancelled=true;};
   },[viewDate,kodeNamaMap]);
 
-  // PROSES -> SECTION -> list komponen (masing-masing section bisa lintas proyek/panel).
+  // PROSES -> SECTION -> PANEL -> list komponen (1 section bisa lintas proyek/panel, jadi
+  // dikelompokkan lagi per panel di dalam section biar gampang dipindai, bukan list rata).
   const groupedProses=useMemo(()=>{
     const byProses:Record<string,Record<number,{section:number,mulai:string,selesai:string,items:any[]}>>={RENDAM:{},PAINTING:{}};
     entries.forEach((r:any)=>{
@@ -2788,29 +2789,37 @@ function ReviewPaintingView(){
     });
     return["RENDAM","PAINTING"].map(proses=>({
       proses,
-      sections:Object.values(byProses[proses]).sort((a,b)=>b.section-a.section),
+      sections:Object.values(byProses[proses]).sort((a,b)=>b.section-a.section).map(sec=>{
+        const byPanel:Record<number,{panelNama:string,proyek:string,items:any[]}>={};
+        sec.items.forEach((r:any)=>{
+          if(!byPanel[r.panelId])byPanel[r.panelId]={panelNama:r.panelNama,proyek:r.proyek,items:[]};
+          byPanel[r.panelId].items.push(r);
+        });
+        return{...sec,panels:Object.values(byPanel).sort((a,b)=>a.panelNama.localeCompare(b.panelNama))};
+      }),
     })).filter(g=>g.sections.length>0);
   },[entries]);
 
   const toggleSection=(key:string)=>setExpandedSection(prev=>({...prev,[key]:!(prev[key]??true)}));
   const fmtJam=(iso:string)=>iso?new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"–";
   const PROSES_ICON:Record<string,string>={RENDAM:"💧",PAINTING:"🎨"};
+  const PROSES_HEADER_COLOR:Record<string,string>={RENDAM:"#0ea5e9",PAINTING:"#8b5cf6"};
 
   return(
     <div style={{padding:16,maxWidth:560,margin:"0 auto"}} className="fi">
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-        <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#7c3aed,#5b21b6)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 3px 10px #5b21b644"}}>🗂</div>
+        <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#8b5cf6,#0ea5e9)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 3px 10px #8b5cf644"}}>🗂</div>
         <div>
           <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>Review Painting</div>
           <div style={{fontSize:11,color:"#64748b"}}>Riwayat Section Rendam &amp; Painting</div>
         </div>
       </div>
 
-      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,background:"#fff",borderRadius:12,padding:"10px 14px",border:"1.5px solid #e2e8f0"}}>
+      <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:16,background:"#fff",borderRadius:12,padding:"10px 14px",border:"1.5px solid #e2e8f0",boxShadow:"0 1px 3px #00000008"}}>
         <button onClick={()=>setViewDate(addDays(viewDate,-1))} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#475569"}}>‹</button>
         <div style={{flex:1,textAlign:"center" as const}}>
           <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📅 {fmtDate(viewDate)}</div>
-          {viewDate===TODAY&&<div style={{fontSize:10,color:"#7c3aed",fontWeight:700,marginTop:2}}>Hari Ini</div>}
+          {viewDate===TODAY&&<div style={{fontSize:9,color:"#fff",fontWeight:700,marginTop:3,background:"linear-gradient(135deg,#8b5cf6,#0ea5e9)",borderRadius:20,padding:"1px 8px",display:"inline-block"}}>Hari Ini</div>}
         </div>
         <button onClick={()=>setViewDate(addDays(viewDate,1))} disabled={viewDate>=TODAY} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:viewDate>=TODAY?"#f1f5f9":"#f8fafc",cursor:viewDate>=TODAY?"not-allowed":"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:viewDate>=TODAY?"#cbd5e1":"#475569"}}>›</button>
       </div>
@@ -2827,38 +2836,60 @@ function ReviewPaintingView(){
           <div style={{fontSize:12,marginTop:4}}>Belum ada section yang disimpan di tanggal ini</div>
         </div>
       ):(
-        groupedProses.map(({proses,sections})=>(
-          <div key={proses} style={{marginBottom:14}}>
-            <div style={{fontWeight:800,fontSize:13,color:"#1e293b",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
-              <span>{PROSES_ICON[proses]}</span>{proses}
+        groupedProses.map(({proses,sections})=>{
+          const pc=PROSES_HEADER_COLOR[proses]||"#7c3aed";
+          const totalQtyProses=sections.reduce((s:number,sec:any)=>s+sec.items.reduce((s2:number,r:any)=>s2+r.qtyDelta,0),0);
+          return(
+          <div key={proses} style={{marginBottom:18}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9}}>
+              <span style={{width:26,height:26,borderRadius:8,background:pc+"1c",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{PROSES_ICON[proses]}</span>
+              <span style={{fontWeight:800,fontSize:13,color:"#1e293b",letterSpacing:.2}}>{proses}</span>
+              <span style={{flex:1,height:1,background:pc+"26"}}/>
+              <span style={{fontSize:10,fontWeight:700,color:pc,background:pc+"14",borderRadius:20,padding:"3px 9px"}}>{sections.length} section · {totalQtyProses} pcs</span>
             </div>
-            {sections.map(sec=>{
+            {sections.map((sec:any)=>{
               const secKey=proses+"|"+sec.section;
               const isOpen=expandedSection[secKey]??true;
               const totalQty=sec.items.reduce((s:number,r:any)=>s+r.qtyDelta,0);
               return(
-                <div key={secKey} style={{marginBottom:8,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden"}}>
-                  <div onClick={()=>toggleSection(secKey)} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",cursor:"pointer",background:"#f8fafc"}}>
-                    <span style={{fontSize:11,color:"#94a3b8"}}>{isOpen?"▾":"▸"}</span>
+                <div key={secKey} className="su" style={{marginBottom:9,background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",borderLeft:`3px solid ${pc}`,overflow:"hidden",boxShadow:"0 1px 3px #00000008"}}>
+                  <div onClick={()=>toggleSection(secKey)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 13px",cursor:"pointer",background:isOpen?pc+"0a":"#fff"}}>
+                    <span style={{width:30,height:30,borderRadius:9,background:pc,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,flexShrink:0}}>{sec.section}</span>
                     <div style={{flex:1,minWidth:0}}>
-                      <div style={{fontWeight:800,fontSize:13,color:"#1e293b"}}>Section {sec.section}</div>
-                      <div style={{fontSize:10,color:"#64748b",marginTop:1}}>{fmtJam(sec.mulai)} – {fmtJam(sec.selesai)} · {sec.items.length} komponen · {totalQty} pcs</div>
+                      <div style={{fontWeight:800,fontSize:12.5,color:"#1e293b"}}>Section {sec.section}</div>
+                      <div style={{display:"flex",gap:6,flexWrap:"wrap" as const,marginTop:3,alignItems:"center"}}>
+                        <span style={{fontSize:9.5,color:"#64748b",fontWeight:600}}>⏱ {fmtJam(sec.mulai)} – {fmtJam(sec.selesai)}</span>
+                        <span style={{fontSize:9.5,color:"#64748b"}}>· {sec.items.length} komponen</span>
+                      </div>
                     </div>
+                    <div style={{textAlign:"right" as const,flexShrink:0}}>
+                      <div style={{fontWeight:800,fontSize:15,color:pc,lineHeight:1}}>{totalQty}</div>
+                      <div style={{fontSize:8.5,fontWeight:700,color:"#94a3b8"}}>pcs</div>
+                    </div>
+                    <span style={{fontSize:11,color:"#cbd5e1"}}>{isOpen?"▾":"▸"}</span>
                   </div>
                   {isOpen&&(
-                    <div style={{display:"flex",flexDirection:"column" as const,gap:5,padding:"6px 12px 10px"}}>
-                      {sec.items.map((r:any,i:number)=>(
-                        <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
-                          <div style={{flex:1,minWidth:0}}>
-                            <div style={{fontSize:11.5,color:"#334155"}}>{r.namaKomponen}</div>
-                            <div style={{display:"flex",gap:5,flexWrap:"wrap" as const,marginTop:3,alignItems:"center"}}>
-                              <span style={{fontSize:10,color:"#94a3b8"}}>{r.panelNama} · {r.proyek}</span>
-                              {r.operators.map((op:string)=>(
-                                <span key={op} style={{fontSize:10,color:"#64748b",fontWeight:600}}>👤 {op}</span>
-                              ))}
-                            </div>
+                    <div style={{display:"flex",flexDirection:"column" as const,gap:8,padding:"2px 13px 12px"}}>
+                      {sec.panels.map((pnl:any,pi:number)=>(
+                        <div key={pi}>
+                          <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginBottom:4,paddingTop:6}}>{pnl.panelNama} <span style={{fontWeight:500,color:"#cbd5e1"}}>· {pnl.proyek}</span></div>
+                          <div style={{display:"flex",flexDirection:"column" as const,gap:4}}>
+                            {pnl.items.map((r:any,i:number)=>(
+                              <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>
+                                <div style={{flex:1,minWidth:0}}>
+                                  <div style={{fontSize:11.5,color:"#334155",fontWeight:500}}>{r.namaKomponen}</div>
+                                  {r.operators.length>0&&(
+                                    <div style={{display:"flex",gap:5,flexWrap:"wrap" as const,marginTop:2}}>
+                                      {r.operators.map((op:string)=>(
+                                        <span key={op} style={{fontSize:9.5,color:"#64748b",fontWeight:600}}>👤 {op}</span>
+                                      ))}
+                                    </div>
+                                  )}
+                                </div>
+                                <span style={{fontWeight:800,fontSize:12,color:pc,background:pc+"14",borderRadius:20,padding:"3px 9px",flexShrink:0}}>{r.qtyDelta}/{r.qtyTotal} pcs</span>
+                              </div>
+                            ))}
                           </div>
-                          <div style={{fontWeight:800,fontSize:13,color:"#7c3aed",flexShrink:0}}>{r.qtyDelta} <span style={{fontSize:9,fontWeight:700,color:"#5b21b6"}}>pcs</span></div>
                         </div>
                       ))}
                     </div>
@@ -2867,7 +2898,8 @@ function ReviewPaintingView(){
               );
             })}
           </div>
-        ))
+          );
+        })
       )}
     </div>
   );
