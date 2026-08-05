@@ -4435,25 +4435,43 @@ function OperatorView({user,viewMode}:any){
     const sectionMulaiKey=`${proses}_${viewDate}`;
     const sectionMulai=sectionMulaiMap[sectionMulaiKey]||new Date().toISOString();
     const nowIso=new Date().toISOString();
+    // BUG FIX (5 Agu 2026): dulu tiap komponen nulis update() checklist sendiri-sendiri, dibangun
+    // dari panelsMap yang sama/stale (dibaca sekali di awal fungsi, gak ikut ke-update oleh
+    // iterasi sebelumnya) - kalau 2+ komponen ada di PANEL YANG SAMA, komponen yang diproses
+    // belakangan bakal nimpa balik hasil tulis komponen sebelumnya di panel itu (ketauan dari
+    // laporan Groundplate hilang, Box Control yang selamat - dua-duanya di panel SILO AGING).
+    // Sekarang digrup per panel dulu, SATU update checklist per panel yang udah nyakup SEMUA
+    // komponen eligible di panel itu sekaligus - gak ada lagi tulisan yang saling timpa.
+    const byPanel=new Map<number,any[]>();
+    eligible.forEach((r:any)=>{
+      if(!byPanel.has(r.panelId))byPanel.set(r.panelId,[]);
+      byPanel.get(r.panelId)!.push(r);
+    });
     let gagal=0;
-    for(const r of eligible){
-      const panel=panelsMap[r.panelId];
-      const cl=panel?.checklist?.[r.kode];
-      if(!panel||!cl)continue;
-      const prevHist=cl.history?.[proses]||[];
-      const newEntry={pct:r.pct,tanggal:viewDate,shift,ts:nowIso,section:sectionNum,sectionMulai};
-      const newChecklist={...panel.checklist,[r.kode]:{...cl,history:{...(cl.history||{}),[proses]:[...prevHist,newEntry]}}};
-      const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
-      const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
-      const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(", "):user.nama;
+    for(const[panelId,panelRows] of byPanel){
+      const panel=panelsMap[panelId];
+      if(!panel){gagal+=panelRows.length;continue;}
+      const newChecklist={...panel.checklist};
+      const checkpointEntries:any[]=[];
+      panelRows.forEach((r:any)=>{
+        const cl=newChecklist[r.kode];
+        if(!cl)return;
+        const prevHist=cl.history?.[proses]||[];
+        const newEntry={pct:r.pct,tanggal:viewDate,shift,ts:nowIso,section:sectionNum,sectionMulai};
+        newChecklist[r.kode]={...cl,history:{...(cl.history||{}),[proses]:[...prevHist,newEntry]}};
+        const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
+        const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
+        const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(", "):user.nama;
+        checkpointEntries.push({panel_id:r.panelId,kode_komponen:r.kode,proses,checkpoint:r.pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate});
+      });
       try{
-        const{error:cpErr}=await withRetry(()=>supabase.from("progress_checkpoint_log").insert([{panel_id:r.panelId,kode_komponen:r.kode,proses,checkpoint:r.pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate}]));
+        const{error:cpErr}=await withRetry(()=>supabase.from("progress_checkpoint_log").insert(checkpointEntries));
         if(cpErr)throw cpErr;
-        const{error:panelErr}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",r.panelId));
+        const{error:panelErr}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",Number(panelId)));
         if(panelErr)throw panelErr;
-        setPanelsMap((prev:any)=>({...prev,[r.panelId]:{...prev[r.panelId],checklist:newChecklist}}));
+        setPanelsMap((prev:any)=>({...prev,[panelId]:{...prev[panelId],checklist:newChecklist}}));
       }catch{
-        gagal++;
+        gagal+=panelRows.length;
       }
     }
     if(gagal>0){
