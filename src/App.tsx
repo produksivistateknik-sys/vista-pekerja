@@ -3508,7 +3508,16 @@ function OperatorView({user,viewMode}:any){
               // awal sebelum batch ini) - kalau baca dari baseMap, beberapa tahap dari KODE YANG
               // SAMA dalam SATU batch (kejadian nyata pas bulk-assign operator BUSBAR sekaligus ke
               // semua tahap) bakal saling timpa satu sama lain, cuma tahap TERAKHIR yang keselamet.
-              const existingForKode=(newMap[r.kode]&&typeof newMap[r.kode]==="object"&&!Array.isArray(newMap[r.kode]))?newMap[r.kode]:{};
+              // AUDIT FIX (5 Agu 2026): kalau existing MASIH array flat (kasus PASANG KOMPONEN
+              // Box Control/Pintu yang udah punya operator dari SEBELUM fitur tahap ASSEMBLING/
+              // WIRING ada), dulu langsung dibuang diganti objek tahap kosong - operator lama
+              // HILANG PERMANEN kalau tahap WIRING kebetulan disimpan duluan sebelum ASSEMBLING
+              // sempat di-resave manual. Sekarang migrasi dulu: array flat lama jadi tahap
+              // "ASSEMBLING" (tahap yang eksis duluan secara historis, konsisten sama
+              // getPasangKomponenOperatorIds di sisi baca) sebelum tahap yang lagi disimpan
+              // di-merge di atasnya.
+              const existingRaw=newMap[r.kode];
+              const existingForKode=Array.isArray(existingRaw)?{ASSEMBLING:existingRaw}:((existingRaw&&typeof existingRaw==="object")?existingRaw:{});
               newMap[r.kode]={...existingForKode,[r.tahap]:getPekerjaIds(r)};
             } else {
               newMap[r.kode]=getPekerjaIds(r);
@@ -3921,8 +3930,19 @@ function OperatorView({user,viewMode}:any){
     const existing=cl?.progress?.["PASANG KOMPONEN"]||0;
     return{ASSEMBLING:{progress:existing,sudahDisimpan100:existing>=100},WIRING:{progress:0,sudahDisimpan100:false}};
   };
+  // AUDIT FIX (5 Agu 2026): Box Control/Pintu SEBELUM fitur tahap ini ada sudah bisa punya
+  // operator PASANG KOMPONEN ter-assign lewat jalur biasa (pekerja_per_komponen[kode] = array
+  // flat, BUKAN object per-tahap). Baca langsung .ASSEMBLING/.WIRING dari array flat balik
+  // undefined -> [] - assignment lama jadi KELIATAN KOSONG padahal ada histori operatornya.
+  // Helper ini migrasi lunak sama persis prinsip getPasangKomponenTahapState: array flat lama
+  // dianggap operator ASSEMBLING (itu yang eksis duluan), WIRING mulai kosong.
+  const getPasangKomponenOperatorIds=(task:any,kode:string,tahap:string):number[]=>{
+    const v=(task?.pekerja_per_komponen||{})[kode];
+    if(Array.isArray(v))return tahap==="ASSEMBLING"?v:[];
+    return (v&&typeof v==="object")?(v[tahap]||[]):[];
+  };
   const canSimpanPasangKomponenTahap=(task:any,panelId:number,kode:string,tahap:string):boolean=>{
-    const ids=(task?.pekerja_per_komponen||{})[kode]?.[tahap]||[];
+    const ids=getPasangKomponenOperatorIds(task,kode,tahap);
     if(ids.length===0)return false;
     return ids.some((pid:number)=>!!timerAktif[timerKey(panelId,kode,"PASANG KOMPONEN",pid,tahap)]||!!timerSelesaiHariIni[timerKey(panelId,kode,"PASANG KOMPONEN",pid,tahap)]);
   };
@@ -3948,7 +3968,7 @@ function OperatorView({user,viewMode}:any){
       if(error)throw error;
       if(combined>0){
         const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses==="PASANG KOMPONEN"&&(t.komponen||[]).includes(kode));
-        const idsKomp=(task?.pekerja_per_komponen||{})[kode]?.[tahap]||[];
+        const idsKomp=getPasangKomponenOperatorIds(task,kode,tahap);
         const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
         const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
         await withRetry(()=>supabase.from('progress_checkpoint_log').insert({
@@ -3988,20 +4008,28 @@ function OperatorView({user,viewMode}:any){
 
     const prevHist=cl.history?.["PASANG KOMPONEN"]||[];
     const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
-    const idsKomp=(task.pekerja_per_komponen||{})[kode]?.[tahap]||[];
+    const idsKomp=getPasangKomponenOperatorIds(task,kode,tahap);
     const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
     const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
     const checkpointEntry={panel_id:panelId,kode_komponen:kode,proses:"PASANG KOMPONEN",checkpoint:combined,pekerja_nama:pekerjaNamaLog,tanggal:viewDate};
 
-    const newChecklist={...panel.checklist};
-    const patchBase={pasangKomponenTahap:newTahap,progress:{...(cl.progress||{}),"PASANG KOMPONEN":combined},progressByDate:{...(cl.progressByDate||{}),"PASANG KOMPONEN":{...((cl.progressByDate||{})["PASANG KOMPONEN"]||{}),[viewDate]:combined}}};
+    // AUDIT FIX (5 Agu 2026): base checklist buat commit final ini diambil FRESH dari DB tepat
+    // sebelum ditulis - bukan panelsMap lokal yang bisa basi (OperatorView gak punya realtime
+    // subscription buat tabel panels, cuma renhar). Pola sama persis fix saveQtyEdit di
+    // ManajemenWO hari ini, biar gak nimpa balik perubahan pekerja lain ke kode LAIN (atau field
+    // lain di kode yang sama, misal fotoPemasangan) di panel yang sama.
+    const{data:freshRow}=await supabase.from('panels').select('checklist').eq('id',panelId).single();
+    const freshChecklist=freshRow?.checklist||panel.checklist;
+    const freshCl=freshChecklist[kode]||cl;
+    const newChecklist={...freshChecklist};
+    const patchBase={pasangKomponenTahap:newTahap,progress:{...(freshCl.progress||{}),"PASANG KOMPONEN":combined},progressByDate:{...(freshCl.progressByDate||{}),"PASANG KOMPONEN":{...((freshCl.progressByDate||{})["PASANG KOMPONEN"]||{}),[viewDate]:combined}}};
     if(existIdx>=0){
       const updatedHist=[...prevHist];
       updatedHist[existIdx]={...updatedHist[existIdx],pct:combined,ts:new Date().toISOString()};
-      newChecklist[kode]={...cl,...patchBase,history:{...(cl.history||{}),"PASANG KOMPONEN":updatedHist}};
+      newChecklist[kode]={...freshCl,...patchBase,history:{...(freshCl.history||{}),"PASANG KOMPONEN":updatedHist}};
     } else {
       const newEntry={pct:combined,tanggal:viewDate,shift,ts:new Date().toISOString()};
-      newChecklist[kode]={...cl,...patchBase,history:{...(cl.history||{}),"PASANG KOMPONEN":[...prevHist,newEntry]}};
+      newChecklist[kode]={...freshCl,...patchBase,history:{...(freshCl.history||{}),"PASANG KOMPONEN":[...prevHist,newEntry]}};
     }
 
     try{
@@ -5282,16 +5310,21 @@ function OperatorView({user,viewMode}:any){
                       <div>AKTUAL: <b style={{color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtD(r.aktualSelesai):"–"}</b></div>
                     </div>
 
-                    {proses==="PASANG KOMPONEN"&&PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(r.item?.nama)?(()=>{
+                    {proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"&&PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(r.item?.nama)?(()=>{
                       // Box Control/Pintu: kartu PASANG KOMPONEN cuma nampilin & isi tahap
                       // ASSEMBLING (kontribusi Assembling Luar) - tahap WIRING diisi dari kartu
                       // WIRING CONTROL (lihat section "Kontribusi Pasang Komponen" di bawah),
                       // digabung jadi progress["PASANG KOMPONEN"] via hitungProgressBusbarGabungan.
+                      // AUDIT FIX (5 Agu 2026): tambah cek user.sub_bagian==="Assembling Luar" -
+                      // konsisten sama cardMode asli (pct-mode PASANG KOMPONEN cuma buat sub_bagian
+                      // ini). Sebelumnya kondisi ini gak cek sub_bagian sama sekali, jadi viewer
+                      // LAIN yang kebetulan punya akses PASANG KOMPONEN juga bakal lihat UI tahap
+                      // ini buat Box Control/Pintu, bukan pengalaman normal mereka.
                       const clAsm=panelsMap[r.panelId]?.checklist?.[r.kode];
                       const tahapStateAsm=getPasangKomponenTahapState(clAsm);
                       const stAsm=tahapStateAsm.ASSEMBLING||{progress:0,sudahDisimpan100:false};
                       const pctAsm=stAsm.progress||0;
-                      const idsKompAsm=(r.task.pekerja_per_komponen?.[r.kode]?.ASSEMBLING)||[];
+                      const idsKompAsm=getPasangKomponenOperatorIds(r.task,r.kode,"ASSEMBLING");
                       const workersAsm=idsKompAsm.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
                       const bisaEditAsm=canSimpanPasangKomponenTahap(r.task,r.panelId,r.kode,"ASSEMBLING");
                       const timerKeysAsm=workersAsm.map((w:any)=>timerKey(r.panelId,r.kode,"PASANG KOMPONEN",w.id,"ASSEMBLING"));
@@ -5495,7 +5528,7 @@ function OperatorView({user,viewMode}:any){
                       const tahapStateWiring=getPasangKomponenTahapState(clWiring);
                       const stWiring=tahapStateWiring.WIRING||{progress:0,sudahDisimpan100:false};
                       const pctWiring=stWiring.progress||0;
-                      const idsKompWiring=(r.task.pekerja_per_komponen?.[r.kode]?.WIRING)||[];
+                      const idsKompWiring=getPasangKomponenOperatorIds(r.task,r.kode,"WIRING");
                       const workersWiring=idsKompWiring.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
                       const bisaEditWiring=canSimpanPasangKomponenTahap(r.task,r.panelId,r.kode,"WIRING");
                       const timerKeysWiring=workersWiring.map((w:any)=>timerKey(r.panelId,r.kode,"PASANG KOMPONEN",w.id,"WIRING"));
