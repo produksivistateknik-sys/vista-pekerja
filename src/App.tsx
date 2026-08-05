@@ -3021,8 +3021,9 @@ function OperatorView({user,viewMode}:any){
   };
   // REVISI (5 Agu 2026): Box Control/Pintu punya progress PASANG KOMPONEN gabungan 2 kontribusi
   // terpisah - ASSEMBLING (Assembling Luar, tampil di kartu PASANG KOMPONEN biasa) dan WIRING
-  // (operator Wiring Control, tampil DI DALAM kartu WIRING CONTROL sebagai section "Kontribusi
-  // Pasang Komponen" - GANTI section "Foto Pemasangan" lama yang cuma foto tanpa tracking).
+  // (operator Wiring Control). Kontribusi WIRING tadinya sub-section kecil nempel di kartu
+  // WIRING CONTROL, sekarang (5 Agu 2026 sore) jadi band Card terpisah sendiri - lihat render
+  // "Kontribusi Pasang Komponen" tepat setelah {myProses.map(...)} di bawah.
   // progress["WIRING CONTROL"] (kerja kabel beneran) TETAP independen, gak kesentuh sama sekali.
   const PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA=["Box Control","Pintu"];
   const PASANG_KOMPONEN_URUTAN_TAHAP=["ASSEMBLING","WIRING"];
@@ -5312,8 +5313,8 @@ function OperatorView({user,viewMode}:any){
 
                     {proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"&&PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(r.item?.nama)?(()=>{
                       // Box Control/Pintu: kartu PASANG KOMPONEN cuma nampilin & isi tahap
-                      // ASSEMBLING (kontribusi Assembling Luar) - tahap WIRING diisi dari kartu
-                      // WIRING CONTROL (lihat section "Kontribusi Pasang Komponen" di bawah),
+                      // ASSEMBLING (kontribusi Assembling Luar) - tahap WIRING diisi dari band
+                      // terpisah "Kontribusi Pasang Komponen" (lihat di bawah semua kartu proses),
                       // digabung jadi progress["PASANG KOMPONEN"] via hitungProgressBusbarGabungan.
                       // AUDIT FIX (5 Agu 2026): tambah cek user.sub_bagian==="Assembling Luar" -
                       // konsisten sama cardMode asli (pct-mode PASANG KOMPONEN cuma buat sub_bagian
@@ -5516,146 +5517,6 @@ function OperatorView({user,viewMode}:any){
                               </button>
                             )}
                           </div>
-                        </div>
-                      );
-                    })()}
-                    {proses==="WIRING CONTROL"&&PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(r.item?.nama)&&(()=>{
-                      // Kontribusi Wiring Control ke progress["PASANG KOMPONEN"] gabungan (tahap
-                      // WIRING) - GANTI section "Foto Pemasangan" lama yang cuma foto tanpa
-                      // tracking. progress["WIRING CONTROL"] card di atas TETAP gak kesentuh sama
-                      // sekali - ini section TAMBAHAN, bukan pengganti kartu wiring yang sudah ada.
-                      const clWiring=panelsMap[r.panelId]?.checklist?.[r.kode];
-                      const tahapStateWiring=getPasangKomponenTahapState(clWiring);
-                      const stWiring=tahapStateWiring.WIRING||{progress:0,sudahDisimpan100:false};
-                      const pctWiring=stWiring.progress||0;
-                      const idsKompWiring=getPasangKomponenOperatorIds(r.task,r.kode,"WIRING");
-                      const workersWiring=idsKompWiring.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
-                      const bisaEditWiring=canSimpanPasangKomponenTahap(r.task,r.panelId,r.kode,"WIRING");
-                      const timerKeysWiring=workersWiring.map((w:any)=>timerKey(r.panelId,r.kode,"PASANG KOMPONEN",w.id,"WIRING"));
-                      const anyTimerRunningWiring=timerKeysWiring.some((k:string)=>!!timerAktif[k]);
-                      const anyLoadingWiring=timerKeysWiring.some((k:string)=>timerLoading===k);
-                      let durasiLabelWiring="";
-                      const runningKeyWiring=timerKeysWiring.find((k:string)=>timerAktif[k]);
-                      if(runningKeyWiring){
-                        const timer=timerAktif[runningKeyWiring];
-                        const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
-                        const totalMenit=(timerDurasiSelesai[runningKeyWiring]||0)+menitBerjalan;
-                        const jam=Math.floor(totalMenit/60);
-                        const menit=Math.round(totalMenit%60);
-                        const detik=Math.max(0,Math.round(totalMenit*60));
-                        durasiLabelWiring=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
-                      }
-                      const flashKeyWiring=`${r.panelId}_${r.kode}_PASANG KOMPONEN_WIRING`;
-                      const flashingWiring=!!savedFlash[flashKeyWiring];
-                      const cl=clWiring;
-                      const fotoArr=cl?.fotoPemasangan||[];
-                      const keyFoto=`${r.panelId}_${r.kode}`;
-                      const staged=stagedFotoWiring[keyFoto]||[];
-                      const saving=savingFotoWiring===keyFoto;
-                      return(
-                        <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,marginTop:2,display:"flex",flexDirection:"column",gap:6}}>
-                          <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4}}>KONTRIBUSI PASANG KOMPONEN</div>
-                          {workersWiring.length===0?(
-                            <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:"WIRING"});setTempPekerjaIds(idsKompWiring);}}
-                              style={{fontSize:12,color:"#4f46e5",fontWeight:700,background:"#eef2ff",border:"1.5px dashed #a5b4fc",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center"}}>
-                              + Pilih Operator
-                            </button>
-                          ):(
-                            <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
-                              {workersWiring.map((w:any)=>(
-                                <span key={w.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,
-                                  color:DIVISI_CONFIG[w.divisi]?.color||"#64748b",background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
-                                  borderRadius:20,padding:"4px 10px"}}>
-                                  {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
-                                </span>
-                              ))}
-                              <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:"WIRING"});setTempPekerjaIds(idsKompWiring);}}
-                                style={{fontSize:10,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"4px 8px",cursor:"pointer"}}>
-                                ✏️ Edit Operator
-                              </button>
-                            </div>
-                          )}
-                          {workersWiring.length>0&&(
-                            <button disabled={anyLoadingWiring}
-                              onClick={()=>{
-                                if(anyTimerRunningWiring){
-                                  workersWiring.forEach((w:any)=>{
-                                    const k=timerKey(r.panelId,r.kode,"PASANG KOMPONEN",w.id,"WIRING");
-                                    if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,"PASANG KOMPONEN","WIRING");
-                                  });
-                                } else {
-                                  workersWiring.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,"PASANG KOMPONEN",viewDate,"WIRING"));
-                                }
-                              }}
-                              style={{fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,cursor:anyLoadingWiring?"not-allowed":"pointer",
-                                background:anyTimerRunningWiring?"#fef2f2":"#f0fdf4",color:anyTimerRunningWiring?"#dc2626":"#16a34a"}}>
-                              {anyLoadingWiring?"...":anyTimerRunningWiring?`⏹ Selesai ${durasiLabelWiring}`:"▶ Mulai"}
-                            </button>
-                          )}
-                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                            {PCT_STEPS.map((s:number)=>{
-                              const reached=pctWiring>=s;
-                              const isNext=s===PCT_STEPS.find((x:number)=>x>pctWiring);
-                              const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
-                              return(
-                                <button key={s} disabled={!bisaEditWiring}
-                                  onClick={()=>{if(bisaEditWiring)updatePctManualPasangKomponenTahap(r.panelId,r.kode,"WIRING",reached?prevStep:s);}}
-                                  style={{flex:1,minWidth:40,padding:"9px 4px",borderRadius:8,border:"none",
-                                    cursor:bisaEditWiring?"pointer":"not-allowed",
-                                    background:reached?pColor(s):isNext?"#eef2ff":"#f1f5f9",
-                                    color:reached?"#fff":isNext?"#4f46e5":"#94a3b8",
-                                    fontWeight:700,fontSize:11,outline:isNext&&bisaEditWiring?"2px solid #4f46e5":"none"}}>
-                                  {reached?"✓":`${s}%`}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4,marginTop:2}}>FOTO PEMASANGAN (WAJIB)</div>
-                          {fotoArr.length===0&&staged.length===0?(
-                            <div style={{fontSize:11,color:"#94a3b8",padding:"2px 0 6px"}}>Belum ada foto</div>
-                          ):(
-                            <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
-                              {fotoArr.map((f:any,fi:number)=>(
-                                <img key={`saved_${fi}`} onClick={()=>setFotoViewerWiring({fotos:fotoArr,startIndex:fi,label:`${r.item?.nama}_${r.panel.nama}`})}
-                                  src={f.url} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
-                              ))}
-                              {staged.map((s,si)=>(
-                                <div key={`staged_${si}`} style={{position:"relative" as const}}>
-                                  <img src={s.previewUrl} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1.5px dashed #4f46e5"}}/>
-                                  <button onClick={()=>batalkanFotoWiring(r.panelId,r.kode,si)}
-                                    style={{position:"absolute" as const,top:-6,right:-6,width:16,height:16,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                                    <i className="ti ti-x" style={{fontSize:9}}/>
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
-                            <label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#4f46e5",background:"#eef2ff",border:"1px dashed #a5b4fc",borderRadius:6,padding:"6px 10px",
-                                cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}>
-                              + Tambah Foto
-                              <input type="file" accept="image/*" multiple disabled={saving} style={{display:"none"}}
-                                onChange={(e:any)=>{pilihFotoWiring(r.panelId,r.kode,e.target.files);e.target.value="";}}/>
-                            </label>
-                            {staged.length>0&&(
-                              <button onClick={()=>simpanFotoWiring(r.panelId,r.kode)} disabled={saving}
-                                style={{fontSize:11,fontWeight:700,color:"#fff",background:saving?"#94a3b8":"#4f46e5",border:"none",borderRadius:6,padding:"6px 12px",cursor:saving?"not-allowed":"pointer"}}>
-                                {saving?"⏳ Menyimpan...":"💾 Simpan Foto"}
-                              </button>
-                            )}
-                          </div>
-                          <button disabled={pctWiring===0} onClick={async()=>{
-                              const berhasil=await simpanProgressTahapPasangKomponen(r.panelId,r.kode,"WIRING");
-                              if(berhasil&&pctWiring<100){
-                                setSavedFlash(prev=>({...prev,[flashKeyWiring]:true}));
-                                setTimeout(()=>setSavedFlash(prev=>({...prev,[flashKeyWiring]:false})),1500);
-                              }
-                            }}
-                            style={{fontSize:12,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,
-                              cursor:pctWiring===0?"not-allowed":"pointer",
-                              background:flashingWiring?"#16a34a":"#eef2ff",color:flashingWiring?"#fff":"#4f46e5"}}>
-                            {flashingWiring?"✅ Tersimpan":"💾 Simpan Progress"}
-                          </button>
                         </div>
                       );
                     })()}
@@ -5966,6 +5827,354 @@ function OperatorView({user,viewMode}:any){
           </Card>
         );
       })}
+
+      {/* Band terpisah "Kontribusi Pasang Komponen" - kontribusi operator Wiring Control ke
+          progress["PASANG KOMPONEN"] gabungan (tahap WIRING), diambil dari task WIRING CONTROL
+          yang komponennya Box Control/Pintu. Dulu sub-section kecil nempel di kartu WIRING
+          CONTROL, sekarang band sendiri persis pola RAKIT/PASANG KOMPONEN (grid pilih per jenis
+          komponen + popup pilih panel + kartu detail per item). Data yang dibaca/ditulis SAMA
+          PERSIS (checklist[kode].pasangKomponenTahap.WIRING, pekerja_per_komponen[kode].WIRING,
+          fotoPemasangan) - progress yang sudah diisi lewat section lama otomatis tampil di sini,
+          gak ada migrasi data. Mobile-only, sama seperti pola aslinya. */}
+      {viewMode==='mobile'&&(()=>{
+        const pkTasks=tasksByProses["WIRING CONTROL"]||[];
+        if(!pkTasks.length)return null;
+        const pkRows:any[]=[];
+        const seenPkKeys=new Set<string>();
+        pkTasks.forEach((task:any)=>{
+          const panelId=task.panel_id||task.panelId;
+          const panel=panelsMap[panelId];
+          if(!panel)return;
+          const panelCfg=getEffCfg(panel.tipe);
+          if(!panelCfg)return;
+          const allItems=panelCfg.wps.flatMap((w:any)=>w.items);
+          (task.komponen||[]).forEach((kode:string)=>{
+            if(kode.startsWith("__wiring_"))return;
+            const item=allItems.find((it:any)=>it.kode===kode);
+            if(!item||!PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(item.nama))return;
+            const rowKey=`${panelId}_${kode}`;
+            if(seenPkKeys.has(rowKey))return;
+            seenPkKeys.add(rowKey);
+            const cl=panel.checklist?.[kode];
+            const tahapState=getPasangKomponenTahapState(cl);
+            const st=tahapState.WIRING||{progress:0,sudahDisimpan100:false};
+            pkRows.push({task,panel,panelId,item,kode,pct:st.progress||0,sudahDisimpan100:st.sudahDisimpan100});
+          });
+        });
+        if(!pkRows.length)return null;
+        const proses="KONTRIBUSI PASANG KOMPONEN";
+        const pc="#f97316";
+        const isDone=(r:any)=>r.pct===100;
+        const visibleRows=pkRows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode));
+        return(
+          <Card style={{marginBottom:20,padding:0,overflow:"hidden"}}>
+            <div style={{background:pc,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
+              <div style={{fontWeight:800,fontSize:14,color:"#fff"}}>Kontribusi Pasang Komponen</div>
+              <div style={{display:"flex",gap:8,alignItems:"center"}}>
+                <span style={{fontSize:12,color:"#ffffff99"}}>Shift {shift}</span>
+                <span style={{background:"#ffffff22",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
+                  {visibleRows.filter((r:any)=>isDone(r)).length}/{visibleRows.length} selesai
+                </span>
+              </div>
+            </div>
+            <div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+              {(()=>{
+                const seenNama=new Set();
+                const jenisList:any[]=[];
+                pkRows.forEach((r:any)=>{
+                  const nama=r.item?.nama||r.kode;
+                  if(!seenNama.has(nama)){seenNama.add(nama);jenisList.push({namaKomponen:nama});}
+                });
+                return jenisList.map((jg:any)=>{
+                  const groupRows=pkRows.filter((r:any)=>(r.item?.nama||r.kode)===jg.namaKomponen);
+                  const panelCount=new Set(groupRows.map((r:any)=>r.panelId)).size;
+                  const selRows=groupRows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode));
+                  const selCount=selRows.length;
+                  const belumDikerjakanCount=selRows.filter((r:any)=>(r.pct||0)===0).length;
+                  const dikerjakanCount=selRows.filter((r:any)=>(r.pct||0)>0&&(r.pct||0)<100).length;
+                  const selesaiCount=selRows.filter((r:any)=>(r.pct||0)>=100).length;
+                  const groupSudahTuntas=groupRows.length>0&&groupRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
+                  return(
+                    <button key={jg.namaKomponen} disabled={groupSudahTuntas}
+                      onClick={()=>{setKomponenPopupJenis({proses,namaKomponen:jg.namaKomponen});setTempSelectedPanelJenis(selRows.map((r:any)=>r.panelId));}}
+                      style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
+                        padding:"6px 12px",borderRadius:8,border:groupSudahTuntas?"1px solid #e2e8f0":selCount>0?"1.5px solid #f97316":"1px solid #e2e8f0",
+                        background:groupSudahTuntas?"#f8fafc":selCount>0?"#fff7ed":"#fff",
+                        cursor:groupSudahTuntas?"not-allowed":"pointer",textAlign:"left",opacity:groupSudahTuntas?0.5:1}}>
+                      <span style={{fontSize:9,color:"#94a3b8"}}>{panelCount} panel</span>
+                      <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{jg.namaKomponen}</span>
+                      {groupSudahTuntas?(
+                        <span style={{fontSize:9,color:"#16a34a",fontWeight:600}}>✅ Selesai semua</span>
+                      ):selCount>0?(
+                        <span style={{fontSize:9,color:"#ea580c",fontWeight:600,display:"flex",gap:6,flexWrap:"wrap" as const}}>
+                          {belumDikerjakanCount>0&&<span>{belumDikerjakanCount} belum</span>}
+                          {dikerjakanCount>0&&<span>{dikerjakanCount} dikerjakan</span>}
+                          {selesaiCount>0&&<span style={{color:"#16a34a"}}>{selesaiCount} selesai</span>}
+                        </span>
+                      ):(
+                        <span style={{fontSize:9,color:"#94a3b8",fontWeight:600}}>+ Pilih Panel</span>
+                      )}
+                    </button>
+                  );
+                });
+              })()}
+            </div>
+            {komponenPopupJenis&&komponenPopupJenis.proses===proses&&(()=>{
+              const groupRows=pkRows.filter((r:any)=>(r.item?.nama||r.kode)===komponenPopupJenis.namaKomponen);
+              return(
+                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
+                  onClick={()=>setKomponenPopupJenis(null)}>
+                  <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                    <div style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
+                      <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{komponenPopupJenis.namaKomponen}</div>
+                      <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Pilih panel yang mau dikerjakan</div>
+                    </div>
+                    <div style={{overflowY:"auto",padding:"8px 16px",flex:1}}>
+                      {groupRows.map((r:any)=>{
+                        const checked=tempSelectedPanelJenis.includes(r.panelId);
+                        const panelKeyPopup=`${proses}_${r.panelId}`;
+                        const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
+                        const sudahSelesai=r.pct===100&&r.sudahDisimpan100;
+                        const isDisabled=alreadyConfirmed||sudahSelesai;
+                        return(
+                          <label key={r.panelId} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
+                            cursor:isDisabled?"not-allowed":"pointer",opacity:isDisabled?0.55:1}}>
+                            <input type="checkbox" checked={checked} disabled={isDisabled}
+                              onChange={()=>{
+                                if(isDisabled)return;
+                                setTempSelectedPanelJenis((prev:number[])=>checked?prev.filter(id=>id!==r.panelId):[...prev,r.panelId]);
+                              }}
+                              style={{width:16,height:16}}/>
+                            <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
+                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+                                <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{r.panel.nama}</span>
+                                {isDisabled&&(()=>{
+                                  const pct=r.pct||0;
+                                  const statusBadgeLabel=pct>=100?"Selesai":pct>0?"Dikerjakan":"Belum";
+                                  const statusBadgeColor=pct>=100?"#16a34a":pct>0?"#2563eb":"#94a3b8";
+                                  const statusBadgeBg=pct>=100?"#dcfce7":pct>0?"#dbeafe":"#f1f5f9";
+                                  return(
+                                    <span style={{fontSize:9,fontWeight:700,background:statusBadgeBg,color:statusBadgeColor,borderRadius:6,padding:"1px 6px"}}>
+                                      {statusBadgeLabel}
+                                    </span>
+                                  );
+                                })()}
+                              </div>
+                              <span style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek}</span>
+                            </div>
+                          </label>
+                        );
+                      })}
+                    </div>
+                    <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:"1px solid #f1f5f9"}}>
+                      <button onClick={()=>setTempSelectedPanelJenis(groupRows.filter((r:any)=>{
+                          const alreadyConfirmed=(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode);
+                          const sudahSelesai=r.pct===100&&r.sudahDisimpan100;
+                          return !alreadyConfirmed&&!sudahSelesai;
+                        }).map((r:any)=>r.panelId))}
+                        style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
+                      <button onClick={()=>setTempSelectedPanelJenis([])}
+                        style={{fontSize:11,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
+                      <div style={{flex:1}}/>
+                      <button onClick={()=>setKomponenPopupJenis(null)}
+                        style={{padding:"8px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",cursor:"pointer"}}>Batal</button>
+                      <button onClick={()=>{
+                          setSelectedKomponen((prev:any)=>{
+                            const next={...prev};
+                            groupRows.forEach((r:any)=>{
+                              const key=`${proses}_${r.panelId}`;
+                              const existing=next[key]||[];
+                              const isSel=tempSelectedPanelJenis.includes(r.panelId);
+                              const already=existing.includes(r.kode);
+                              if(isSel&&!already)next[key]=[...existing,r.kode];
+                              else if(!isSel&&already)next[key]=existing.filter((k:string)=>k!==r.kode);
+                            });
+                            return next;
+                          });
+                          setKomponenPopupJenis(null);
+                          scrollDanHighlightGroup(proses,komponenPopupJenis.namaKomponen);
+                        }}
+                        style={{padding:"8px 14px",borderRadius:8,border:"none",background:"#f97316",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
+                        Konfirmasi ({tempSelectedPanelJenis.length})
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+            <div style={{display:"flex",flexDirection:"column",gap:10,padding:"4px 2px"}}>
+              {visibleRows.length===0?(
+                <div style={{textAlign:"center",padding:"24px 10px",color:"#94a3b8",fontSize:12}}>
+                  Belum ada komponen dikumpulkan.<br/>Tap panel di atas untuk pilih komponen.
+                </div>
+              ):(
+                <div style={{display:"flex",flexDirection:"column",gap:10,padding:"0 14px 14px"}}>
+                  {visibleRows.map((r:any)=>{
+                    const clWiring=panelsMap[r.panelId]?.checklist?.[r.kode];
+                    const tahapStateWiring=getPasangKomponenTahapState(clWiring);
+                    const stWiring=tahapStateWiring.WIRING||{progress:0,sudahDisimpan100:false};
+                    const pctWiring=stWiring.progress||0;
+                    const idsKompWiring=getPasangKomponenOperatorIds(r.task,r.kode,"WIRING");
+                    const workersWiring=idsKompWiring.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
+                    const bisaEditWiring=canSimpanPasangKomponenTahap(r.task,r.panelId,r.kode,"WIRING");
+                    const timerKeysWiring=workersWiring.map((w:any)=>timerKey(r.panelId,r.kode,"PASANG KOMPONEN",w.id,"WIRING"));
+                    const anyTimerRunningWiring=timerKeysWiring.some((k:string)=>!!timerAktif[k]);
+                    const anyLoadingWiring=timerKeysWiring.some((k:string)=>timerLoading===k);
+                    let durasiLabelWiring="";
+                    const runningKeyWiring=timerKeysWiring.find((k:string)=>timerAktif[k]);
+                    if(runningKeyWiring){
+                      const timer=timerAktif[runningKeyWiring];
+                      const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
+                      const totalMenit=(timerDurasiSelesai[runningKeyWiring]||0)+menitBerjalan;
+                      const jam=Math.floor(totalMenit/60);
+                      const menit=Math.round(totalMenit%60);
+                      const detik=Math.max(0,Math.round(totalMenit*60));
+                      durasiLabelWiring=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
+                    }
+                    const flashKeyWiring=`${r.panelId}_${r.kode}_PASANG KOMPONEN_WIRING`;
+                    const flashingWiring=!!savedFlash[flashKeyWiring];
+                    const cl=clWiring;
+                    const fotoArr=cl?.fotoPemasangan||[];
+                    const keyFoto=`${r.panelId}_${r.kode}`;
+                    const staged=stagedFotoWiring[keyFoto]||[];
+                    const saving=savingFotoWiring===keyFoto;
+                    return(
+                      <div key={`${r.task.id}_${r.kode}`} style={{border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 12px",
+                        background:stWiring.sudahDisimpan100?"#f0fdf4":"#fff",display:"flex",flexDirection:"column",gap:6}}>
+                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
+                          <div>
+                            <div style={{fontSize:9,color:"#94a3b8"}}>{r.task.proyek}</div>
+                            <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{r.panel.nama}</div>
+                            <div style={{fontSize:10,color:"#64748b"}}>{renderNamaKomponen(r.item?.nama)} · <span style={{fontFamily:"'DM Mono',monospace"}}>{r.kode}</span></div>
+                          </div>
+                          {stWiring.sudahDisimpan100&&<span style={{fontSize:9,fontWeight:700,color:"#16a34a"}}>✅ Selesai</span>}
+                        </div>
+                        {workersWiring.length===0?(
+                          <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:"WIRING"});setTempPekerjaIds(idsKompWiring);}}
+                            style={{fontSize:12,color:"#ea580c",fontWeight:700,background:"#fff7ed",border:"1.5px dashed #fdba74",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center"}}>
+                            + Pilih Operator
+                          </button>
+                        ):(
+                          <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
+                            {workersWiring.map((w:any)=>(
+                              <span key={w.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,
+                                color:DIVISI_CONFIG[w.divisi]?.color||"#64748b",background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
+                                borderRadius:20,padding:"4px 10px"}}>
+                                {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
+                              </span>
+                            ))}
+                            <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:"WIRING"});setTempPekerjaIds(idsKompWiring);}}
+                              style={{fontSize:10,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"4px 8px",cursor:"pointer"}}>
+                              ✏️ Edit Operator
+                            </button>
+                          </div>
+                        )}
+                        {workersWiring.length>0&&(
+                          <button disabled={anyLoadingWiring}
+                            onClick={()=>{
+                              if(anyTimerRunningWiring){
+                                workersWiring.forEach((w:any)=>{
+                                  const k=timerKey(r.panelId,r.kode,"PASANG KOMPONEN",w.id,"WIRING");
+                                  if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,"PASANG KOMPONEN","WIRING");
+                                });
+                              } else {
+                                workersWiring.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,"PASANG KOMPONEN",viewDate,"WIRING"));
+                              }
+                            }}
+                            style={{fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,cursor:anyLoadingWiring?"not-allowed":"pointer",
+                              background:anyTimerRunningWiring?"#fef2f2":"#f0fdf4",color:anyTimerRunningWiring?"#dc2626":"#16a34a"}}>
+                            {anyLoadingWiring?"...":anyTimerRunningWiring?`⏹ Selesai ${durasiLabelWiring}`:"▶ Mulai"}
+                          </button>
+                        )}
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
+                          {PCT_STEPS.map((s:number)=>{
+                            const reached=pctWiring>=s;
+                            const isNext=s===PCT_STEPS.find((x:number)=>x>pctWiring);
+                            const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
+                            return(
+                              <button key={s} disabled={!bisaEditWiring}
+                                onClick={()=>{if(bisaEditWiring)updatePctManualPasangKomponenTahap(r.panelId,r.kode,"WIRING",reached?prevStep:s);}}
+                                style={{flex:1,minWidth:40,padding:"9px 4px",borderRadius:8,border:"none",
+                                  cursor:bisaEditWiring?"pointer":"not-allowed",
+                                  background:reached?pColor(s):isNext?"#fff7ed":"#f1f5f9",
+                                  color:reached?"#fff":isNext?"#ea580c":"#94a3b8",
+                                  fontWeight:700,fontSize:11,outline:isNext&&bisaEditWiring?"2px solid #ea580c":"none"}}>
+                                {reached?"✓":`${s}%`}
+                              </button>
+                            );
+                          })}
+                        </div>
+                        <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4,marginTop:2}}>FOTO PEMASANGAN (WAJIB)</div>
+                        {fotoArr.length===0&&staged.length===0?(
+                          <div style={{fontSize:11,color:"#94a3b8",padding:"2px 0 6px"}}>Belum ada foto</div>
+                        ):(
+                          <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
+                            {fotoArr.map((f:any,fi:number)=>(
+                              <img key={`saved_${fi}`} onClick={()=>setFotoViewerWiring({fotos:fotoArr,startIndex:fi,label:`${r.item?.nama}_${r.panel.nama}`})}
+                                src={f.url} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                            ))}
+                            {staged.map((s,si)=>(
+                              <div key={`staged_${si}`} style={{position:"relative" as const}}>
+                                <img src={s.previewUrl} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1.5px dashed #ea580c"}}/>
+                                <button onClick={()=>batalkanFotoWiring(r.panelId,r.kode,si)}
+                                  style={{position:"absolute" as const,top:-6,right:-6,width:16,height:16,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                  <i className="ti ti-x" style={{fontSize:9}}/>
+                                </button>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+                        <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
+                          <label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#ea580c",background:"#fff7ed",border:"1px dashed #fdba74",borderRadius:6,padding:"6px 10px",
+                              cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}>
+                            + Tambah Foto
+                            <input type="file" accept="image/*" multiple disabled={saving} style={{display:"none"}}
+                              onChange={(e:any)=>{pilihFotoWiring(r.panelId,r.kode,e.target.files);e.target.value="";}}/>
+                          </label>
+                          {staged.length>0&&(
+                            <button onClick={()=>simpanFotoWiring(r.panelId,r.kode)} disabled={saving}
+                              style={{fontSize:11,fontWeight:700,color:"#fff",background:saving?"#94a3b8":"#ea580c",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer"}}>
+                              {saving?"⏳ Menyimpan...":"💾 Simpan Foto"}
+                            </button>
+                          )}
+                        </div>
+                        <button disabled={pctWiring===0} onClick={async()=>{
+                            const berhasil=await simpanProgressTahapPasangKomponen(r.panelId,r.kode,"WIRING");
+                            if(berhasil&&pctWiring<100){
+                              setSavedFlash(prev=>({...prev,[flashKeyWiring]:true}));
+                              setTimeout(()=>setSavedFlash(prev=>({...prev,[flashKeyWiring]:false})),1500);
+                            }
+                          }}
+                          style={{fontSize:12,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,
+                            cursor:pctWiring===0?"not-allowed":"pointer",
+                            background:flashingWiring?"#16a34a":"#fff7ed",color:flashingWiring?"#fff":"#ea580c"}}>
+                          {flashingWiring?"✅ Tersimpan":"💾 Simpan Progress"}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div style={{padding:"12px 16px",borderTop:"1px solid #f1f5f9",background:"#fafafa"}}>
+              <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:6}}>📝 CATATAN {proses}</div>
+              <div style={{display:"flex",gap:8}}>
+                <input value={catatan[proses]||""} onChange={e=>setCatatan(prev=>({...prev,[proses]:e.target.value}))}
+                  placeholder={`Catatan kendala untuk ${proses}...`}
+                  style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
+                    background:"#fff",fontSize:12,color:"#1e293b"}}/>
+                <Btn color="#f97316" style={{padding:"7px 16px",fontSize:12}}
+                  onClick={()=>{
+                    setSavedNote(prev=>({...prev,[proses]:true}));
+                    setTimeout(()=>setSavedNote(prev=>({...prev,[proses]:false})),2000);
+                  }}>
+                  {savedNote[proses]?"✓ Terkirim":"Simpan"}
+                </Btn>
+              </div>
+            </div>
+          </Card>
+        );
+      })()}
 
       {/* TOMBOL KUNCI PROGRESS */}
       {todayTasks.length>0&&(
