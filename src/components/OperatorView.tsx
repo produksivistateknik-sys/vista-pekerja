@@ -1980,6 +1980,24 @@ export function OperatorView({user,viewMode}:any){
           });
         });
 
+        // Urutkan per WP (ascending, WP1 dulu) lalu per urutan komponen dalam WP itu (kolom
+        // `urutan` bom_master, sudah kepake buat nyusun panelCfg.wps.items di getEffCfg - di sini
+        // tinggal REUSE lewat wpDef.items.findIndex, gak query/hitung ulang). BUSBAR (wpDef null,
+        // by-design gak punya struktur WP) sengaja gak ikut kena urut ulang - urutan relatifnya
+        // dipertahankan (Array.sort JS stabil). Angka WP diambil dari digit di label ("WP2"->2,
+        // bukan localeCompare string biar "WP10" gak nyalip ke depan "WP2").
+        const wpSortNum=(wp:any)=>{
+          const m=String(wp||"").match(/(\d+)/);
+          return m?parseInt(m[1],10):999;
+        };
+        rows.sort((a:any,b:any)=>{
+          const wpA=wpSortNum(a.wpDef?.wp),wpB=wpSortNum(b.wpDef?.wp);
+          if(wpA!==wpB)return wpA-wpB;
+          const idxA=a.wpDef?.items?.findIndex((it:any)=>it.kode===a.kode)??999;
+          const idxB=b.wpDef?.items?.findIndex((it:any)=>it.kode===b.kode)??999;
+          return idxA-idxB;
+        });
+
         const isDone=(r:any)=>r.pct===100;
         const isDrilldownProses=["WIRING CONTROL","WIRING POWER","BUSBAR"].includes(proses);
         const PROSES_KUMPUL_DULU_DESKTOP=["POTONG","RENDAM","PAINTING"];
