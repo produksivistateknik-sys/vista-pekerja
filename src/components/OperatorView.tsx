@@ -2050,6 +2050,10 @@ export function OperatorView({user,viewMode}:any){
                 </span>
               </div>
             </div>
+            {/* DEBUG SEMENTARA (6 Agu 2026) - buat lacak bug filter status, HAPUS setelah ketemu akar masalahnya */}
+            <div style={{padding:"4px 16px",background:"#fef9c3",fontSize:9,color:"#854d0e",fontFamily:"monospace"}}>
+              DEBUG: viewMode={viewMode} · statusFilter={statusFilter} · rows={rows.length} · visibleRowsPraStatus={visibleRowsPraStatus.length} · visibleRows={visibleRows.length}
+            </div>
             <div style={{display:"flex",gap:5,flexWrap:"wrap" as const,padding:"8px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
               {(["ALL","NOT YET","TO DO","IN PROGRESS","DONE"] as const).map(s=>{
                 // BUG FIX (6 Agu 2026): dulu hitung dari visibleRowsPraStatus (dibatasin ke
