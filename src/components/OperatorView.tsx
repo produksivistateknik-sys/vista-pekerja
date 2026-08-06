@@ -2019,9 +2019,15 @@ export function OperatorView({user,viewMode}:any){
         // Mobile: titik awal pilih komponen dibalik jadi Jenis Komponen -> Panel buat proses ini.
         const PROSES_PILIH_PER_KOMPONEN=["BENDING","STEL","FINISHING","RENDAM","PAINTING","BUSBAR","RAKIT","PASANG KOMPONEN"];
         const visibleRowsPraStatus=(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
-        // Filter status pipeline - default "ALL" gak nyembunyiin apapun (NOT YET tetap kelihatan,
-        // cuma di-dim di kartu - lihat render). Tab status cuma aktif kalau operator pilih salah satu.
-        const visibleRows=statusFilter==="ALL"?visibleRowsPraStatus:visibleRowsPraStatus.filter((r:any)=>r.pipelineStatus===statusFilter);
+        // BUG FIX (6 Agu 2026): tab counter ngitung dari `rows` (semua komponen relevan di proses
+        // ini), tapi visibleRows dulu selalu turunan dari visibleRowsPraStatus (dibatasin komponen
+        // yang UDAH DI-COLLECT operator lewat popup) - begitu filter status aktif tapi belum ada
+        // yang di-collect, visibleRowsPraStatus=0, jadi HASIL FILTER APAPUN selalu 0 walau tab
+        // counter-nya nunjukin angka besar (mis. "Not Yet (76)"). Fix: kalau ada filter status
+        // spesifik yang dipilih (bukan "Semua"), sumbernya LANGSUNG dari `rows` (sama kayak
+        // counter), skip syarat collect - operator bisa lihat SEMUA komponen berstatus itu tanpa
+        // collect manual dulu. "Semua" TETAP pakai alur collect-dulu yang sudah ada (gak berubah).
+        const visibleRows=statusFilter==="ALL"?visibleRowsPraStatus:rows.filter((r:any)=>r.pipelineStatus===statusFilter);
         // Target aksi massal (Mulai/Simpan Semua/dst) - NOT YET dikeluarkan SELALU, gak peduli
         // filter status lagi apa. Kartu NOT YET udah di-disable (pointerEvents:none) individual,
         // tapi tombol aksi massal ini beroperasi di luar kartu jadi butuh exclude terpisah - kalau
@@ -2049,10 +2055,6 @@ export function OperatorView({user,viewMode}:any){
                   {visibleRows.filter((r:any)=>isDone(r)).length}/{visibleRows.length} selesai
                 </span>
               </div>
-            </div>
-            {/* DEBUG SEMENTARA (6 Agu 2026) - buat lacak bug filter status, HAPUS setelah ketemu akar masalahnya */}
-            <div style={{padding:"4px 16px",background:"#fef9c3",fontSize:9,color:"#854d0e",fontFamily:"monospace"}}>
-              DEBUG: viewMode={viewMode} · statusFilter={statusFilter} · rows={rows.length} · visibleRowsPraStatus={visibleRowsPraStatus.length} · visibleRows={visibleRows.length}
             </div>
             <div style={{display:"flex",gap:5,flexWrap:"wrap" as const,padding:"8px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
               {(["ALL","NOT YET","TO DO","IN PROGRESS","DONE"] as const).map(s=>{
@@ -2466,10 +2468,10 @@ export function OperatorView({user,viewMode}:any){
     const groups=Object.values(komponenGroups);
     if(groups.length===0){
       const semuaSudahSelesai=visibleRows.length>0&&cardListRows.length===0;
-      // Kosong gara-gara filter status aktif (ada komponen ke-collect, cuma gak ada yang cocok
-      // status yang dipilih) - beda pesan dari "belum collect apa-apa sama sekali", biar operator
-      // gak salah kira kartunya ilang/gak sengaja ke-hapus.
-      const kosongGaraGaraFilter=statusFilter!=="ALL"&&visibleRowsPraStatus.length>0&&visibleRows.length===0;
+      // Filter status spesifik aktif (bukan "Semua") gak lagi bergantung ke status collect - kalau
+      // visibleRows kosong di sini, artinya beneran gak ada komponen berstatus itu SAMA SEKALI di
+      // proses ini (bukan soal belum di-collect).
+      const kosongGaraGaraFilter=statusFilter!=="ALL"&&!semuaSudahSelesai&&visibleRows.length===0;
       return(
         <div style={{textAlign:"center",padding:"24px 10px",color:semuaSudahSelesai?"#16a34a":"#94a3b8",fontSize:12}}>
           {semuaSudahSelesai?"✅ Semua komponen di proses ini sudah selesai.":kosongGaraGaraFilter?(
