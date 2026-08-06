@@ -1273,10 +1273,16 @@ export function OperatorView({user,viewMode}:any){
       alert("Gagal simpan progress ke server - koneksi lambat. Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.");
     }
   };
-  const simpanProgressTahapPasangKomponen=async(panelId:number,kode:string,tahap:string):Promise<boolean>=>{
+  // BUG FIX (6 Agu 2026): sebelumnya fungsi ini SELALU cari task lewat proses==="PASANG
+  // KOMPONEN" sendiri, walau dipanggil buat tahap WIRING (yang task-nya proses WIRING CONTROL -
+  // lihat pkTasks=tasksByProses["WIRING CONTROL"] di caller). Kalau panel itu gak kebetulan ada
+  // task PASANG KOMPONEN terpisah hari itu (Wiring Control kerja komponen Box Control/Pintu
+  // independen dari Assembling Luar - ini valid & umum), task jadi undefined -> return false
+  // TANPA alert - operator klik Simpan Progress dan gak kejadian apa-apa, kelihatan kayak error.
+  // Fix: terima `task` yang udah bener dari caller (r.task), jangan re-derive di sini.
+  const simpanProgressTahapPasangKomponen=async(task:any,panelId:number,kode:string,tahap:string):Promise<boolean>=>{
     const panel=panelsMap[panelId];
     if(!panel)return false;
-    const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses==="PASANG KOMPONEN"&&(t.komponen||[]).includes(kode));
     if(!task)return false;
     const cl=panel.checklist?.[kode];
     if(!cl)return false;
@@ -2908,7 +2914,7 @@ export function OperatorView({user,viewMode}:any){
                             })}
                           </div>
                           <button disabled={pctAsm===0} onClick={async()=>{
-                              const berhasil=await simpanProgressTahapPasangKomponen(r.panelId,r.kode,"ASSEMBLING");
+                              const berhasil=await simpanProgressTahapPasangKomponen(r.task,r.panelId,r.kode,"ASSEMBLING");
                               if(berhasil&&pctAsm<100){
                                 setSavedFlash(prev=>({...prev,[flashKeyAsm]:true}));
                                 setTimeout(()=>setSavedFlash(prev=>({...prev,[flashKeyAsm]:false})),1500);
@@ -3661,7 +3667,7 @@ export function OperatorView({user,viewMode}:any){
                           )}
                         </div>
                         <button disabled={pctWiring===0} onClick={async()=>{
-                            const berhasil=await simpanProgressTahapPasangKomponen(r.panelId,r.kode,"WIRING");
+                            const berhasil=await simpanProgressTahapPasangKomponen(r.task,r.panelId,r.kode,"WIRING");
                             if(berhasil&&pctWiring<100){
                               setSavedFlash(prev=>({...prev,[flashKeyWiring]:true}));
                               setTimeout(()=>setSavedFlash(prev=>({...prev,[flashKeyWiring]:false})),1500);
