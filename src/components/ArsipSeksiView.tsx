@@ -34,6 +34,8 @@ export function ArsipSeksiView({seksi}:{seksi:string}){
   },[seksi]);
 
   const fotoListOf=(row:any):any[]=>{
+    if(row.seksi==="wiring_control")return row.data?.fotoPemasangan||[];
+    if(row.seksi==="assembling_luar")return row.data?.pasang_komponen_photos||[];
     if(row.seksi==="pasang_komponen")return row.data?.fotoPemasangan||[];
     if(row.seksi==="qc"){
       let total:any[]=[];

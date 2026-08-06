@@ -49,16 +49,19 @@ export default function App(){
   const isOperatorDivisi=user&&!["nameplate","qc","komponen"].includes(user.divisi);
 
   // Tab bawah "Arsip" - cuma muncul buat divisi/sub_bagian yang punya seksi arsip otomatis
-  // (Warehouse/QS/QC/Pasang Komponen). "Pasang Komponen" di sini = band terstruktur RAKIT+PASANG
-  // KOMPONEN (Assembling Luar) DAN kontribusi WIRING (Wiring Control) - dua-duanya baca seksi
-  // arsip yang SAMA ('pasang_komponen'), karena satu kode Box Control/Pintu punya progress
-  // gabungan dari kedua sisi (lihat panels_auto_archive_seksi() trigger).
+  // (Warehouse/QS/QC/Assembling Luar/Wiring Control). Assembling Luar dan Wiring Control DIPISAH
+  // jadi 2 seksi arsip independen (6 Agu 2026) - dua-duanya divisi terpisah, handle komponen
+  // sendiri (Assembling Luar: pasang_komponen_photos per-panel; Wiring Control: fotoPemasangan
+  // per-kode), hasil sendiri, gak saling nunggu buat diarsipkan (lihat panels_auto_archive_seksi()
+  // trigger). Sebelumnya dua-duanya baca seksi gabungan 'pasang_komponen' - itu bikin kode yang
+  // salah satu sisinya gak pernah dapet task jadi stuck selamanya nunggu sisi yang gak akan
+  // pernah diisi.
   const arsipSeksi:string|null=!user?null
     :user.divisi==="qc"?"qc"
     :user.divisi==="komponen"&&user.sub_bagian==="Warehouse"?"warehouse"
     :user.divisi==="komponen"&&user.sub_bagian==="QS"?"qs"
-    :user.divisi==="assembling"&&user.sub_bagian==="Assembling Luar"?"pasang_komponen"
-    :user.divisi==="wiring_ctrl"?"pasang_komponen"
+    :user.divisi==="assembling"&&user.sub_bagian==="Assembling Luar"?"assembling_luar"
+    :user.divisi==="wiring_ctrl"?"wiring_control"
     :null;
   const [bottomTab,setBottomTab]=useState<"tugas"|"arsip">("tugas");
 
