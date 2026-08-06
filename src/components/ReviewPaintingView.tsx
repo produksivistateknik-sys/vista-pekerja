@@ -168,7 +168,7 @@ export function ReviewPaintingView(){
               const isOpen=expandedSection[secKey]??true;
               const totalQty=sec.items.reduce((s:number,r:any)=>s+r.qtyDelta,0);
               return(
-                <div key={secKey} className="su" style={{marginBottom:9,background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",borderLeft:`3px solid ${pc}`,overflow:"hidden",boxShadow:"0 1px 3px #00000008"}}>
+                <div key={secKey} className="su" style={{marginBottom:9,background:"#fff",borderRadius:12,border:"1.5px solid #e2e8f0",borderLeft:`3px solid ${pc}`,overflow:"hidden",boxShadow:"0 1px 3px #00000008"}}>
                   <div onClick={()=>toggleSection(secKey)} style={{display:"flex",alignItems:"center",gap:10,padding:"11px 13px",cursor:"pointer",background:isOpen?pc+"0a":"#fff"}}>
                     <span style={{width:30,height:30,borderRadius:9,background:pc,color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:12,fontWeight:800,flexShrink:0}}>{sec.section}</span>
                     <div style={{flex:1,minWidth:0}}>
@@ -188,7 +188,7 @@ export function ReviewPaintingView(){
                     <div style={{display:"flex",flexDirection:"column" as const,gap:8,padding:"2px 13px 12px"}}>
                       {sec.panels.map((pnl:any,pi:number)=>(
                         <div key={pi}>
-                          <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",marginBottom:4,paddingTop:6}}>{pnl.panelNama} <span style={{fontWeight:500,color:"#cbd5e1"}}>· {pnl.proyek}</span></div>
+                          <div style={{fontSize:10.5,fontWeight:800,color:"#334155",marginBottom:4,paddingTop:6}}>{pnl.panelNama} <span style={{fontWeight:600,color:"#94a3b8"}}>· {pnl.proyek}</span></div>
                           <div style={{display:"flex",flexDirection:"column" as const,gap:4}}>
                             {pnl.items.map((r:any,i:number)=>(
                               <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>

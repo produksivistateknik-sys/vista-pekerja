@@ -20,7 +20,7 @@ export function KoneksiBadge(){
   </span>;
 }
 export function Card({children,style={}}:any){
-  return <div style={{background:"#fff",borderRadius:12,border:"1px solid #e2e8f0",
+  return <div style={{background:"#fff",borderRadius:12,border:"1.5px solid #e2e8f0",
     padding:16,boxShadow:"0 1px 3px #00000008",...style}}>{children}</div>;
 }
 export function Lbl({children}:any){

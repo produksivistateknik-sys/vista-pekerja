@@ -141,9 +141,11 @@ export default function App(){
                 cursor:"pointer",fontSize:15,color:"#64748b"}}>
               🔄
             </button>
-            <button onClick={()=>{setUser(null);try{localStorage.removeItem("vista_pekerja_session");}catch{}setPage("landing");}}
-              style={{background:"#f8fafc",border:"1px solid #e2e8f0",color:"#64748b",flexShrink:0,whiteSpace:"nowrap",
-                borderRadius:8,padding:"10px 14px",minHeight:40,cursor:"pointer",fontSize:12,fontWeight:600}}>Keluar</button>
+            <button onClick={()=>{if(window.confirm("Keluar dari aplikasi?")){setUser(null);try{localStorage.removeItem("vista_pekerja_session");}catch{}setPage("landing");}}}
+              style={{display:"flex",alignItems:"center",gap:6,background:"#fef2f2",border:"1.5px solid #fecaca",color:"#dc2626",flexShrink:0,whiteSpace:"nowrap",
+                borderRadius:8,padding:"10px 14px",minHeight:40,cursor:"pointer",fontSize:12,fontWeight:700}}>
+              <i className="ti ti-logout" style={{fontSize:15}}/> Keluar
+            </button>
           </div>
         </div>
         {showPushBanner&&(

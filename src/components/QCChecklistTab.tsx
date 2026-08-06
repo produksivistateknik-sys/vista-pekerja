@@ -153,7 +153,7 @@ export function QCChecklistTab({user}:any){
         ):filteredProjects.length===0?(
           <div style={{textAlign:"center",padding:32,color:"#94a3b8",fontSize:13}}>Tidak ada proyek</div>
         ):(
-          <div style={{display:"flex",flexDirection:"column" as const,gap:1,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+          <div style={{display:"flex",flexDirection:"column" as const,gap:1,background:"#fff",borderRadius:10,border:"1.5px solid #e2e8f0",overflow:"hidden"}}>
             {filteredProjects.map((g:any,gi:number)=>{
               const allDone=g.selesai===g.totalPanel;
               const urg=getUrgensiPanel(g.wo?.target);
@@ -167,8 +167,8 @@ export function QCChecklistTab({user}:any){
                       <i className={allDone?"ti ti-check":"ti ti-package"} style={{fontSize:17,color:"#fff"}}/>
                     </div>
                     <div style={{minWidth:0}}>
-                      <div style={{fontWeight:600,fontSize:13.5,color:"#0f172a",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{g.wo?.proyek}</div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginTop:1}}>WO {g.wo?.wo} · {g.selesai}/{g.totalPanel} packing selesai</div>
+                      <div style={{fontWeight:800,fontSize:14,color:"#0f172a",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{g.wo?.proyek}</div>
+                      <div style={{fontSize:11,fontWeight:600,color:"#64748b",marginTop:1}}>WO {g.wo?.wo} · {g.selesai}/{g.totalPanel} packing selesai</div>
                     </div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
@@ -192,8 +192,8 @@ export function QCChecklistTab({user}:any){
         style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"#2563eb",fontWeight:600,fontSize:12.5,cursor:"pointer",marginBottom:14,padding:0}}>
         <i className="ti ti-chevron-left" style={{fontSize:15}}/> Daftar proyek
       </button>
-      <div style={{fontWeight:700,fontSize:15,color:"#0f172a",marginBottom:2}}>{selectedProject?.wo?.proyek}</div>
-      <div style={{fontSize:11.5,color:"#94a3b8",marginBottom:12}}>WO {selectedProject?.wo?.wo}</div>
+      <div style={{fontWeight:800,fontSize:16,color:"#0f172a",marginBottom:2}}>{selectedProject?.wo?.proyek}</div>
+      <div style={{fontSize:11.5,fontWeight:600,color:"#64748b",marginBottom:12}}>WO {selectedProject?.wo?.wo}</div>
 
       <div style={{position:"relative" as const,marginBottom:14}}>
         <i className="ti ti-search" style={{position:"absolute" as const,left:12,top:11,fontSize:15,color:"#94a3b8"}}/>
@@ -208,10 +208,10 @@ export function QCChecklistTab({user}:any){
           const qcSemuaComplete=qcStatus==="complete";
           const globalData=p.qc_checklist?._global||{};
           return(
-            <div key={p.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
+            <div key={p.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:10,overflow:"hidden"}}>
               <div style={{padding:"14px 14px 12px",borderBottom:"1px solid #f1f5f9",background:"linear-gradient(180deg,#fafbfc,#fff)"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-                  <span style={{fontWeight:700,fontSize:14.5,color:"#0f172a"}}>{p.nama}</span>
+                  <span style={{fontWeight:800,fontSize:16,color:"#0f172a"}}>{p.nama}</span>
                   {(globalData.todo_at||globalData.complete_at)&&(
                     <span style={{fontSize:9.5,color:"#94a3b8"}}>
                       {globalData.complete_at?("Selesai "+fmtTglQc(globalData.complete_at)):("Mulai "+fmtTglQc(globalData.todo_at))}

@@ -164,10 +164,10 @@ export function ReviewPotongView(){
         groupedProyek.map(({proyek,wo,panels})=>{
           const isProyekOpen=expandedProyek[proyek]??true;
           return(
-            <div key={proyek} style={{marginBottom:10,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0",overflow:"hidden"}}>
+            <div key={proyek} style={{marginBottom:10,background:"#fff",borderRadius:10,border:"1.5px solid #e2e8f0",overflow:"hidden"}}>
               <div onClick={()=>toggleProyek(proyek)} style={{display:"flex",alignItems:"center",gap:8,padding:"10px 12px",cursor:"pointer",background:"#f8fafc"}}>
                 <span style={{fontSize:11,color:"#94a3b8"}}>{isProyekOpen?"▾":"▸"}</span>
-                <span style={{fontWeight:800,fontSize:13,color:"#1e293b",flex:1}}>{proyek}{wo?" - WO "+wo:""}</span>
+                <span style={{fontWeight:800,fontSize:13.5,color:"#0f172a",flex:1}}>{proyek}{wo?" - WO "+wo:""}</span>
                 <span style={{background:"#fffbeb",color:"#d97706",borderRadius:20,padding:"1px 8px",fontSize:10,fontWeight:700}}>{panels.length} panel</span>
               </div>
               {isProyekOpen&&(
@@ -179,7 +179,7 @@ export function ReviewPotongView(){
                       <div key={p.panelId} style={{marginTop:6}}>
                         <div onClick={()=>togglePanel(panelKey)} style={{display:"flex",alignItems:"center",gap:6,padding:"6px 6px",cursor:"pointer"}}>
                           <span style={{fontSize:10,color:"#94a3b8"}}>{isPanelOpen?"▾":"▸"}</span>
-                          <span style={{fontWeight:700,fontSize:12,color:"#334155",flex:1}}>{p.panelNama}</span>
+                          <span style={{fontWeight:700,fontSize:12.5,color:"#1e293b",flex:1}}>{p.panelNama}</span>
                           <span style={{fontSize:10,color:"#94a3b8"}}>{p.items.length} komponen</span>
                         </div>
                         {isPanelOpen&&(

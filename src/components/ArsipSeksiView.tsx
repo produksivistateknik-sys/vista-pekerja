@@ -90,7 +90,7 @@ export function ArsipSeksiView({seksi}:{seksi:string}){
                   style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer",background:isExp?"#f8faff":"#fff"}}>
                   <span style={{fontSize:12,color:"#94a3b8"}}>{isExp?"▼":"▶"}</span>
                   <div style={{flex:1,minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>WO {g.wo_number||"—"} — {g.proyek||"—"}</div>
+                    <div style={{fontWeight:800,fontSize:13.5,color:"#0f172a"}}>WO {g.wo_number||"—"} — {g.proyek||"—"}</div>
                     <div style={{fontSize:11,color:"#64748b",marginTop:2}}>{g.rows.length} panel diarsipkan</div>
                   </div>
                 </div>
@@ -99,10 +99,10 @@ export function ArsipSeksiView({seksi}:{seksi:string}){
                     {g.rows.map((r:any)=>{
                       const fotoList=fotoListOf(r);
                       return(
-                        <div key={r.id} style={{border:"1px solid #f1f5f9",borderRadius:8,padding:"8px 10px"}}>
+                        <div key={r.id} style={{border:"1.5px solid #e2e8f0",borderRadius:8,padding:"8px 10px"}}>
                           <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:6}}>
                             <div>
-                              <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{r.panel_nama}</div>
+                              <div style={{fontSize:13.5,fontWeight:800,color:"#0f172a"}}>{r.panel_nama}</div>
                               {r.kode&&<div style={{fontSize:10,color:"#64748b"}}>{r.komponen_nama||r.kode}</div>}
                             </div>
                             <div style={{fontSize:9,color:"#94a3b8",textAlign:"right" as const,whiteSpace:"nowrap" as const}}>{fmtTgl(r.diarsipkan_pada)}</div>

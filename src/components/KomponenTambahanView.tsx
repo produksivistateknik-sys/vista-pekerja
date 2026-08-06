@@ -122,7 +122,7 @@ export function KomponenTambahanView({user}:any){
       <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>
         Input komponen tambahan (di luar BOM/jadwal normal) untuk kondisi darurat. Tidak ada pengecekan kapasitas.
       </div>
-      <div style={{background:"#fff",borderRadius:12,padding:14,marginBottom:16,border:"1px solid #f1f5f9"}}>
+      <div style={{background:"#fff",borderRadius:12,padding:14,marginBottom:16,border:"1.5px solid #e2e8f0"}}>
         <div style={{fontWeight:800,fontSize:13,color:"#1e293b",marginBottom:10}}>+ Tambah Komponen</div>
         <select value={selectedWoId??""} onChange={e=>setSelectedWoId(e.target.value?Number(e.target.value):null)}
           style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid #e2e8f0",fontSize:12.5,marginBottom:8}}>
@@ -154,9 +154,9 @@ export function KomponenTambahanView({user}:any){
             const running=it.status==="berjalan";
             const selesai=it.status==="selesai";
             return(
-              <div key={it.id} style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:"1px solid #f1f5f9"}}>
-                <div style={{fontSize:12.5,fontWeight:700,color:"#334155"}}>{it.nama_komponen} <span style={{fontWeight:600,color:"#d97706"}}>({it.qty} pcs)</span></div>
-                <div style={{fontSize:10.5,color:"#94a3b8",marginTop:2,marginBottom:8}}>{it.proyek} • {it.panel_nama}</div>
+              <div key={it.id} style={{background:"#fff",borderRadius:10,padding:"10px 12px",border:"1.5px solid #e2e8f0"}}>
+                <div style={{fontSize:13,fontWeight:800,color:"#0f172a"}}>{it.nama_komponen} <span style={{fontWeight:700,color:"#d97706"}}>({it.qty} pcs)</span></div>
+                <div style={{fontSize:10.5,fontWeight:600,color:"#64748b",marginTop:2,marginBottom:8}}>{it.proyek} • {it.panel_nama}</div>
                 {selesai?(
                   <div style={{fontSize:11.5,fontWeight:700,color:"#16a34a"}}>✓ Selesai ({durasiLabel(it)})</div>
                 ):(

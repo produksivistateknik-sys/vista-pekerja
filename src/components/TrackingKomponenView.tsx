@@ -144,7 +144,7 @@ export function TrackingKomponenView({user}:any){
       <div style={{fontWeight:800,fontSize:17,color:"#1e293b",marginBottom:4}}>📦 Tracking Komponen</div>
       <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Halo {namaOperator}, dokumentasi serah terima komponen antar bagian</div>
 
-      <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:12,background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:"14px 16px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+      <div style={{marginBottom:16,display:"flex",alignItems:"center",gap:12,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,padding:"14px 16px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
         <div style={{width:46,height:46,borderRadius:12,background:"linear-gradient(135deg,#2dd4bf,#0d9488)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:22,boxShadow:"0 3px 10px #0d948844"}}>
           {subBagianIcon[subBagian]}
         </div>
@@ -186,7 +186,7 @@ export function TrackingKomponenView({user}:any){
         const myStatus=selectedPanelObj?.komponen_status?.[subBagian]?.status||"to_do";
         const myData=selectedPanelObj?.komponen_status?.[subBagian]||{};
         return(
-          <div style={{marginBottom:14,background:"#fff",border:"1px solid #e2e8f0",borderRadius:14,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
+          <div style={{marginBottom:14,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,padding:14,boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
             <div style={{fontSize:11.5,fontWeight:600,color:"#94a3b8",marginBottom:8}}>Status Komponen ({subBagian})</div>
             <div style={{display:"flex",gap:6}}>
               {[{k:"to_do",label:"To Do",icon:"⚪",color:"#64748b"},
@@ -257,7 +257,7 @@ export function TrackingKomponenView({user}:any){
           ):(
             <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
               {riwayat.map((r:any)=>(
-                <div key={r.id} style={{background:"#fff",border:"1px solid #e2e8f0",borderRadius:12,padding:"14px 16px",textAlign:"left" as const,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                <div key={r.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"14px 16px",textAlign:"left" as const,boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:8}}>
                     <div style={{width:34,height:34,borderRadius:10,background:"linear-gradient(135deg,#2dd4bf,#0d9488)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:16}}>
                       {subBagianIcon[r.sub_bagian]}

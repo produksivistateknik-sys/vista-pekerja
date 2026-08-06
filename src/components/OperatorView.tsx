@@ -2085,11 +2085,15 @@ export function OperatorView({user,viewMode}:any){
               return(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
                   onClick={()=>setKomponenPopup(null)}>
-                  <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-                    <div style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
-                      <div style={{fontSize:11,color:"#94a3b8"}}>{panelInfo?.task.proyek}</div>
-                      <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{panelInfo?.panel.nama}</div>
-                      <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Pilih komponen yang mau dikerjakan</div>
+                  <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,border:"1.5px solid #e2e8f0",width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                    <div style={{padding:"14px 16px",borderBottom:"1.5px solid #e2e8f0",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:12,fontWeight:600,color:"#64748b"}}>{panelInfo?.task.proyek}</div>
+                        <div style={{fontSize:17,fontWeight:800,color:"#1e293b",marginTop:1}}>{panelInfo?.panel.nama}</div>
+                        <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>Pilih komponen yang mau dikerjakan</div>
+                      </div>
+                      <button onClick={()=>setKomponenPopup(null)}
+                        style={{flexShrink:0,width:28,height:28,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700}}>×</button>
                     </div>
                     <div style={{overflowY:"auto",padding:"8px 16px",flex:1}}>
                       {panelRows.map((r:any)=>{
@@ -2169,10 +2173,14 @@ export function OperatorView({user,viewMode}:any){
               return(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
                   onClick={()=>setKomponenPopupJenis(null)}>
-                  <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-                    <div style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
-                      <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{komponenPopupJenis.namaKomponen}</div>
-                      <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Pilih panel yang mau dikerjakan</div>
+                  <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,border:"1.5px solid #e2e8f0",width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                    <div style={{padding:"14px 16px",borderBottom:"1.5px solid #e2e8f0",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:17,fontWeight:800,color:"#1e293b"}}>{komponenPopupJenis.namaKomponen}</div>
+                        <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>Pilih panel yang mau dikerjakan</div>
+                      </div>
+                      <button onClick={()=>setKomponenPopupJenis(null)}
+                        style={{flexShrink:0,width:28,height:28,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700}}>×</button>
                     </div>
                     <div style={{overflowY:"auto",padding:"8px 16px",flex:1}}>
                       {groupRows.map((r:any)=>{
@@ -2296,9 +2304,13 @@ export function OperatorView({user,viewMode}:any){
                 {proses!=="POTONG"&&bulkAssignProses===proses&&viewMode==='desktop'&&(
                   <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
                     onClick={()=>setBulkAssignProses(null)}>
-                    <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
+                    <div style={{background:"#fff",borderRadius:14,border:"1.5px solid #e2e8f0",padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
                       onClick={(e:any)=>e.stopPropagation()}>
-                      <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
+                      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:4}}>
+                        <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>Pilih Operator</div>
+                        <button onClick={()=>setBulkAssignProses(null)}
+                          style={{flexShrink:0,width:26,height:26,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>
+                      </div>
                       <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-assign & timer langsung mulai untuk {visibleRows.length} komponen terkumpul di {proses}.</div>
                       <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
                         {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
@@ -2416,9 +2428,13 @@ export function OperatorView({user,viewMode}:any){
         {bulkAssignProses===proses&&(
           <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
             onClick={()=>setBulkAssignProses(null)}>
-            <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
+            <div style={{background:"#fff",borderRadius:14,border:"1.5px solid #e2e8f0",padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
               onClick={(e:any)=>e.stopPropagation()}>
-              <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
+              <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:4}}>
+                <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>Pilih Operator</div>
+                <button onClick={()=>setBulkAssignProses(null)}
+                  style={{flexShrink:0,width:26,height:26,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>
+              </div>
               <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-assign & timer langsung mulai untuk {visibleRows.length} komponen terkumpul di {proses}.</div>
               <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
                 {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
@@ -2492,9 +2508,13 @@ export function OperatorView({user,viewMode}:any){
               {proses!=="POTONG"&&proses!=="RENDAM"&&proses!=="PAINTING"&&!operatorPerKartu&&bulkAssignProses===proses&&bulkAssignGroupKey===groupKey&&(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
                   onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);setBulkAssignTahap(null);}}>
-                  <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
+                  <div style={{background:"#fff",borderRadius:14,border:"1.5px solid #e2e8f0",padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
                     onClick={(e:any)=>e.stopPropagation()}>
-                    <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>{proses==="BUSBAR"?"Mulai Bareng - Pilih Tahap & Operator":"Pilih Operator"}</div>
+                    <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:4}}>
+                      <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>{proses==="BUSBAR"?"Mulai Bareng - Pilih Tahap & Operator":"Pilih Operator"}</div>
+                      <button onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);setBulkAssignTahap(null);}}
+                        style={{flexShrink:0,width:26,height:26,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>
+                    </div>
                     <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>
                       {proses==="BUSBAR"
                         ?`Timer bakal LANGSUNG MULAI buat SATU tahap yang dipilih, di SEMUA ${group.rows.length} "${group.namaKomponen}" di ${panelCount} panel sekaligus - gak perlu klik Mulai satu-satu per panel lagi. Cocok buat kerja borongan (misal fabrikasi banyak part sekaligus).`
@@ -2590,7 +2610,7 @@ export function OperatorView({user,viewMode}:any){
                           const flashKeyTahap=`${r.panelId}_${r.kode}_BUSBAR_${t}`;
                           const flashingTahap=!!savedFlash[flashKeyTahap];
                           return(
-                            <div key={t} style={{border:"1px solid #e2e8f0",borderRadius:10,padding:"8px 10px",
+                            <div key={t} style={{border:"1.5px solid #e2e8f0",borderRadius:10,padding:"8px 10px",
                               background:stTahap.sudahDisimpan100?"#f0fdf4":"#fafafa",display:"flex",flexDirection:"column",gap:6}}>
                               <div style={{fontSize:11,fontWeight:800,color:stTahap.sudahDisimpan100?"#16a34a":"#374151"}}>
                                 {stTahap.sudahDisimpan100?"✅ ":""}{ti+1}. {BUSBAR_TAHAP_LABEL[t]}
@@ -2769,7 +2789,7 @@ export function OperatorView({user,viewMode}:any){
                           {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
                           <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{renderNamaKomponen(r.item.nama)}</span>
                         </div>
-                        <div style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek} · {r.panel.nama}</div>
+                        <div style={{fontSize:11,fontWeight:600,color:"#64748b"}}>{r.task.proyek} · <span style={{color:"#334155",fontWeight:700}}>{r.panel.nama}</span></div>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
                           <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>
@@ -3421,10 +3441,14 @@ export function OperatorView({user,viewMode}:any){
               return(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
                   onClick={()=>setKomponenPopupJenis(null)}>
-                  <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-                    <div style={{padding:"14px 16px",borderBottom:"1px solid #f1f5f9"}}>
-                      <div style={{fontSize:15,fontWeight:700,color:"#1e293b"}}>{komponenPopupJenis.namaKomponen}</div>
-                      <div style={{fontSize:11,color:"#64748b",marginTop:4}}>Pilih panel yang mau dikerjakan</div>
+                  <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,border:"1.5px solid #e2e8f0",width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
+                    <div style={{padding:"14px 16px",borderBottom:"1.5px solid #e2e8f0",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:17,fontWeight:800,color:"#1e293b"}}>{komponenPopupJenis.namaKomponen}</div>
+                        <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>Pilih panel yang mau dikerjakan</div>
+                      </div>
+                      <button onClick={()=>setKomponenPopupJenis(null)}
+                        style={{flexShrink:0,width:28,height:28,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700}}>×</button>
                     </div>
                     <div style={{overflowY:"auto",padding:"8px 16px",flex:1}}>
                       {groupRows.map((r:any)=>{
@@ -3536,12 +3560,12 @@ export function OperatorView({user,viewMode}:any){
                     const staged=stagedFotoWiring[keyFoto]||[];
                     const saving=savingFotoWiring===keyFoto;
                     return(
-                      <div key={`${r.task.id}_${r.kode}`} style={{border:"1px solid #e2e8f0",borderRadius:10,padding:"10px 12px",
+                      <div key={`${r.task.id}_${r.kode}`} style={{border:`1.5px solid ${stWiring.sudahDisimpan100?"#bbf7d0":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",
                         background:stWiring.sudahDisimpan100?"#f0fdf4":"#fff",display:"flex",flexDirection:"column",gap:6}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                           <div>
-                            <div style={{fontSize:9,color:"#94a3b8"}}>{r.task.proyek}</div>
-                            <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{r.panel.nama}</div>
+                            <div style={{fontSize:10,fontWeight:600,color:"#64748b"}}>{r.task.proyek}</div>
+                            <div style={{fontSize:14,fontWeight:800,color:"#1e293b"}}>{r.panel.nama}</div>
                             <div style={{fontSize:10,color:"#64748b"}}>{renderNamaKomponen(r.item?.nama)} · <span style={{fontFamily:"'DM Mono',monospace"}}>{r.kode}</span></div>
                           </div>
                           {stWiring.sudahDisimpan100&&<span style={{fontSize:9,fontWeight:700,color:"#16a34a"}}>✅ Selesai</span>}
@@ -3695,9 +3719,13 @@ export function OperatorView({user,viewMode}:any){
         <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,.5)",zIndex:200,
           display:"flex",alignItems:"center",justifyContent:"center",padding:16}}
           onClick={()=>setOperatorModal(null)}>
-          <div style={{background:"#fff",borderRadius:14,padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
+          <div style={{background:"#fff",borderRadius:14,border:"1.5px solid #e2e8f0",padding:20,width:"100%",maxWidth:380,maxHeight:"80vh",overflowY:"auto"}}
             onClick={(e:any)=>e.stopPropagation()}>
-            <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:4}}>Pilih Operator</div>
+            <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10,marginBottom:4}}>
+              <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>Pilih Operator</div>
+              <button onClick={()=>setOperatorModal(null)}
+                style={{flexShrink:0,width:26,height:26,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>
+            </div>
             <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Bisa pilih lebih dari satu orang</div>
             <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
               {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{

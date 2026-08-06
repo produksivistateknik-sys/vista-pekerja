@@ -259,12 +259,12 @@ export function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,
               return(
                 <div key={g.woId} onClick={()=>setSelectedWoId(g.woId)}
                   style={{position:"relative" as const,background:"#fff",borderRadius:16,padding:"14px 16px 14px 20px",cursor:"pointer",
-                    opacity:allDone?0.72:1,border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.05)",overflow:"hidden"}}>
+                    opacity:allDone?0.72:1,border:"1.5px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.05)",overflow:"hidden"}}>
                   <div style={{position:"absolute" as const,left:0,top:0,bottom:0,width:4,background:allDone?"#16a34a":tugas.color}}/>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:10}}>
                     <div style={{minWidth:0,flex:1}}>
-                      <div style={{fontWeight:800,fontSize:14.5,color:"#0f172a",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{g.wo?.proyek}</div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginTop:3}}>
+                      <div style={{fontWeight:800,fontSize:15,color:"#0f172a",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{g.wo?.proyek}</div>
+                      <div style={{fontSize:11,fontWeight:600,color:"#64748b",marginTop:3}}>
                         WO {g.wo?.wo}{g.wo?.target?` · Deadline ${fmtTanggalDeadlineNp(g.wo.target)}`:""}
                       </div>
                     </div>
@@ -301,11 +301,11 @@ export function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,
         <i className="ti ti-arrow-left" style={{fontSize:16}}/> Kembali ke Daftar Proyek
       </button>
 
-      <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.05)",
+      <div style={{background:"#fff",borderRadius:16,padding:16,marginBottom:14,border:"1.5px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.05)",
         display:"flex",justifyContent:"space-between",alignItems:"center",gap:10}}>
         <div style={{minWidth:0}}>
-          <div style={{fontWeight:800,fontSize:15.5,color:"#0f172a"}}>{selectedProject?.wo?.proyek}</div>
-          <div style={{fontSize:11.5,color:"#94a3b8",marginTop:3}}>
+          <div style={{fontWeight:800,fontSize:16.5,color:"#0f172a"}}>{selectedProject?.wo?.proyek}</div>
+          <div style={{fontSize:11.5,fontWeight:600,color:"#64748b",marginTop:3}}>
             WO {selectedProject?.wo?.wo}{selectedProject?.wo?.target?` · Deadline ${fmtTanggalDeadlineNp(selectedProject.wo.target)}`:""}
           </div>
         </div>
@@ -328,7 +328,7 @@ export function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,
           const staged=stagedFotos[p.id]||[];
           const saving=savingKey===p.id;
           return(
-            <div key={p.id} style={{background:"#fff",borderRadius:14,border:"1px solid #eef0f3",overflow:"hidden",
+            <div key={p.id} style={{background:"#fff",borderRadius:14,border:"1.5px solid #eef0f3",overflow:"hidden",
               boxShadow:expanded?"0 6px 18px rgba(15,23,42,0.07)":"0 1px 2px rgba(15,23,42,0.03)",transition:"box-shadow .15s"}}>
               <div onClick={()=>togglePanel(p.id)}
                 style={{display:"flex",alignItems:"center",gap:11,padding:"13px 15px",cursor:"pointer"}}>
@@ -336,7 +336,7 @@ export function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,
                   <i className={`ti ${STATUS_ICON_KP[status]}`} style={{fontSize:18,color:st.color}}/>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:13.5,color:"#0f172a",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{p.nama}</div>
+                  <div style={{fontWeight:800,fontSize:14.5,color:"#0f172a",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{p.nama}</div>
                   <div style={{fontSize:10.5,fontWeight:600,color:st.color,marginTop:1}}>{st.label}</div>
                 </div>
                 <i className={`ti ti-chevron-down`} style={{fontSize:16,color:"#cbd5e1",flexShrink:0,transition:"transform .2s",transform:expanded?"rotate(180deg)":"none"}}/>
