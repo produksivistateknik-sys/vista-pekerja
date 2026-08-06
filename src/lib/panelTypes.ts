@@ -66,6 +66,11 @@ export const PANEL_TYPES: Record<string,any> = {
 export const PCT_STEPS  = [25,50,75,90,100];
 export const QTY_DIVISI = ["mekanik","painting"];
 
+// Urutan pipeline proses produksi - SAMA PERSIS dengan ALL_PROSES di
+// vista-teknik/src/constants/panelTypes.ts. Dua repo terpisah, gak bisa share modul, jadi
+// disalin manual - kalau ALL_PROSES di Vista Teknik diubah, ini WAJIB ikut diubah juga.
+export const ALL_PROSES = ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
+
 export const QC_ITEMS=[
   {key:"fisik",label:"Pemeriksaan Fisik",desc:"Kelayakan kualitas fisik panel",icon:"🔍"},
   {key:"spesifikasi",label:"Verifikasi Spesifikasi Komponen",desc:"Sesuai partlist",icon:"📋"},

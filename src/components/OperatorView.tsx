@@ -7,6 +7,7 @@ import {
   timerKey, BUSBAR_TAHAP_LABEL,
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
+  computeProsesStatus, type ProsesStatus,
 } from "../lib/panelHelpers";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
@@ -14,6 +15,18 @@ import { Badge, Card, Lbl, Inp, Btn } from "./ui/Primitives";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { WoUrgentBanner } from "./WoUrgentBanner";
+
+// Warna status pipeline (readiness per-komponen, dari computeProsesStatus) - cermin dari
+// STATUS_PIPELINE_STYLE di RencanaHarian.tsx Vista Teknik, biar konsisten dilihat operator vs admin.
+const STATUS_PIPELINE_STYLE:Record<ProsesStatus,{bg:string,color:string,border:string}>={
+  "NOT YET":{bg:"#f1f5f9",color:"#64748b",border:"#e2e8f0"},
+  "TO DO":{bg:"#eff6ff",color:"#2563eb",border:"#bfdbfe"},
+  "IN PROGRESS":{bg:"#fffbeb",color:"#d97706",border:"#fde68a"},
+  "DONE":{bg:"#f0fdf4",color:"#16a34a",border:"#bbf7d0"},
+};
+const STATUS_PIPELINE_LABEL:Record<ProsesStatus,string>={
+  "NOT YET":"Not Yet","TO DO":"To Do","IN PROGRESS":"In Progress","DONE":"Done",
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OPERATOR VIEW - dipisah dari App.tsx (Sprint 6, komponen terbesar ~3700 baris)
@@ -128,6 +141,7 @@ export function OperatorView({user,viewMode}:any){
   const [lockedCells,setLockedCells]=useState<Record<string,boolean>>({});
   const [fProyek,setFProyek]=useState("ALL");
   const [fPanel,setFPanel]=useState("ALL");
+  const [statusFilter,setStatusFilter]=useState<"ALL"|ProsesStatus>("ALL");
   const [renhar,setRenhar]=useState<any[]>([]);
   const [panelsMap,setPanelsMap]=useState<Record<number,any>>({});
   // Sinkron manual (bukan lewat dependency effect) biar useEffect subscribe realtime renhar
@@ -1974,9 +1988,10 @@ export function OperatorView({user,viewMode}:any){
             // Timer pernah dimulai (walau udah di-stop lagi) - buat gating input qty di POTONG/BENDING/STEL/FINISHING.
             const idsKompRow=getFlatOperatorIds(task,kode);
             const sudahPernahMulai=idsKompRow.some((pid:number)=>!!timerPernahMulai[`${panelId}_${kode}_${proses}_${pid}`]);
+            const pipelineStatus=computeProsesStatus(cl.progress,proses);
             rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
               isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp,
-              aktualSelesai:getFirstCompletionDate(cl,proses),wiringBadge,sudahDisimpan100,sudahPernahMulai});
+              aktualSelesai:getFirstCompletionDate(cl,proses),wiringBadge,sudahDisimpan100,sudahPernahMulai,pipelineStatus});
           });
         });
 
@@ -2003,7 +2018,10 @@ export function OperatorView({user,viewMode}:any){
         const PROSES_KUMPUL_DULU_DESKTOP=["POTONG","RENDAM","PAINTING"];
         // Mobile: titik awal pilih komponen dibalik jadi Jenis Komponen -> Panel buat proses ini.
         const PROSES_PILIH_PER_KOMPONEN=["BENDING","STEL","FINISHING","RENDAM","PAINTING","BUSBAR","RAKIT","PASANG KOMPONEN"];
-        const visibleRows=(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
+        const visibleRowsPraStatus=(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
+        // Filter status pipeline - default "ALL" gak nyembunyiin apapun (NOT YET tetap kelihatan,
+        // cuma di-dim di kartu - lihat render). Tab status cuma aktif kalau operator pilih salah satu.
+        const visibleRows=statusFilter==="ALL"?visibleRowsPraStatus:visibleRowsPraStatus.filter((r:any)=>r.pipelineStatus===statusFilter);
       const isWiringProses=["WIRING CONTROL","WIRING POWER"].includes(proses);
       // Proses yang operatornya dipilih per-kartu individual (bukan bulk satu grup sekaligus) -
       // WIRING udah dari revisi sebelumnya, RAKIT/PASANG KOMPONEN nyusul sekarang. Dipisah dari
@@ -2025,6 +2043,19 @@ export function OperatorView({user,viewMode}:any){
                   {visibleRows.filter((r:any)=>isDone(r)).length}/{visibleRows.length} selesai
                 </span>
               </div>
+            </div>
+            <div style={{display:"flex",gap:5,flexWrap:"wrap" as const,padding:"8px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+              {(["ALL","NOT YET","TO DO","IN PROGRESS","DONE"] as const).map(s=>{
+                const cnt=s==="ALL"?visibleRowsPraStatus.length:visibleRowsPraStatus.filter((r:any)=>r.pipelineStatus===s).length;
+                const sc=s==="ALL"?"#475569":STATUS_PIPELINE_STYLE[s].color;
+                const isSel=statusFilter===s;
+                return(
+                  <button key={s} onClick={()=>setStatusFilter(isSel?"ALL":s)}
+                    style={{padding:"4px 11px",borderRadius:20,border:`1.5px solid ${isSel?sc:"#e2e8f0"}`,background:isSel?sc+"18":"#fff",color:isSel?sc:"#64748b",cursor:"pointer",fontSize:10.5,fontWeight:700}}>
+                    {s==="ALL"?"Semua":STATUS_PIPELINE_LABEL[s]} ({cnt})
+                  </button>
+                );
+              })}
             </div>
             {(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))&&(
               viewMode==='mobile'&&PROSES_PILIH_PER_KOMPONEN.includes(proses)?(
@@ -2632,7 +2663,8 @@ export function OperatorView({user,viewMode}:any){
                 return(
                   <div key={`${r.task.id}-${r.kode}-m`} style={{background:done?"#f0fdf4":"#fff",
                     border:`1.5px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:14,padding:"12px 14px",
-                    display:"flex",flexDirection:"column",gap:10}}>
+                    display:"flex",flexDirection:"column",gap:10,
+                    opacity:r.pipelineStatus==="NOT YET"?0.55:1}}>
                     {proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"&&(
                       <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4}}>SECTION 1 · FABRIKASI</div>
                     )}
@@ -2840,6 +2872,7 @@ export function OperatorView({user,viewMode}:any){
                       <div style={{display:"flex",flexDirection:"column",gap:3}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
+                          <span style={{background:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].bg,color:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].border}`,borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>{STATUS_PIPELINE_LABEL[r.pipelineStatus as ProsesStatus]}</span>
                           <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{renderNamaKomponen(r.item.nama)}</span>
                         </div>
                         <div style={{fontSize:11,fontWeight:600,color:"#64748b"}}>{r.task.proyek} · <span style={{color:"#334155",fontWeight:700}}>{r.panel.nama}</span></div>
@@ -3205,7 +3238,10 @@ export function OperatorView({user,viewMode}:any){
                         })():(
                           <>
                             <td style={{...td,textAlign:"center"}}>
-                              {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
+                              <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
+                                {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
+                                <span style={{background:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].bg,color:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].border}`,borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700,whiteSpace:"nowrap" as const}}>{STATUS_PIPELINE_LABEL[r.pipelineStatus as ProsesStatus]}</span>
+                              </div>
                             </td>
                             <td style={{...td,fontWeight:600,color:"#374151",whiteSpace:"nowrap"}}>
                               {renderNamaKomponen(r.item.nama)}

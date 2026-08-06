@@ -1,4 +1,5 @@
 import { supabase } from "./supabase";
+import { ALL_PROSES } from "./panelTypes";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS panel/checklist/progress - dipisah dari App.tsx (Sprint 5, 5 Agu 2026)
@@ -43,6 +44,26 @@ export function getLatestProgress(cl:any, proses:string){
     return byDate[dates[dates.length-1]];
   }
   return cl?.progress?.[proses]||0;
+}
+export type ProsesStatus="NOT YET"|"TO DO"|"IN PROGRESS"|"DONE";
+// Ambang progress proses SEBELUMNYA (dalam rantai ALL_PROSES) supaya komponen ini dianggap
+// "siap dikerjakan" (TO DO) - di bawah ini masih NOT YET. Cermin dari computeProsesStatus() di
+// vista-teknik/src/lib/panelHelpers.ts (juga dipakai Rencana Harian & TaskMonitoring di sana) -
+// dua repo terpisah, gak bisa share modul, definisi WAJIB tetap sama.
+export const PROSES_STATUS_GATE_PCT=25;
+// POTONG (index pertama di ALL_PROSES) dan BUSBAR (proses paralel/independen, gak masuk rantai
+// estafet WP) sengaja gak digating proses sebelumnya - selalu TO DO begitu progress masih 0.
+export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string):ProsesStatus{
+  const progress=progressMap?.[proses]||0;
+  if(progress>=100)return "DONE";
+  const prosesIdx=ALL_PROSES.indexOf(proses);
+  if(prosesIdx<=0||proses==="BUSBAR"){
+    return progress>0?"IN PROGRESS":"TO DO";
+  }
+  const prosesSebelumnya=ALL_PROSES[prosesIdx-1];
+  const progressSebelumnya=progressMap?.[prosesSebelumnya]||0;
+  if(progressSebelumnya<PROSES_STATUS_GATE_PCT)return "NOT YET";
+  return progress>0?"IN PROGRESS":"TO DO";
 }
 export function getFirstCompletionDate(cl:any, proses:string){
   const byDate=cl?.progressByDate?.[proses];
