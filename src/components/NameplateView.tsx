@@ -6,6 +6,7 @@ import { fetchAllPanels } from "../lib/panelHelpers";
 import { compressImageNp } from "../lib/fotoHelpers";
 import { getUrgensiPanel, fmtTanggalDeadlineNp, STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
+import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 
 const PROGRESS_STEPS_NP=[25,50,75,100];
 const hitungStatusTugasNp=(pct:number,jumlahFoto:number)=>{
@@ -366,12 +367,12 @@ export function NameplateView({user}:any){
                                 ))}
                               </div>
                             )}
-                            <label style={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:t.color,background:`${t.color}0f`,border:`1.5px dashed ${t.color}55`,borderRadius:10,padding:"9px 13px",
-                                cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}>
+                            <MediaPickerSheet disabled={saving}
+                              triggerStyle={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:t.color,background:`${t.color}0f`,border:`1.5px dashed ${t.color}55`,borderRadius:10,padding:"9px 13px",
+                                cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}
+                              onFiles={(files)=>pilihFotoStaged(p.id,t.field,files)}>
                               <i className="ti ti-camera-plus" style={{fontSize:14}}/> Tambah Foto
-                              <input type="file" accept="image/*" multiple disabled={saving} style={{display:"none"}}
-                                onChange={(e:any)=>{pilihFotoStaged(p.id,t.field,e.target.files);e.target.value="";}}/>
-                            </label>
+                            </MediaPickerSheet>
                             <button onClick={()=>simpanProgressTugas(p,t)} disabled={saving}
                               style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12,width:"100%",
                                 background:saving?"#cbd5e1":t.color,color:"#fff",border:"none",borderRadius:11,padding:"11px 10px",fontSize:12.5,fontWeight:700,

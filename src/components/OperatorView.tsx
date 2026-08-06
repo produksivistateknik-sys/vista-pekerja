@@ -11,6 +11,7 @@ import {
 import { compressImageNp } from "../lib/fotoHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { Badge, Card, Lbl, Inp, Btn } from "./ui/Primitives";
+import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { WoUrgentBanner } from "./WoUrgentBanner";
 
@@ -3018,12 +3019,12 @@ export function OperatorView({user,viewMode}:any){
                             </div>
                           )}
                           <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
-                            <label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#0891b2",background:"#ecfeff",border:"1px dashed #67e8f9",borderRadius:6,padding:"6px 10px",
-                                cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}>
+                            <MediaPickerSheet disabled={saving}
+                              triggerStyle={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#0891b2",background:"#ecfeff",border:"1px dashed #67e8f9",borderRadius:6,padding:"6px 10px",
+                                cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}
+                              onFiles={(files)=>pilihFotoPk(r.panelId,files)}>
                               + Tambah Foto
-                              <input type="file" accept="image/*" multiple disabled={saving} style={{display:"none"}}
-                                onChange={(e:any)=>{pilihFotoPk(r.panelId,e.target.files);e.target.value="";}}/>
-                            </label>
+                            </MediaPickerSheet>
                             {staged.length>0&&(
                               <button onClick={()=>simpanFotoPk(r.panelId)} disabled={saving}
                                 style={{fontSize:11,fontWeight:700,color:"#fff",background:saving?"#94a3b8":"#0891b2",border:"none",borderRadius:6,padding:"6px 12px",cursor:saving?"not-allowed":"pointer"}}>
@@ -3646,12 +3647,12 @@ export function OperatorView({user,viewMode}:any){
                           </div>
                         )}
                         <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
-                          <label style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#ea580c",background:"#fff7ed",border:"1px dashed #fdba74",borderRadius:6,padding:"6px 10px",
-                              cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}>
+                          <MediaPickerSheet disabled={saving}
+                            triggerStyle={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#ea580c",background:"#fff7ed",border:"1px dashed #fdba74",borderRadius:6,padding:"6px 10px",
+                              cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}
+                            onFiles={(files)=>pilihFotoWiring(r.panelId,r.kode,files)}>
                             + Tambah Foto
-                            <input type="file" accept="image/*" multiple disabled={saving} style={{display:"none"}}
-                              onChange={(e:any)=>{pilihFotoWiring(r.panelId,r.kode,e.target.files);e.target.value="";}}/>
-                          </label>
+                          </MediaPickerSheet>
                           {staged.length>0&&(
                             <button onClick={()=>simpanFotoWiring(r.panelId,r.kode)} disabled={saving}
                               style={{fontSize:11,fontWeight:700,color:"#fff",background:saving?"#94a3b8":"#ea580c",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer"}}>

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { Lbl } from "./ui/Primitives";
+import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TRACKING KOMPONEN VIEW - dipisah dari App.tsx (Sprint 7)
@@ -234,10 +235,11 @@ export function TrackingKomponenView({user}:any){
                     style={{position:"absolute" as const,top:4,right:4,width:22,height:22,borderRadius:"50%",background:"rgba(0,0,0,0.6)",border:"none",color:"#fff",fontSize:13,fontWeight:700,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>×</button>
                 </div>
               ))}
-              <label style={{display:"flex",alignItems:"center",justifyContent:"center",aspectRatio:"1",borderRadius:10,border:"1.5px dashed #cbd5e1",background:"#f8fafc",cursor:"pointer"}}>
+              <MediaPickerSheet
+                triggerStyle={{display:"flex",alignItems:"center",justifyContent:"center",aspectRatio:"1",borderRadius:10,border:"1.5px dashed #cbd5e1",background:"#f8fafc",cursor:"pointer"}}
+                onFiles={(files)=>handleFileSelect({target:{files}})}>
                 <span style={{fontSize:24,color:"#94a3b8"}}>📷</span>
-                <input type="file" accept="image/*" multiple capture="environment" onChange={handleFileSelect} style={{display:"none"}}/>
-              </label>
+              </MediaPickerSheet>
             </div>
           </div>
 

@@ -4,6 +4,8 @@ import { QC_ITEMS } from "../lib/panelTypes";
 import { getUrgensiPanel } from "../lib/progressHelpers";
 import { fetchAllPanels } from "../lib/panelHelpers";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
+import { MediaPickerSheet } from "./ui/MediaPickerSheet";
+import { isVideoFoto, isGenericFoto } from "../lib/mediaThumb";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // QC CHECKLIST TAB - dipisah dari App.tsx (Sprint 7)
@@ -70,7 +72,7 @@ export function QCChecklistTab({user}:any){
       const{data:urlData}=supabase.storage.from("qc-photos").getPublicUrl(fileName);
       const panel=panelsList.find((p:any)=>p.id===panelId);
       const prevData=panel?.qc_checklist?.[itemKey]||{status:"to_do",catatan:""};
-      const newFoto=[...(prevData.foto||[]),{url:urlData.publicUrl,name:file.name,uploaded_by:user.nama,uploaded_at:new Date().toISOString()}];
+      const newFoto=[...(prevData.foto||[]),{url:urlData.publicUrl,name:file.name,mime:file.type,uploaded_by:user.nama,uploaded_at:new Date().toISOString()}];
       const newChecklist={...(panel?.qc_checklist||{}),[itemKey]:{...prevData,foto:newFoto}};
       await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
       setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));
@@ -256,19 +258,37 @@ export function QCChecklistTab({user}:any){
                       <div>
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
                           <span style={{fontSize:10.5,fontWeight:600,color:"#64748b"}}>Foto {fotoSeksi.length}</span>
-                          <label style={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:10.5,fontWeight:600}}>
+                          <MediaPickerSheet allowVideo allowAnyFile
+                            triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:10.5,fontWeight:600}}
+                            onFiles={(files)=>{(async()=>{for(const f of Array.from(files))await uploadFotoSeksi(p.id,item.key,f);})();}}>
                             <i className={uploadingId===uploadKey?"ti ti-loader-2":"ti ti-plus"} style={{fontSize:12}}/>
                             Tambah
-                            <input type="file" accept="image/*" capture="environment" style={{display:"none"}}
-                              onChange={(e:any)=>{if(e.target.files?.[0])uploadFotoSeksi(p.id,item.key,e.target.files[0]);}}/>
-                          </label>
+                          </MediaPickerSheet>
                         </div>
                         {fotoSeksi.length>0&&(
                           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
-                            {fotoSeksi.map((f:any,fi:number)=>(
+                            {fotoSeksi.map((f:any,fi:number)=>{
+                              const isVideo=isVideoFoto(f);
+                              const isGeneric=isGenericFoto(f);
+                              return(
                               <div key={fi}>
-                                <div onClick={()=>setFotoViewer({fotos:fotoSeksi,startIndex:fi,label:`${item.label}_${p.nama}`})} style={{position:"relative" as const,aspectRatio:"1",borderRadius:8,overflow:"hidden",cursor:"pointer",background:"#f1f5f9",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}>
-                                  <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                                <div onClick={()=>{if(isGeneric)window.open(f.url,"_blank");else setFotoViewer({fotos:fotoSeksi,startIndex:fi,label:`${item.label}_${p.nama}`});}}
+                                  style={{position:"relative" as const,aspectRatio:"1",borderRadius:8,overflow:"hidden",cursor:"pointer",background:"#f1f5f9",boxShadow:"0 1px 3px rgba(0,0,0,0.08)",display:isGeneric?"flex":undefined,alignItems:isGeneric?"center" as const:undefined,justifyContent:isGeneric?"center" as const:undefined}}>
+                                  {isVideo?(
+                                    <video src={f.url} muted style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                                  ):isGeneric?(
+                                    <div style={{textAlign:"center" as const,padding:4}}>
+                                      <i className="ti ti-file-text" style={{fontSize:22,color:"#64748b",display:"block"}}/>
+                                      <div style={{fontSize:7,color:"#64748b",marginTop:2,wordBreak:"break-all" as const}}>{f.name||"File"}</div>
+                                    </div>
+                                  ):(
+                                    <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                                  )}
+                                  {isVideo&&(
+                                    <div style={{position:"absolute" as const,inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none" as const}}>
+                                      <i className="ti ti-player-play-filled" style={{fontSize:20,color:"#fff",filter:"drop-shadow(0 1px 3px rgba(0,0,0,0.5))"}}/>
+                                    </div>
+                                  )}
                                   <button onClick={(e:any)=>{e.stopPropagation();hapusFotoSeksi(p.id,item.key,f.url);}}
                                     style={{position:"absolute" as const,top:3,right:3,width:16,height:16,borderRadius:99,background:"rgba(15,23,42,0.6)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                     <i className="ti ti-x" style={{fontSize:9}}/>
@@ -276,7 +296,8 @@ export function QCChecklistTab({user}:any){
                                 </div>
                                 <div style={{fontSize:8.5,color:"#94a3b8",marginTop:2}}>{fmtTglQc(f.uploaded_at)}</div>
                               </div>
-                            ))}
+                              );
+                            })}
                           </div>
                         )}
                       </div>
