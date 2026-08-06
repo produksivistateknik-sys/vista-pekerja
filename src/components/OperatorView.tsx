@@ -2052,7 +2052,14 @@ export function OperatorView({user,viewMode}:any){
             </div>
             <div style={{display:"flex",gap:5,flexWrap:"wrap" as const,padding:"8px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
               {(["ALL","NOT YET","TO DO","IN PROGRESS","DONE"] as const).map(s=>{
-                const cnt=s==="ALL"?visibleRowsPraStatus.length:visibleRowsPraStatus.filter((r:any)=>r.pipelineStatus===s).length;
+                // BUG FIX (6 Agu 2026): dulu hitung dari visibleRowsPraStatus (dibatasin ke
+                // komponen yang UDAH DI-COLLECT operator) - sebelum collect apapun, itu selalu
+                // kosong, jadi semua tab kelihatan (0) walau datanya sendiri (pipelineStatus per
+                // row) sebenernya udah bener dihitung dari awal fetch. Hitungan tab harus nyerminin
+                // SEMUA komponen relevan di proses ini (rows, gak dibatasin status collect) -
+                // rendering kartu tetap lewat visibleRows/visibleRowsPraStatus seperti biasa,
+                // cuma angka di tab ini yang perlu lihat gambaran penuh.
+                const cnt=s==="ALL"?rows.length:rows.filter((r:any)=>r.pipelineStatus===s).length;
                 const sc=s==="ALL"?"#475569":STATUS_PIPELINE_STYLE[s].color;
                 const isSel=statusFilter===s;
                 return(
