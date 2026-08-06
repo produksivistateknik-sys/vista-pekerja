@@ -2019,15 +2019,15 @@ export function OperatorView({user,viewMode}:any){
         // Mobile: titik awal pilih komponen dibalik jadi Jenis Komponen -> Panel buat proses ini.
         const PROSES_PILIH_PER_KOMPONEN=["BENDING","STEL","FINISHING","RENDAM","PAINTING","BUSBAR","RAKIT","PASANG KOMPONEN"];
         const visibleRowsPraStatus=(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))?rows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)):rows;
-        // BUG FIX (6 Agu 2026): tab counter ngitung dari `rows` (semua komponen relevan di proses
-        // ini), tapi visibleRows dulu selalu turunan dari visibleRowsPraStatus (dibatasin komponen
-        // yang UDAH DI-COLLECT operator lewat popup) - begitu filter status aktif tapi belum ada
-        // yang di-collect, visibleRowsPraStatus=0, jadi HASIL FILTER APAPUN selalu 0 walau tab
-        // counter-nya nunjukin angka besar (mis. "Not Yet (76)"). Fix: kalau ada filter status
-        // spesifik yang dipilih (bukan "Semua"), sumbernya LANGSUNG dari `rows` (sama kayak
-        // counter), skip syarat collect - operator bisa lihat SEMUA komponen berstatus itu tanpa
-        // collect manual dulu. "Semua" TETAP pakai alur collect-dulu yang sudah ada (gak berubah).
-        const visibleRows=statusFilter==="ALL"?visibleRowsPraStatus:rows.filter((r:any)=>r.pipelineStatus===statusFilter);
+        // SCOPE FIX (6 Agu 2026): filter status pipeline itu buat GRID KOMPONEN sebelum collect
+        // (chip "jenis komponen"/"panel" di bawah), BUKAN buat area kartu yang udah di-collect ini.
+        // visibleRows balik ke murni collect-state kayak semula, gak lagi dipengaruhi statusFilter -
+        // begitu operator collect suatu komponen, dia tetap kelihatan di sini apapun tab filter yang
+        // lagi aktif. chipSourceRows (dipakai di grid picker di bawah) yang nanggung filtering-nya.
+        const visibleRows=visibleRowsPraStatus;
+        // Sumber grid picker (chip jenis komponen/panel) SEBELUM collect - filter status di sini,
+        // bukan collect-state. "Semua" nunjukin semua rows kayak biasa.
+        const chipSourceRows=statusFilter==="ALL"?rows:rows.filter((r:any)=>r.pipelineStatus===statusFilter);
         // Target aksi massal (Mulai/Simpan Semua/dst) - NOT YET dikeluarkan SELALU, gak peduli
         // filter status lagi apa. Kartu NOT YET udah di-disable (pointerEvents:none) individual,
         // tapi tombol aksi massal ini beroperasi di luar kartu jadi butuh exclude terpisah - kalau
@@ -2082,15 +2082,22 @@ export function OperatorView({user,viewMode}:any){
                 {(()=>{
                   const seenNama=new Set();
                   const jenisList:any[]=[];
-                  rows.forEach((r:any)=>{
+                  chipSourceRows.forEach((r:any)=>{
                     const nama=r.item?.nama||r.kode;
                     if(!seenNama.has(nama)){
                       seenNama.add(nama);
                       jenisList.push({namaKomponen:nama});
                     }
                   });
+                  if(jenisList.length===0&&statusFilter!=="ALL"){
+                    return(
+                      <div style={{fontSize:11,color:"#94a3b8",padding:"4px 0"}}>
+                        Gak ada komponen dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di proses ini.
+                      </div>
+                    );
+                  }
                   return jenisList.map((jg:any)=>{
-                    const groupRows=rows.filter((r:any)=>(r.item?.nama||r.kode)===jg.namaKomponen);
+                    const groupRows=chipSourceRows.filter((r:any)=>(r.item?.nama||r.kode)===jg.namaKomponen);
                     const panelCount=new Set(groupRows.map((r:any)=>r.panelId)).size;
                     const selRows=groupRows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode));
                     const selCount=selRows.length;
@@ -2132,17 +2139,24 @@ export function OperatorView({user,viewMode}:any){
                 {(()=>{
                   const seenPanel=new Set();
                   const panelList:any[]=[];
-                  rows.forEach((r:any)=>{
+                  chipSourceRows.forEach((r:any)=>{
                     if(!seenPanel.has(r.panelId)){
                       seenPanel.add(r.panelId);
                       panelList.push({panelId:r.panelId,panel:r.panel,proyek:r.task.proyek});
                     }
                   });
+                  if(panelList.length===0&&statusFilter!=="ALL"){
+                    return(
+                      <div style={{fontSize:11,color:"#94a3b8",padding:"4px 0"}}>
+                        Gak ada komponen dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di proses ini.
+                      </div>
+                    );
+                  }
                   return panelList.map((pg:any)=>{
                     const panelKey=`${proses}_${pg.panelId}`;
                     const selKodeList=selectedKomponen[panelKey]||[];
                     const selCount=selKodeList.length;
-                    const selRows=rows.filter((r:any)=>r.panelId===pg.panelId&&selKodeList.includes(r.kode));
+                    const selRows=chipSourceRows.filter((r:any)=>r.panelId===pg.panelId&&selKodeList.includes(r.kode));
                     const belumDikerjakanCount=selRows.filter((r:any)=>(r.pct||0)===0).length;
                     const dikerjakanRows=selRows.filter((r:any)=>(r.pct||0)>0&&(r.pct||0)<100);
                     const dikerjakanCount=dikerjakanRows.length;
@@ -2153,7 +2167,7 @@ export function OperatorView({user,viewMode}:any){
                     // proses yang make popup ini (dulu cuma POTONG/BENDING/STEL, proses lain
                     // yang lewat sini - RAKIT/PASANG KOMPONEN/WIRING CONTROL/WIRING POWER/BUSBAR -
                     // gak pernah dapet efek ini).
-                    const panelAllRows=rows.filter((r:any)=>r.panelId===pg.panelId&&r.qtyKomp>0);
+                    const panelAllRows=chipSourceRows.filter((r:any)=>r.panelId===pg.panelId&&r.qtyKomp>0);
                     const panelSudahTuntas=panelAllRows.length>0&&panelAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
                     return(
                       <button key={pg.panelId} disabled={panelSudahTuntas}
@@ -2467,16 +2481,13 @@ export function OperatorView({user,viewMode}:any){
     });
     const groups=Object.values(komponenGroups);
     if(groups.length===0){
+      // Area ini murni collect-state (gak dipengaruhi statusFilter lagi - lihat visibleRows di
+      // atas), jadi cuma 2 kemungkinan: udah collect tapi semua udah selesai, atau emang belum
+      // collect apa-apa sama sekali.
       const semuaSudahSelesai=visibleRows.length>0&&cardListRows.length===0;
-      // Filter status spesifik aktif (bukan "Semua") gak lagi bergantung ke status collect - kalau
-      // visibleRows kosong di sini, artinya beneran gak ada komponen berstatus itu SAMA SEKALI di
-      // proses ini (bukan soal belum di-collect).
-      const kosongGaraGaraFilter=statusFilter!=="ALL"&&!semuaSudahSelesai&&visibleRows.length===0;
       return(
         <div style={{textAlign:"center",padding:"24px 10px",color:semuaSudahSelesai?"#16a34a":"#94a3b8",fontSize:12}}>
-          {semuaSudahSelesai?"✅ Semua komponen di proses ini sudah selesai.":kosongGaraGaraFilter?(
-            <>Gak ada komponen dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di proses ini.<br/>Coba ganti tab filter di atas.</>
-          ):(
+          {semuaSudahSelesai?"✅ Semua komponen di proses ini sudah selesai.":(
             <>Belum ada komponen dikumpulkan.<br/>Tap panel di atas untuk pilih komponen.</>
           )}
         </div>
