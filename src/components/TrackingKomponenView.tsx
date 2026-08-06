@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { Lbl } from "./ui/Primitives";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
+import { hapusFotoDariStorage } from "../lib/fotoHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TRACKING KOMPONEN VIEW - dipisah dari App.tsx (Sprint 7)
@@ -61,6 +62,16 @@ export function TrackingKomponenView({user}:any){
       setFotoMap({});
     }
     setLoadingRiwayat(false);
+  };
+
+  // Hapus foto riwayat serah terima - beda struktur dari view lain (baris tersendiri di
+  // fcs_tracking_komponen_foto, bukan array di kolom panels), jadi hapus baris DB-nya langsung.
+  // Catatan riwayat (fcs_tracking_komponen) sendiri sama sekali gak disentuh.
+  const hapusFotoRiwayat=async(fotoId:number,fotoUrl:string,trackingId:number)=>{
+    if(!window.confirm("Hapus foto ini?"))return;
+    await hapusFotoDariStorage("tracking-komponen",fotoUrl);
+    await supabase.from("fcs_tracking_komponen_foto").delete().eq("id",fotoId);
+    setFotoMap(prev=>({...prev,[trackingId]:(prev[trackingId]||[]).filter((f:any)=>f.id!==fotoId)}));
   };
 
   useEffect(()=>{fetchWoList();},[]);
@@ -274,9 +285,15 @@ export function TrackingKomponenView({user}:any){
                   {(fotoMap[r.id]||[]).length>0&&(
                     <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
                       {(fotoMap[r.id]||[]).map((foto:any)=>(
-                        <a key={foto.id} href={foto.file_url} target="_blank" rel="noopener noreferrer">
-                          <img src={foto.file_url} style={{width:64,height:64,objectFit:"cover" as const,borderRadius:8,border:"1px solid #e2e8f0",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}/>
-                        </a>
+                        <div key={foto.id} style={{position:"relative" as const}}>
+                          <a href={foto.file_url} target="_blank" rel="noopener noreferrer">
+                            <img src={foto.file_url} style={{width:64,height:64,objectFit:"cover" as const,borderRadius:8,border:"1px solid #e2e8f0",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}/>
+                          </a>
+                          <button onClick={(e:any)=>{e.preventDefault();hapusFotoRiwayat(foto.id,foto.file_url,r.id);}}
+                            style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                            <i className="ti ti-trash" style={{fontSize:10}}/>
+                          </button>
+                        </div>
                       ))}
                     </div>
                   )}

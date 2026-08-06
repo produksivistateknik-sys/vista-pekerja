@@ -108,11 +108,11 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
         </div>
         <div style={{display:"flex",gap:8,flexShrink:0}}>
           <button onClick={()=>downloadFotoNp(foto.url,foto.name||label||"foto")}
-            style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+            style={{display:"flex",alignItems:"center",gap:6,background:"rgba(15,23,42,0.65)",color:"#fff",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
             <i className="ti ti-download" style={{fontSize:15}}/> Download
           </button>
           <button onClick={onClose}
-            style={{width:34,height:34,borderRadius:99,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+            style={{width:34,height:34,borderRadius:99,background:"rgba(15,23,42,0.65)",color:"#fff",border:"1px solid rgba(255,255,255,0.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
             <i className="ti ti-x" style={{fontSize:17}}/>
           </button>
         </div>

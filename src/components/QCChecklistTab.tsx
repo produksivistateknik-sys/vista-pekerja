@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { QC_ITEMS } from "../lib/panelTypes";
 import { getUrgensiPanel } from "../lib/progressHelpers";
 import { fetchAllPanels } from "../lib/panelHelpers";
+import { hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { isVideoFoto, isGenericFoto } from "../lib/mediaThumb";
@@ -83,10 +84,14 @@ export function QCChecklistTab({user}:any){
   };
 
   const hapusFotoSeksi=async(panelId:number,itemKey:string,fotoUrl:string)=>{
+    if(!window.confirm("Hapus foto ini?"))return;
     const panel=panelsList.find((p:any)=>p.id===panelId);
     const prevData=panel?.qc_checklist?.[itemKey]||{status:"to_do",catatan:""};
     const newFoto=(prevData.foto||[]).filter((f:any)=>f.url!==fotoUrl);
     const newChecklist={...(panel?.qc_checklist||{}),[itemKey]:{...prevData,foto:newFoto}};
+    // BUG FIX (6 Agu 2026): sebelumnya cuma hapus referensi di DB, file di Storage gak pernah
+    // ikut kehapus - buang storage sia-sia. Sekarang hapus dua-duanya.
+    await hapusFotoDariStorage("qc-photos",fotoUrl);
     await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
     setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));
   };

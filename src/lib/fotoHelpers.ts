@@ -1,5 +1,20 @@
+import { supabase } from "./supabase";
+
 // Helper foto (kompres sebelum upload, download) - dipisah dari App.tsx (Sprint 6)
 // ─────────────────────────────────────────────────────────────────────────────
+
+// Hapus file dari Supabase Storage berdasarkan public URL-nya - dipakai bareng di semua tempat
+// yang punya tombol hapus foto (QC/Nameplate/Warehouse/QS/Pasang Komponen/Tracking Komponen).
+// Kalau URL gak sesuai pola public URL Supabase yang diharapkan, diam-diam skip (caller tetap
+// lanjut hapus referensi di DB) - jangan sampai proses hapus foto gagal total gara-gara ini.
+export const hapusFotoDariStorage=async(bucket:string,url:string):Promise<void>=>{
+  const marker=`/storage/v1/object/public/${bucket}/`;
+  const idx=url.indexOf(marker);
+  if(idx<0)return;
+  const path=decodeURIComponent(url.slice(idx+marker.length));
+  if(!path)return;
+  await supabase.storage.from(bucket).remove([path]);
+};
 
 // Kompres foto sebelum upload (canvas resize max-width 1600px + JPEG q0.8) - foto asli dari
 // kamera HP bisa 3-8MB, operator sering upload lewat data seluler.

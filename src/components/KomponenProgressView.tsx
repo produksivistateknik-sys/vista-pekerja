@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry } from "../lib/koneksi";
 import { fetchAllPanels } from "../lib/panelHelpers";
-import { compressImageNp } from "../lib/fotoHelpers";
+import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { getUrgensiPanel, fmtTanggalDeadlineNp, STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
@@ -47,6 +47,18 @@ export function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,
       URL.revokeObjectURL(arr[idx]?.previewUrl);
       return{...prev,[panelId]:arr.filter((_,i)=>i!==idx)};
     });
+  };
+
+  // Hapus foto yang SUDAH tersimpan (bukan staged) - progress/pct/history sama sekali gak
+  // disentuh, cuma field foto-nya.
+  const hapusFotoTersimpan=async(panelId:number,fotoUrl:string)=>{
+    if(!window.confirm("Hapus foto ini?"))return;
+    const panel=panelsList.find((p:any)=>p.id===panelId);
+    if(!panel)return;
+    const newFoto=(panel[tugas.fotoField]||[]).filter((f:any)=>f.url!==fotoUrl);
+    await hapusFotoDariStorage(tugas.bucket,fotoUrl);
+    await supabase.from("panels").update({[tugas.fotoField]:newFoto}).eq("id",panelId);
+    setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,[tugas.fotoField]:newFoto}:p));
   };
 
   const simpanProgressPanel=async(p:any)=>{
@@ -372,8 +384,13 @@ export function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,
                     ):(
                       <div style={{display:"flex",flexWrap:"wrap" as const,gap:8,marginBottom:12}}>
                         {fotoArr.map((f:any,fi:number)=>(
-                          <div key={`saved_${fi}`} onClick={()=>setFotoViewer({fotos:fotoArr,startIndex:fi,label:`${tugas.label}_${p.nama}`})} style={{cursor:"pointer"}}>
-                            <img src={f.url} style={{width:62,height:62,borderRadius:10,objectFit:"cover" as const,border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.06)"}}/>
+                          <div key={`saved_${fi}`} style={{position:"relative" as const}}>
+                            <img onClick={()=>setFotoViewer({fotos:fotoArr,startIndex:fi,label:`${tugas.label}_${p.nama}`})}
+                              src={f.url} style={{width:62,height:62,borderRadius:10,objectFit:"cover" as const,border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.06)",cursor:"pointer"}}/>
+                            <button onClick={(e:any)=>{e.stopPropagation();hapusFotoTersimpan(p.id,f.url);}}
+                              style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <i className="ti ti-trash" style={{fontSize:10}}/>
+                            </button>
                             <div style={{fontSize:8,color:"#94a3b8",marginTop:3,textAlign:"center" as const}}>{f.uploaded_at?new Date(f.uploaded_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):""}</div>
                           </div>
                         ))}

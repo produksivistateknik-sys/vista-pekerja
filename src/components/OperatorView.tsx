@@ -8,7 +8,7 @@ import {
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
 } from "../lib/panelHelpers";
-import { compressImageNp } from "../lib/fotoHelpers";
+import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { Badge, Card, Lbl, Inp, Btn } from "./ui/Primitives";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
@@ -969,6 +969,22 @@ export function OperatorView({user,viewMode}:any){
     setSavingFotoWiring(null);
   };
 
+  // Hapus foto Wiring yang SUDAH tersimpan - progress tahap (pasangKomponenTahap.WIRING) sama
+  // sekali gak disentuh, cuma checklist[kode].fotoPemasangan. Kalau ini bikin fotoPemasangan
+  // kosong lagi, syarat wajib foto di simpanProgressTahapPasangKomponen otomatis berlaku lagi
+  // pas operator coba Simpan Progress berikutnya - gak perlu state tambahan.
+  const hapusFotoWiring=async(panelId:number,kode:string,fotoUrl:string)=>{
+    if(!window.confirm("Hapus foto ini?"))return;
+    const panel=panelsMap[panelId];
+    if(!panel)return;
+    const cl=panel.checklist?.[kode]||{};
+    const newFoto=(cl.fotoPemasangan||[]).filter((f:any)=>f.url!==fotoUrl);
+    const newChecklist={...panel.checklist,[kode]:{...cl,fotoPemasangan:newFoto}};
+    await hapusFotoDariStorage("wiring-komponen-photos",fotoUrl);
+    await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
+    setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
+  };
+
   // Foto Pemasangan Pasang Komponen (Assembling Luar) - PER PANEL (bukan per-kode, satu
   // galeri buat seluruh pemasangan panel itu), disimpan di kolom panels.pasang_komponen_photos.
   const[stagedFotoPk,setStagedFotoPk]=useState<Record<number,{file:File,previewUrl:string}[]>>({});
@@ -1013,6 +1029,18 @@ export function OperatorView({user,viewMode}:any){
       alert("Terjadi kesalahan: "+err.message);
     }
     setSavingFotoPk(null);
+  };
+
+  // Hapus foto Assembling Luar yang SUDAH tersimpan - progress tahap (pasangKomponenTahap.
+  // ASSEMBLING) sama sekali gak disentuh, cuma panels.pasang_komponen_photos.
+  const hapusFotoPk=async(panelId:number,fotoUrl:string)=>{
+    if(!window.confirm("Hapus foto ini?"))return;
+    const panel=panelsMap[panelId];
+    if(!panel)return;
+    const newFoto=(panel.pasang_komponen_photos||[]).filter((f:any)=>f.url!==fotoUrl);
+    await hapusFotoDariStorage("pasang-komponen-photos",fotoUrl);
+    await supabase.from("panels").update({pasang_komponen_photos:newFoto}).eq("id",panelId);
+    setPanelsMap(prev=>({...prev,[panelId]:{...panel,pasang_komponen_photos:newFoto}}));
   };
 
   // Kunci progress — simpan ke Supabase
@@ -3010,8 +3038,14 @@ export function OperatorView({user,viewMode}:any){
                           ):(
                             <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
                               {fotoArr.map((f:any,fi:number)=>(
-                                <img key={`saved_${fi}`} onClick={()=>setFotoViewerPk({fotos:fotoArr,startIndex:fi,label:`Pasang Komponen_${r.panel.nama}`})}
-                                  src={f.url} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                                <div key={`saved_${fi}`} style={{position:"relative" as const}}>
+                                  <img onClick={()=>setFotoViewerPk({fotos:fotoArr,startIndex:fi,label:`Pasang Komponen_${r.panel.nama}`})}
+                                    src={f.url} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                                  <button onClick={(e:any)=>{e.stopPropagation();hapusFotoPk(r.panelId,f.url);}}
+                                    style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                    <i className="ti ti-trash" style={{fontSize:10}}/>
+                                  </button>
+                                </div>
                               ))}
                               {staged.map((s,si)=>(
                                 <div key={`staged_${si}`} style={{position:"relative" as const}}>
@@ -3638,8 +3672,14 @@ export function OperatorView({user,viewMode}:any){
                         ):(
                           <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
                             {fotoArr.map((f:any,fi:number)=>(
-                              <img key={`saved_${fi}`} onClick={()=>setFotoViewerWiring({fotos:fotoArr,startIndex:fi,label:`${r.item?.nama}_${r.panel.nama}`})}
-                                src={f.url} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                              <div key={`saved_${fi}`} style={{position:"relative" as const}}>
+                                <img onClick={()=>setFotoViewerWiring({fotos:fotoArr,startIndex:fi,label:`${r.item?.nama}_${r.panel.nama}`})}
+                                  src={f.url} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                                <button onClick={(e:any)=>{e.stopPropagation();hapusFotoWiring(r.panelId,r.kode,f.url);}}
+                                  style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                  <i className="ti ti-trash" style={{fontSize:10}}/>
+                                </button>
+                              </div>
                             ))}
                             {staged.map((s,si)=>(
                               <div key={`staged_${si}`} style={{position:"relative" as const}}>
