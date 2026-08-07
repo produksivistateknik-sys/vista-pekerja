@@ -995,36 +995,14 @@ export function OperatorView({user,viewMode}:any){
       // gak lewat "Kunci Progress" (lockSingleKomponen) yang baru nyatet progress_checkpoint_log -
       // jadi progress bisa kesimpen tanpa jejak operator SAMA SEKALI. Catat checkpoint di sini juga,
       // tiap kali persentase >0% disimpan, biar selalu ada yang bisa ditelusuri di Rencana Harian.
-      let task:any=null;
       if(pct>0){
-        task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses===proses&&(t.komponen||[]).includes(kode));
+        const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses===proses&&(t.komponen||[]).includes(kode));
         const idsKomp=(task?.pekerja_per_komponen||{})[kode]||[];
         const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
         const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
         await withRetry(()=>supabase.from('progress_checkpoint_log').insert({
           panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
         }));
-      }
-      // FITUR (7 Agu 2026): auto-arsip Pasang Komponen Assembling Luar buat komponen NON-tahap
-      // (mis. Groundplate) - komponen ini gak lewat simpanProgressTahapPasangKomponen sama
-      // sekali (gak ada tombol "Simpan Progress" terpisah, PCT_STEPS di sini SATU-SATUNYA aksi
-      // simpan yang ada). REUSE pola upsert+uncollect yang sama persis dengan jalur tahap ASSEMBLING/
-      // WIRING - ON CONFLICT (panel_id,seksi,kode) jadi update entry lama, bukan baris baru.
-      // Best-effort, gak boleh gagalin progress utama yang udah kesimpen di atas.
-      if(proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"&&pct>0){
-        try{
-          const itemNama=getEffCfg(panel.tipe)?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
-          const{data:woRow}=panel.wo_id?await supabase.from("work_orders").select("wo").eq("id",panel.wo_id).maybeSingle():{data:null};
-          const{error:arsipErr}=await withRetry(()=>supabase.from("panel_seksi_archived").upsert({
-            panel_id:panelId,wo_id:panel.wo_id||null,seksi:"assembling_luar",kode,komponen_nama:itemNama,
-            data:{progress:pct,pasang_komponen_photos:panel.pasang_komponen_photos||[]},
-            panel_nama:panel.nama,panel_tipe:panel.tipe,proyek_snapshot:task?.proyek||null,wo_number_snapshot:woRow?.wo||null,
-            diarsipkan_pada:new Date().toISOString(),diarsipkan_oleh:user.nama,
-          },{onConflict:"panel_id,seksi,kode"}));
-          if(arsipErr)throw arsipErr;
-          const selKey=`${proses}_${panelId}`;
-          setSelectedKomponen((prev:any)=>({...prev,[selKey]:(prev[selKey]||[]).filter((k:string)=>k!==kode)}));
-        }catch{ /* best-effort, progress utama udah kesimpen */ }
       }
     }catch{
       alert("Gagal simpan progress ke server - koneksi lambat. Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.");
@@ -1233,6 +1211,34 @@ export function OperatorView({user,viewMode}:any){
         }
       }catch{ /* best-effort, progress utama sudah aman */ }
     }
+
+    // FITUR (7 Agu 2026): auto-arsip Pasang Komponen Assembling Luar buat komponen NON-tahap
+    // (mis. Groundplate) - format-nya SAMA PERSIS sama Wiring Control: PCT_STEPS cuma persist
+    // live (updatePctManual), tombol "Simpan Progress" ini (lockSingleKomponen, sudah ada dari
+    // awal buat proses lain juga) yang jadi titik commit tunggal - archive di sini, BUKAN di
+    // tiap klik persentase. Komponen tahap (Box Control/Pintu) DIKECUALIKAN - itu udah punya
+    // jalur sendiri (simpanProgressTahapPasangKomponen, tombol Simpan Progress terpisah di card
+    // Kontribusi Assembling Luar/Wiring Control), jangan dobel-archive dari sini pakai progress
+    // gabungan yang salah konteks. Best-effort, gak boleh gagalin progress utama yang udah
+    // kesimpen di atas.
+    if(proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"){
+      const itemNama=getEffCfg(panel.tipe)?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
+      if(!PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(itemNama)){
+        try{
+          const{data:woRow}=panel.wo_id?await supabase.from("work_orders").select("wo").eq("id",panel.wo_id).maybeSingle():{data:null};
+          const{error:arsipErr}=await withRetry(()=>supabase.from("panel_seksi_archived").upsert({
+            panel_id:panelId,wo_id:panel.wo_id||null,seksi:"assembling_luar",kode,komponen_nama:itemNama,
+            data:{progress:pct,pasang_komponen_photos:panel.pasang_komponen_photos||[]},
+            panel_nama:panel.nama,panel_tipe:panel.tipe,proyek_snapshot:task.proyek||null,wo_number_snapshot:woRow?.wo||null,
+            diarsipkan_pada:new Date().toISOString(),diarsipkan_oleh:user.nama,
+          },{onConflict:"panel_id,seksi,kode"}));
+          if(arsipErr)throw arsipErr;
+          const selKey=`${proses}_${panelId}`;
+          setSelectedKomponen((prev:any)=>({...prev,[selKey]:(prev[selKey]||[]).filter((k:string)=>k!==kode)}));
+        }catch{ /* best-effort, progress utama udah kesimpen */ }
+      }
+    }
+
     return true;
   };
 
