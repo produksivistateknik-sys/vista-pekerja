@@ -103,11 +103,14 @@ export const PROSES_STATUS_GATE_PCT=25;
 // udah DONE). Fix: terima daftar proses RELEVAN (dari getRelevantProsesForKode) - gating chain
 // difilter ke situ dulu (urutan tetap ngikutin ALL_PROSES). Cermin dari fix yang sama di
 // vista-teknik/src/lib/panelHelpers.ts. relevantProses opsional, fallback ke ALL_PROSES penuh.
+// UNBLOCK QC TEST (7 Agu 2026): QC TEST sengaja dikeluarin dari gating juga - selalu TO DO
+// begitu progress masih 0, gak nunggu WIRING POWER/CONTROL nyampe 25% dulu. PACKING TETAP kena
+// gating normal (gak diubah) - masih ngecek progress QC TEST komponen itu via chain di bawah.
 export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string,relevantProses?:string[]):ProsesStatus{
   const progress=progressMap?.[proses]||0;
   if(progress>=100)return "DONE";
   if(progress>0)return "IN PROGRESS";
-  if(proses==="BUSBAR")return "TO DO";
+  if(proses==="BUSBAR"||proses==="QC TEST")return "TO DO";
   const chain=(relevantProses&&relevantProses.length>0)?ALL_PROSES.filter(p=>relevantProses.includes(p)):ALL_PROSES;
   const prosesIdx=chain.indexOf(proses);
   if(prosesIdx<=0)return "TO DO";
