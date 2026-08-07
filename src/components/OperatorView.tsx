@@ -2956,7 +2956,12 @@ export function OperatorView({user,viewMode}:any){
                           </div>
                         );
                       })()}
-                      {proses!=="POTONG"&&(()=>{
+                      {/* HAPUS (7 Agu 2026): tombol Simpan Progress per-card individual dihapus KHUSUS
+                          RENDAM/PAINTING - sistem Section (simpanSectionPaintingRendam, toolbar bulk di
+                          atas) udah nyakup simpan semua komponen sekaligus dari r.pct yang sama persis,
+                          2 cara simpan buat hal yang sama bikin operator bingung. Proses lain (BENDING/
+                          STEL/FINISHING/RAKIT/dll) TETAP pakai tombol ini, gak ada flow section-nya. */}
+                      {proses!=="POTONG"&&proses!=="RENDAM"&&proses!=="PAINTING"&&(()=>{
                         const flashKey=`${r.panelId}_${r.kode}_${proses}`;
                         const flashing=!!savedFlash[flashKey];
                         const disabledBtn=r.pct===0;
