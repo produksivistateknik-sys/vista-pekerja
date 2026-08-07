@@ -2028,12 +2028,20 @@ export function OperatorView({user,viewMode}:any){
         // Sumber grid picker (chip jenis komponen/panel) SEBELUM collect - filter status di sini,
         // bukan collect-state. "Semua" nunjukin semua rows kayak biasa.
         const chipSourceRows=statusFilter==="ALL"?rows:rows.filter((r:any)=>r.pipelineStatus===statusFilter);
-        // Target aksi massal (Mulai/Simpan Semua/dst) - NOT YET dikeluarkan SELALU, gak peduli
-        // filter status lagi apa. Kartu NOT YET udah di-disable (pointerEvents:none) individual,
-        // tapi tombol aksi massal ini beroperasi di luar kartu jadi butuh exclude terpisah - kalau
-        // gak, "Simpan Semua Progress" bisa nyimpen progress komponen yang harusnya belum boleh
+        // AUDIT FIX (6 Agu 2026): komponen NOT YET yang KEBETULAN udah punya timer aktif (mis. dari
+        // sebelum fitur status pipeline ini ada, atau dari operator lain di kode yang sama) TIDAK
+        // BOLEH ikut di-lock - dicek langsung ke data live: ada 8 timer aktif hari ini di komponen
+        // yang kebaca NOT YET, kalau di-lock operator gak akan bisa STOP timer itu sama sekali
+        // lewat card manapun. Prefix match ke timerAktif (bukan exact key) biar nangkep operator ID
+        // apapun/tahap apapun (BUSBAR/WIRING dual-tahap punya suffix tahap di timerKey-nya).
+        const rowHasActiveTimer=(r:any)=>Object.keys(timerAktif).some(k=>k.startsWith(`${r.panelId}_${r.kode}_${proses}_`));
+        // Target aksi massal (Mulai/Simpan Semua/dst) - NOT YET dikeluarkan, KECUALI yang udah
+        // punya timer aktif (biar "Selesai Semua" bisa tetap jangkau & stop timer itu). Kartu NOT
+        // YET udah di-disable (pointerEvents:none) individual dengan pengecualian yang sama, tapi
+        // tombol aksi massal ini beroperasi di luar kartu jadi butuh exclude terpisah - kalau gak,
+        // "Simpan Semua Progress" bisa nyimpen progress komponen yang harusnya belum boleh
         // dikerjakan sama sekali.
-        const bulkTargetRows=visibleRows.filter((r:any)=>r.pipelineStatus!=="NOT YET");
+        const bulkTargetRows=visibleRows.filter((r:any)=>r.pipelineStatus!=="NOT YET"||rowHasActiveTimer(r));
       const isWiringProses=["WIRING CONTROL","WIRING POWER"].includes(proses);
       // Proses yang operatornya dipilih per-kartu individual (bukan bulk satu grup sekaligus) -
       // WIRING udah dari revisi sebelumnya, RAKIT/PASANG KOMPONEN nyusul sekarang. Dipisah dari
@@ -2701,12 +2709,13 @@ export function OperatorView({user,viewMode}:any){
                 const workers=idsKomp.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
                 const busbarUrutan=isBusbarProses?getUrutanTahapBusbar(r.kode):[];
                 const busbarTahapState=isBusbarProses?getBusbarTahapState(panelsMap[r.panelId]?.checklist?.[r.kode],r.kode):null;
+                const isLocked=r.pipelineStatus==="NOT YET"&&!rowHasActiveTimer(r);
                 return(
                   <div key={`${r.task.id}-${r.kode}-m`} style={{background:done?"#f0fdf4":"#fff",
                     border:`1.5px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:14,padding:"12px 14px",
                     display:"flex",flexDirection:"column",gap:10,
-                    opacity:r.pipelineStatus==="NOT YET"?0.55:1,
-                    pointerEvents:r.pipelineStatus==="NOT YET"?"none" as const:"auto" as const}}>
+                    opacity:isLocked?0.55:1,
+                    pointerEvents:isLocked?"none" as const:"auto" as const}}>
                     {proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"&&(
                       <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4}}>SECTION 1 · FABRIKASI</div>
                     )}
@@ -3226,9 +3235,10 @@ export function OperatorView({user,viewMode}:any){
                     const rBg=done?"#f0fdf4":ri%2===0?"#fff":"#f8fafc";
                     const td:any={padding:"6px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",
                       background:rBg,verticalAlign:"middle"};
+                    const isLockedRow=r.pipelineStatus==="NOT YET"&&!rowHasActiveTimer(r);
                     return(
                       <tr key={`${r.task.id}-${r.kode}`}
-                        style={r.pipelineStatus==="NOT YET"?{opacity:0.55,pointerEvents:"none" as const}:undefined}>
+                        style={isLockedRow?{opacity:0.55,pointerEvents:"none" as const}:undefined}>
                         <td style={{...td,position:"sticky",left:0,zIndex:1,textAlign:"center",fontFamily:"'DM Mono',monospace",color:"#94a3b8",fontWeight:700}}>{ri+1}</td>
                         <td style={{...td,position:"sticky",left:40,zIndex:1,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap"}}>
                           {(()=>{
