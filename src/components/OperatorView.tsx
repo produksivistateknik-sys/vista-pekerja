@@ -116,6 +116,30 @@ export function OperatorView({user,viewMode}:any){
       setProsesRelevanHasMapping(hasMappingSet);
     });
   },[]);
+  // FITUR (7 Agu 2026): auto-arsip Pasang Komponen (Assembling Luar tahap ASSEMBLING, Wiring
+  // Control tahap WIRING) begitu operator klik "Simpan Progress" - berapapun persennya, gak
+  // nunggu 100% kayak trigger DB panels_auto_archive_seksi() yang lama. Perlu tau progress
+  // arsip TERAKHIR per (seksi,panelId,kode) buat badge "↻ Sudah di arsip" begitu komponen yang
+  // sama di-collect ulang buat lanjutin progress. Realtime-subscribed biar sinkron kalau ada
+  // sesi lain/reload nulis ke tabel yang sama.
+  const [arsipPasangKomponenMap,setArsipPasangKomponenMap]=useState<Record<string,number>>({});
+  const fetchArsipPasangKomponen=async()=>{
+    const{data}=await supabase.from("panel_seksi_archived").select("panel_id,seksi,kode,data").in("seksi",["assembling_luar","wiring_control"]);
+    const map:Record<string,number>={};
+    (data||[]).forEach((r:any)=>{
+      const tahap=r.seksi==="assembling_luar"?"ASSEMBLING":"WIRING";
+      const pct=r.data?.pasangKomponenTahap?.[tahap]?.progress;
+      if(typeof pct==="number")map[`${r.seksi}|${r.panel_id}|${r.kode}`]=pct;
+    });
+    setArsipPasangKomponenMap(map);
+  };
+  useEffect(()=>{
+    fetchArsipPasangKomponen();
+    const ch=supabase.channel("realtime-panel-seksi-archived-op")
+      .on("postgres_changes",{event:"*",schema:"public",table:"panel_seksi_archived"},fetchArsipPasangKomponen)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
   const getEffCfg=(tipe:string)=>(bomPanelTypes?.[tipe]?.wps?.length>0)?bomPanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [shift,setShift]=useState(()=>{
     try{
@@ -1437,6 +1461,35 @@ export function OperatorView({user,viewMode}:any){
     }
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     await autoStopTimerJikaSelesai(panelId,kode,"PASANG KOMPONEN",pctTahap,idsKomp,tahap);
+
+    // FITUR (7 Agu 2026): auto-arsip begitu "Simpan Progress" diklik - berapapun persennya,
+    // gak nunggu 100%. ON CONFLICT (panel_id,seksi,kode) di tabel yang sama persis dipakai
+    // trigger panels_auto_archive_seksi() (unique constraint sudah ada) - jadi ini UPDATE entry
+    // yang sama kalau komponen ini pernah diarsip sebelumnya, bukan bikin baris baru (anti-
+    // duplikasi udah dijamin skema, gak perlu logic tambahan). Best-effort - progress utama
+    // udah aman tersimpan di atas, kegagalan di sini gak boleh gagalin seluruh aksi Simpan.
+    const seksi=tahap==="ASSEMBLING"?"assembling_luar":"wiring_control";
+    try{
+      const itemNama=getEffCfg(panel.tipe)?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
+      const{data:woRow}=panel.wo_id?await supabase.from("work_orders").select("wo").eq("id",panel.wo_id).maybeSingle():{data:null};
+      const archiveData=tahap==="ASSEMBLING"
+        ?{pasangKomponenTahap:{ASSEMBLING:newTahap.ASSEMBLING},pasang_komponen_photos:panel.pasang_komponen_photos||[]}
+        :{pasangKomponenTahap:{WIRING:newTahap.WIRING},fotoPemasangan:freshCl.fotoPemasangan||cl.fotoPemasangan||[]};
+      const{error:arsipErr}=await withRetry(()=>supabase.from("panel_seksi_archived").upsert({
+        panel_id:panelId,wo_id:panel.wo_id||null,seksi,kode,komponen_nama:itemNama,data:archiveData,
+        panel_nama:panel.nama,panel_tipe:panel.tipe,proyek_snapshot:task.proyek||null,wo_number_snapshot:woRow?.wo||null,
+        diarsipkan_pada:new Date().toISOString(),diarsipkan_oleh:user.nama,
+      },{onConflict:"panel_id,seksi,kode"}));
+      if(arsipErr)throw arsipErr;
+      // Uncollect - card langsung hilang dari daftar aktif (BUKAN dihapus datanya, cuma status
+      // "lagi dikerjakan" di UI) - operator bisa collect ulang kapan aja buat lanjutin progress,
+      // badge "↻ Sudah di arsip" (arsipPasangKomponenMap) nunjukin progress terakhir begitu itu
+      // terjadi.
+      const selKeyProses=tahap==="ASSEMBLING"?"PASANG KOMPONEN":"KONTRIBUSI PASANG KOMPONEN";
+      const selKey=`${selKeyProses}_${panelId}`;
+      setSelectedKomponen((prev:any)=>({...prev,[selKey]:(prev[selKey]||[]).filter((k:string)=>k!==kode)}));
+    }catch{ /* best-effort, progress utama udah kesimpen */ }
+
     return true;
   };
 
@@ -2978,9 +3031,17 @@ export function OperatorView({user,viewMode}:any){
                       }
                       const flashKeyAsm=`${r.panelId}_${r.kode}_PASANG KOMPONEN_ASSEMBLING`;
                       const flashingAsm=!!savedFlash[flashKeyAsm];
+                      const arsipPctAsm=arsipPasangKomponenMap[`assembling_luar|${r.panelId}|${r.kode}`];
                       return(
                         <div style={{display:"flex",flexDirection:"column",gap:6}}>
                           <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4}}>KONTRIBUSI ASSEMBLING LUAR</div>
+                          {arsipPctAsm!==undefined&&pctAsm===0&&(
+                            <div>
+                              <span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:20,padding:"2px 8px"}}>
+                                ↻ Sudah di arsip - {arsipPctAsm}%
+                              </span>
+                            </div>
+                          )}
                           {workersAsm.length===0?(
                             <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:"ASSEMBLING"});setTempPekerjaIds(idsKompAsm);}}
                               style={{fontSize:12,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center"}}>
@@ -3712,6 +3773,17 @@ export function OperatorView({user,viewMode}:any){
                           </div>
                           {stWiring.sudahDisimpan100&&<span style={{fontSize:9,fontWeight:700,color:"#16a34a"}}>✅ Selesai</span>}
                         </div>
+                        {(()=>{
+                          const arsipPctWiring=arsipPasangKomponenMap[`wiring_control|${r.panelId}|${r.kode}`];
+                          if(arsipPctWiring===undefined||pctWiring!==0)return null;
+                          return(
+                            <div>
+                              <span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:20,padding:"2px 8px"}}>
+                                ↻ Sudah di arsip - {arsipPctWiring}%
+                              </span>
+                            </div>
+                          );
+                        })()}
                         {workersWiring.length===0?(
                           <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:"WIRING"});setTempPekerjaIds(idsKompWiring);}}
                             style={{fontSize:12,color:"#ea580c",fontWeight:700,background:"#fff7ed",border:"1.5px dashed #fdba74",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center"}}>
