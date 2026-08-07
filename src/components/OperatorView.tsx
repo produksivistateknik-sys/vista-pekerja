@@ -277,11 +277,25 @@ export function OperatorView({user,viewMode}:any){
   // timer_id (bukan lewat state timerAktif lokal, karena reminder ini bisa muncul buat timer
   // yang kartunya lagi gak ke-load di state saat ini) - tapi TETAP sinkronin timerAktif kalau
   // kebetulan key-nya lagi ke-load, biar UI kartu yang lagi kebuka gak nunjukin timer aktif palsu.
+  // AUDIT FIX (7 Agu 2026): sebelumnya TANPA retry & TANPA cek error - kalau update gagal
+  // (network drop/timeout), reminder tetap di-dismiss & state lokal tetap dianggap "selesai"
+  // secara optimistic walau row di DB tetap selesai=NULL - ini salah satu jalur ghost timer yang
+  // paling gak kelihatan (operator gak pernah tau timer-nya sebenarnya masih nyangkut). Sekarang
+  // dibungkus withRetry + cek error, SAMA PERSIS pola stopTimer() - reminder cuma di-dismiss kalau
+  // update beneran sukses.
   const selesaikanDariReminder=async(reminder:any)=>{
-    await supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",reminder.timer_id).is("selesai",null);
-    const key=timerKey(reminder.panel_id,reminder.kode_komponen,reminder.proses,reminder.pekerja_id);
-    setTimerAktif(prev=>{const n={...prev};delete n[key];return n;});
-    await dismissReminder(reminder.id);
+    try{
+      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",reminder.timer_id).is("selesai",null));
+      if(error){
+        alert("Gagal selesai-in timer: "+error.message);
+        return;
+      }
+      const key=timerKey(reminder.panel_id,reminder.kode_komponen,reminder.proses,reminder.pekerja_id);
+      setTimerAktif(prev=>{const n={...prev};delete n[key];return n;});
+      await dismissReminder(reminder.id);
+    }catch(err:any){
+      alert("Gagal selesai-in timer - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+    }
   };
 
   const [timerPernahMulai,setTimerPernahMulai]=useState<Record<string,boolean>>({});
@@ -747,6 +761,22 @@ export function OperatorView({user,viewMode}:any){
     }
   };
 
+  // AUDIT FIX (7 Agu 2026): safety net ghost timer - dicek langsung ke data live, 14 dari 15
+  // timer "aktif" di Timer Aktif tab ternyata ghost (progress komponen udah 100% tersimpan,
+  // timer-nya gak pernah ke-stop - root cause: simpan-progress dan stop-timer itu 2 tombol/2 aksi
+  // TERPISAH, gak atomik, operator bisa berhasil simpan progress 100% tanpa timer ikut ke-stop
+  // kalau lupa/gagal klik Selesai). Dipanggil SETELAH progress berhasil tersimpan (bukan di dalam
+  // try/catch yang sama) - REUSE stopTimer() apa adanya, gak ada logic stop baru. Kegagalan di
+  // sini best-effort, gak boleh dianggap gagalin progress yang udah kesimpen di atas.
+  const autoStopTimerJikaSelesai=async(panelId:number,kode:string,proses:string,pct:number,operatorIds:number[],tahap?:string)=>{
+    if(pct<100)return;
+    for(const pid of operatorIds){
+      if(timerAktif[timerKey(panelId,kode,proses,pid,tahap)]){
+        try{await stopTimer(pid,panelId,kode,proses,tahap);}catch{/* best-effort, progress utama udah aman */}
+      }
+    }
+  };
+
   const cekDanKirimNotifikasiAvailable=async(pekerjaId:number,panelId:number,kode:string,proses:string)=>{
     const panel=panelsMap[panelId];
     if(!panel)return;
@@ -1098,6 +1128,7 @@ export function OperatorView({user,viewMode}:any){
       return false;
     }
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
+    await autoStopTimerJikaSelesai(panelId,kode,proses,pct,idsKomp);
     if((proses==='WIRING CONTROL'||proses==='WIRING POWER')&&pct>=100){
       // Best-effort - progress utama udah kesimpen di atas, ini cuma beres-beres jadwal, gak
       // perlu ngeblok/gagal-in seluruh aksi kalau bagian ini yang kena koneksi lemot.
@@ -1246,6 +1277,7 @@ export function OperatorView({user,viewMode}:any){
       return false;
     }
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
+    await autoStopTimerJikaSelesai(panelId,kode,"BUSBAR",pctTahap,idsKomp,tahap);
     return true;
   };
 
@@ -1384,6 +1416,7 @@ export function OperatorView({user,viewMode}:any){
       return false;
     }
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
+    await autoStopTimerJikaSelesai(panelId,kode,"PASANG KOMPONEN",pctTahap,idsKomp,tahap);
     return true;
   };
 
@@ -1415,6 +1448,7 @@ export function OperatorView({user,viewMode}:any){
       if(!panel)continue;
       const newChecklist={...panel.checklist};
       const checkpointEntries:any[]=[];
+      const autoStopCandidates:{kode:string;pct:number;idsKomp:number[]}[]=[];
       let adaPerubahan=false;
       for(const r of panelRows){
         const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses===proses&&(t.komponen||[]).includes(r.kode));
@@ -1440,6 +1474,7 @@ export function OperatorView({user,viewMode}:any){
         }
         adaPerubahan=true;
         checkpointEntries.push({panel_id:panelId,kode_komponen:r.kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate});
+        autoStopCandidates.push({kode:r.kode,pct,idsKomp});
       }
       if(!adaPerubahan)continue;
       try{
@@ -1450,6 +1485,9 @@ export function OperatorView({user,viewMode}:any){
         const{error:panelErr}=await withRetry(()=>supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId));
         if(panelErr)throw panelErr;
         setPanelsMap((prev:any)=>({...prev,[panelId]:{...prev[panelId],checklist:newChecklist}}));
+        for(const c of autoStopCandidates){
+          await autoStopTimerJikaSelesai(panelId,c.kode,proses,c.pct,c.idsKomp);
+        }
       }catch{
         alert('Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Simpan Semua Progress lagi.');
       }
