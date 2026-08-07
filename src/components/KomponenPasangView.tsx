@@ -51,6 +51,32 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
   const[stagedFoto,setStagedFoto]=useState<Record<string,{file:File,previewUrl:string}[]>>({});
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
 
+  // BUG FIX (7 Agu 2026): sebelumnya gak ada cara tau "komponen ini progress-nya SAMA PERSIS
+  // kayak yang udah diarsip" - tombol Simpan Progress selalu aktif walau gak ada yang berubah,
+  // termasuk komponen yang progress-nya 100% dari SEBELUM fitur arsip ini ada (kejadian nyata:
+  // Groundplate LP-LOCKER, history 2026-08-01, jauh sebelum tab ini dibangun - gak pernah diarsip
+  // karena belum ada mekanismenya waktu itu). arsipMap dipakai buat nunjukin "✅ Sudah Diarsip"
+  // begitu pct saat ini == pct yang terakhir diarsip - tombol otomatis aktif lagi kalau progress
+  // berubah lagi (gak match arsip lama).
+  const[arsipMap,setArsipMap]=useState<Record<string,number>>({});
+  const fetchArsip=async()=>{
+    const{data}=await supabase.from("panel_seksi_archived").select("panel_id,kode,data").eq("seksi",tugas.seksi);
+    const map:Record<string,number>={};
+    (data||[]).forEach((r:any)=>{
+      const pctTahap=r.data?.pasangKomponenTahap?.[tugas.tahap]?.progress;
+      const pct=typeof pctTahap==="number"?pctTahap:r.data?.progress;
+      if(typeof pct==="number")map[`${r.panel_id}|${r.kode}`]=pct;
+    });
+    setArsipMap(map);
+  };
+  useEffect(()=>{
+    fetchArsip();
+    const ch=supabase.channel(`realtime-arsip-komponen-${tugas.seksi}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"panel_seksi_archived",filter:`seksi=eq.${tugas.seksi}`},fetchArsip)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[tugas.seksi]);
+
   const fetchData=async()=>{
     setLoading(true);
     const[panels,{data:bomRows},{data:relevanRows}]=await Promise.all([
@@ -398,6 +424,11 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
                     const saving=savingKey===key;
                     const fotoKodeArr=p.checklist?.[r.kode]?.fotoPemasangan||[];
                     const stagedKodeFoto=stagedFoto[key]||[];
+                    // BUG FIX (7 Agu 2026): "sudah diarsip" = pct sekarang PERSIS sama kayak pct
+                    // terakhir yang diarsip - kalau progress berubah lagi (naik/turun), otomatis
+                    // gak dianggap "sudah" lagi, tombol Simpan Progress aktif lagi.
+                    const arsipPct=arsipMap[`${p.id}|${r.kode}`];
+                    const sudahDiarsip=arsipPct!==undefined&&arsipPct===pct;
                     return(
                       <div key={r.kode} style={{border:"1.5px solid #eef0f3",borderRadius:12,padding:"12px 13px",background:pct>=100?"#f0fdf4":"#fafbfc"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
@@ -407,7 +438,11 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
                         <div style={{display:"flex",gap:6,marginBottom:tugas.fotoScope==="kode"?10:0}}>
                           {PCT_STEPS.map((s:number)=>{
                             const reached=pct>=s;
-                            const isNext=s===PCT_STEPS.find((x:number)=>x>pct);
+                            // BUG FIX (7 Agu 2026): "isNext" (highlight langkah berikutnya) cuma
+                            // masuk akal kalau progress SUDAH mulai (pct>0) - kalau komponen belum
+                            // disentuh sama sekali (pct===0), langkah 25% jangan ikut ke-highlight,
+                            // kelihatan kayak "udah kepilih" padahal belum ada kerjaan sama sekali.
+                            const isNext=pct>0&&s===PCT_STEPS.find((x:number)=>x>pct);
                             const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
                             return(
                               <button key={s} onClick={()=>updatePctLive(p,r.kode,r.isTahap,reached?prevStep:s)}
@@ -465,12 +500,13 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
                             </div>
                           </>
                         )}
-                        <button onClick={()=>simpanProgress(p,r.kode,r.nama,r.isTahap)} disabled={saving||pct===0}
+                        <button onClick={()=>simpanProgress(p,r.kode,r.nama,r.isTahap)} disabled={saving||pct===0||sudahDiarsip}
                           style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,width:"100%",
-                            background:saving||pct===0?"#cbd5e1":tugas.color,color:"#fff",border:"none",borderRadius:10,padding:"10px 10px",fontSize:12,fontWeight:700,
-                            cursor:saving||pct===0?"not-allowed":"pointer"}}>
-                          <i className={saving?"ti ti-loader-2":"ti ti-device-floppy"} style={{fontSize:14}}/>
-                          {saving?"Menyimpan...":"Simpan Progress"}
+                            background:sudahDiarsip?"#dcfce7":saving||pct===0?"#cbd5e1":tugas.color,
+                            color:sudahDiarsip?"#16a34a":"#fff",border:"none",borderRadius:10,padding:"10px 10px",fontSize:12,fontWeight:700,
+                            cursor:saving||pct===0||sudahDiarsip?"not-allowed":"pointer"}}>
+                          <i className={saving?"ti ti-loader-2":sudahDiarsip?"ti ti-circle-check-filled":"ti ti-device-floppy"} style={{fontSize:14}}/>
+                          {saving?"Menyimpan...":sudahDiarsip?"✅ Sudah Diarsip":"Simpan Progress"}
                         </button>
                       </div>
                     );
