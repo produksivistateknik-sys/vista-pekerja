@@ -1,5 +1,34 @@
 import { supabase } from "./supabase";
-import { ALL_PROSES } from "./panelTypes";
+import { ALL_PROSES, KOMPONEN_PROSES_MAP } from "./panelTypes";
+
+// QC TEST/PACKING itu proses whole-panel (penanda), bukan proses per-komponen - selalu relevan
+// apapun kode-nya. Cermin dari PROSES_TANPA_MAPPING_KOMPONEN di
+// vista-teknik/src/lib/panelHelpers.ts (NAMEPLATE/YELLOWMARK gak disalin ke sini - dua penanda
+// itu gak pernah lewat OperatorView/computeProsesStatus, murni Rencana Harian Vista Teknik).
+export const PROSES_TANPA_MAPPING_KOMPONEN=["QC TEST","PACKING"];
+
+// Cermin dari isKomponenRelevant/getRelevantProsesForKode di
+// vista-teknik/src/lib/panelHelpers.ts - beda cuma relevanSet/hasMappingSet di sini diterima
+// sebagai parameter eksplisit (dari bom_proses_relevan yang di-fetch lokal di OperatorView),
+// bukan dibaca dari module-global state kayak GLOBAL_PROSES_RELEVAN_SET di Vista Teknik (repo
+// ini gak punya infra global-state itu, cuma OperatorView yang butuh, jadi gak perlu dibikin).
+export const isKomponenRelevant=(kode:string,tipe:string,proses:string,relevanSet:Set<string>,hasMappingSet:Set<string>):boolean=>{
+  if(PROSES_TANPA_MAPPING_KOMPONEN.includes(proses))return true;
+  const mapKey=kode+"|"+tipe;
+  if(hasMappingSet.has(mapKey)){
+    return relevanSet.has(kode+"|"+tipe+"|"+proses);
+  }
+  const relevanProses=KOMPONEN_PROSES_MAP[kode];
+  if(!relevanProses)return true;
+  return relevanProses.includes(proses);
+};
+export function getRelevantProsesForKode(kode:string,tipe:string,relevanSet:Set<string>,hasMappingSet:Set<string>):string[]{
+  const mapKey=kode+"|"+tipe;
+  const base=hasMappingSet.has(mapKey)
+    ? ALL_PROSES.filter((pr:string)=>relevanSet.has(kode+"|"+tipe+"|"+pr))
+    : (KOMPONEN_PROSES_MAP[kode]||[]);
+  return [...new Set([...base,...PROSES_TANPA_MAPPING_KOMPONEN])];
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS panel/checklist/progress - dipisah dari App.tsx (Sprint 5, 5 Agu 2026)
@@ -67,17 +96,25 @@ export const PROSES_STATUS_GATE_PCT=25;
 // operator & tekan Mulai tapi gak ngefek sama sekali. Fix: kalau progress proses INI SENDIRI
 // udah >0, itu bukti nyata kerjaan udah mulai - gak mungkin lagi NOT YET apapun kondisi proses
 // sebelumnya. Gate NOT YET cuma relevan pas progress proses ini masih benar-benar 0.
-export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string):ProsesStatus{
+// BUG FIX (7 Agu 2026): "proses sebelumnya" dulu diambil mentah dari ALL_PROSES[idx-1] - gak
+// peduli proses itu RELEVAN atau enggak buat kode ini (mis. FINISHING gak relevan buat
+// Groundplate/CAPACITOR BANK-2, progress permanen 0, tapi duduk tepat sebelum RENDAM di
+// ALL_PROSES - bikin RENDAM ke-gate NOT YET padahal proses relevan terakhir sebelumnya, BENDING,
+// udah DONE). Fix: terima daftar proses RELEVAN (dari getRelevantProsesForKode) - gating chain
+// difilter ke situ dulu (urutan tetap ngikutin ALL_PROSES). Cermin dari fix yang sama di
+// vista-teknik/src/lib/panelHelpers.ts. relevantProses opsional, fallback ke ALL_PROSES penuh.
+export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string,relevantProses?:string[]):ProsesStatus{
   const progress=progressMap?.[proses]||0;
   if(progress>=100)return "DONE";
   if(progress>0)return "IN PROGRESS";
   if(proses==="BUSBAR")return "TO DO";
-  const prosesIdx=ALL_PROSES.indexOf(proses);
+  const chain=(relevantProses&&relevantProses.length>0)?ALL_PROSES.filter(p=>relevantProses.includes(p)):ALL_PROSES;
+  const prosesIdx=chain.indexOf(proses);
   if(prosesIdx<=0)return "TO DO";
   let prevIdx=prosesIdx-1;
-  while(prevIdx>=0&&ALL_PROSES[prevIdx]==="BUSBAR")prevIdx--;
+  while(prevIdx>=0&&chain[prevIdx]==="BUSBAR")prevIdx--;
   if(prevIdx<0)return "TO DO";
-  const prosesSebelumnya=ALL_PROSES[prevIdx];
+  const prosesSebelumnya=chain[prevIdx];
   const progressSebelumnya=progressMap?.[prosesSebelumnya]||0;
   if(progressSebelumnya<PROSES_STATUS_GATE_PCT)return "NOT YET";
   return "TO DO";

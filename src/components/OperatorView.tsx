@@ -7,7 +7,7 @@ import {
   timerKey, BUSBAR_TAHAP_LABEL,
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
-  computeProsesStatus, type ProsesStatus,
+  computeProsesStatus, getRelevantProsesForKode, type ProsesStatus,
 } from "../lib/panelHelpers";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
@@ -94,6 +94,26 @@ export function OperatorView({user,viewMode}:any){
         result[tipe]={label:typeMeta?.label||tipe,wps};
       });
       setBomPanelTypes(result);
+    });
+  },[]);
+  // BUG FIX (7 Agu 2026): status pipeline (computeProsesStatus) butuh tau proses APA AJA yang
+  // relevan buat kode+tipe_panel ini, biar gak nge-gate ke proses yang gak relevan (progress-nya
+  // permanen 0 walau kerjaan sebenernya udah lanjut). Sumbernya bom_proses_relevan - tabel sama
+  // yang dipakai wizard BOM di Vista Teknik (KapasitasPekerjaanTab) buat nentuin kolom "-" di
+  // Detail Progres. Di-fetch sekali di sini (lokal, gak ada infra global-state di repo ini) -
+  // pola sama kayak fetch bom_master/panel_type_meta/panel_wp_meta di atas.
+  const [prosesRelevanSet,setProsesRelevanSet]=useState<Set<string>>(new Set());
+  const [prosesRelevanHasMapping,setProsesRelevanHasMapping]=useState<Set<string>>(new Set());
+  useEffect(()=>{
+    supabase.from("bom_proses_relevan").select("*").then(({data}:any)=>{
+      const relevanSet=new Set<string>();
+      const hasMappingSet=new Set<string>();
+      (data||[]).forEach((r:any)=>{
+        relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
+        hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
+      });
+      setProsesRelevanSet(relevanSet);
+      setProsesRelevanHasMapping(hasMappingSet);
     });
   },[]);
   const getEffCfg=(tipe:string)=>(bomPanelTypes?.[tipe]?.wps?.length>0)?bomPanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
@@ -2026,7 +2046,8 @@ export function OperatorView({user,viewMode}:any){
             // Timer pernah dimulai (walau udah di-stop lagi) - buat gating input qty di POTONG/BENDING/STEL/FINISHING.
             const idsKompRow=getFlatOperatorIds(task,kode);
             const sudahPernahMulai=idsKompRow.some((pid:number)=>!!timerPernahMulai[`${panelId}_${kode}_${proses}_${pid}`]);
-            const pipelineStatus=computeProsesStatus(cl.progress,proses);
+            const relevantProsesKode=getRelevantProsesForKode(kode,panel.tipe,prosesRelevanSet,prosesRelevanHasMapping);
+            const pipelineStatus=computeProsesStatus(cl.progress,proses,relevantProsesKode);
             rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
               isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp,
               aktualSelesai:getFirstCompletionDate(cl,proses),wiringBadge,sudahDisimpan100,sudahPernahMulai,pipelineStatus});
