@@ -28,6 +28,14 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
   const goPrev=()=>{if(index>0){setIndex(index-1);resetView();}};
   const goNext=()=>{if(index<fotos.length-1){setIndex(index+1);resetView();}};
 
+  // BUG FIX (7 Agu 2026): <img> gak punya loading/error state sama sekali - sementara foto lagi
+  // kedownload (bisa beberapa detik di sinyal lemot pabrik) atau kalau beneran gagal load, yang
+  // kelihatan cuma backdrop hitam modal ini - persis kayak "layar hitam, loading gak kelar-kelar"
+  // yang dilaporkan, gak ada beda visual antara "masih loading" sama "macet total". Reset ke
+  // "loading" tiap ganti foto (prev/next/thumbnail) - status lama gak kebawa ke foto berikutnya.
+  const[imgStatus,setImgStatus]=useState<"loading"|"loaded"|"error">("loading");
+  useEffect(()=>{setImgStatus("loading");},[index]);
+
   useEffect(()=>{
     const handler=(e:KeyboardEvent)=>{
       if(e.key==="ArrowLeft")goPrev();
@@ -94,6 +102,7 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
   return(
     <div onClick={onClose}
       style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.92)",zIndex:9999,display:"flex",flexDirection:"column" as const}}>
+      <style>{`@keyframes fotoZoomSpin{to{transform:rotate(360deg)}}`}</style>
       <div onClick={(e:any)=>e.stopPropagation()}
         style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 18px",background:"linear-gradient(rgba(0,0,0,0.55),transparent)",flexShrink:0}}>
         <div style={{minWidth:0}}>
@@ -145,8 +154,26 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
             onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
             onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
             style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",touchAction:"none" as const,cursor:zoom>1?(draggingRef.current?"grabbing":"grab"):"default"}}>
-            <img src={foto.url} draggable={false}
-              style={{maxWidth:"90%",maxHeight:"90%",objectFit:"contain" as const,transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`,transformOrigin:"center",transition:draggingRef.current?"none":"transform .08s"}}/>
+            {imgStatus==="loading"&&(
+              <div style={{position:"absolute" as const,display:"flex",flexDirection:"column" as const,alignItems:"center",gap:10,color:"#fff",pointerEvents:"none" as const}}>
+                <i className="ti ti-loader-2" style={{fontSize:36,animation:"fotoZoomSpin 0.8s linear infinite"}}/>
+                <div style={{fontSize:12,color:"#cbd5e1"}}>Memuat foto...</div>
+              </div>
+            )}
+            {imgStatus==="error"?(
+              <div style={{display:"flex",flexDirection:"column" as const,alignItems:"center",gap:14,color:"#fff"}}>
+                <i className="ti ti-photo-off" style={{fontSize:56,color:"#94a3b8"}}/>
+                <div style={{fontSize:13,fontWeight:600,textAlign:"center" as const}}>Foto gagal dimuat - cek koneksi internet.</div>
+                <button onClick={()=>window.open(foto.url,"_blank")}
+                  style={{display:"flex",alignItems:"center",gap:6,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",borderRadius:8,padding:"10px 18px",fontSize:13,fontWeight:700,cursor:"pointer"}}>
+                  <i className="ti ti-external-link" style={{fontSize:15}}/> Buka di Tab Baru
+                </button>
+              </div>
+            ):(
+              <img key={foto.url} src={foto.url} draggable={false}
+                onLoad={()=>setImgStatus("loaded")} onError={()=>setImgStatus("error")}
+                style={{maxWidth:"90%",maxHeight:"90%",objectFit:"contain" as const,opacity:imgStatus==="loaded"?1:0,transform:`translate(${pan.x}px,${pan.y}px) scale(${zoom})`,transformOrigin:"center",transition:draggingRef.current?"none":"opacity .15s,transform .08s"}}/>
+            )}
           </div>
         )}
         {fotos.length>1&&index<fotos.length-1&&(
