@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 import { QC_ITEMS } from "../lib/panelTypes";
 import { getUrgensiPanel } from "../lib/progressHelpers";
 import { fetchAllPanels } from "../lib/panelHelpers";
-import { hapusFotoDariStorage } from "../lib/fotoHelpers";
+import { hapusFotoDariStorage, compressImageNp } from "../lib/fotoHelpers";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { isVideoFoto, isGenericFoto } from "../lib/mediaThumb";
@@ -67,8 +67,14 @@ export function QCChecklistTab({user}:any){
     const uploadKey=`${panelId}_${itemKey}`;
     setUploadingId(uploadKey);
     try{
-      const fileName=`${panelId}_${itemKey}_${Date.now()}_${file.name}`;
-      const{error:upErr}=await supabase.storage.from("qc-photos").upload(fileName,file);
+      // BUG FIX (7 Agu 2026): jalur ini gak pernah kompres foto (upload file mentah) - foto
+      // kamera HP 3-8MB bikin loading lambat pas ditampilin lagi. QC bisa upload video/file
+      // apapun (allowVideo/allowAnyFile di MediaPickerSheet), jadi kompres CUMA kalau beneran
+      // image - compressImageNp gak bisa proses video/file lain (decode-nya lewat <img>).
+      const isImg=file.type.startsWith("image/");
+      const uploadBlob:Blob=isImg?await compressImageNp(file):file;
+      const fileName=isImg?`${panelId}_${itemKey}_${Date.now()}.jpg`:`${panelId}_${itemKey}_${Date.now()}_${file.name}`;
+      const{error:upErr}=await supabase.storage.from("qc-photos").upload(fileName,uploadBlob,isImg?{contentType:"image/jpeg"}:undefined);
       if(upErr){alert("Gagal upload: "+upErr.message);setUploadingId(null);return;}
       const{data:urlData}=supabase.storage.from("qc-photos").getPublicUrl(fileName);
       const panel=panelsList.find((p:any)=>p.id===panelId);
@@ -287,7 +293,7 @@ export function QCChecklistTab({user}:any){
                                       <div style={{fontSize:7,color:"#64748b",marginTop:2,wordBreak:"break-all" as const}}>{f.name||"File"}</div>
                                     </div>
                                   ):(
-                                    <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                                    <img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
                                   )}
                                   {isVideo&&(
                                     <div style={{position:"absolute" as const,inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none" as const}}>

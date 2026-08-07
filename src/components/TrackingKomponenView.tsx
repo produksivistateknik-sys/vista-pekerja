@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { Lbl } from "./ui/Primitives";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
-import { hapusFotoDariStorage } from "../lib/fotoHelpers";
+import { hapusFotoDariStorage, compressImageNp } from "../lib/fotoHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TRACKING KOMPONEN VIEW - dipisah dari App.tsx (Sprint 7)
@@ -125,10 +125,13 @@ export function TrackingKomponenView({user}:any){
       return;
     }
     for(const file of files){
-      const ext=file.name.split(".").pop();
-      const safeName=`${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+      // BUG FIX (7 Agu 2026): jalur ini gak pernah kompres sama sekali - foto kamera HP 3-8MB
+      // langsung diupload mentah, bikin loading lambat pas ditampilin lagi. MediaPickerSheet di
+      // sini gak allowVideo/allowAnyFile (selalu image), jadi aman dikompres tanpa gating tipe.
+      const blob=await compressImageNp(file);
+      const safeName=`${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
       const path=`${tr.id}/${safeName}`;
-      const{error:upErr}=await supabase.storage.from("tracking-komponen").upload(path,file);
+      const{error:upErr}=await supabase.storage.from("tracking-komponen").upload(path,blob,{contentType:"image/jpeg"});
       if(upErr){
         alert("Gagal upload foto "+file.name+": "+upErr.message);
         continue;
@@ -287,7 +290,7 @@ export function TrackingKomponenView({user}:any){
                       {(fotoMap[r.id]||[]).map((foto:any)=>(
                         <div key={foto.id} style={{position:"relative" as const}}>
                           <a href={foto.file_url} target="_blank" rel="noopener noreferrer">
-                            <img src={foto.file_url} style={{width:64,height:64,objectFit:"cover" as const,borderRadius:8,border:"1px solid #e2e8f0",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}/>
+                            <img src={foto.file_url} loading="lazy" style={{width:64,height:64,objectFit:"cover" as const,borderRadius:8,border:"1px solid #e2e8f0",boxShadow:"0 1px 3px rgba(0,0,0,0.08)"}}/>
                           </a>
                           <button onClick={(e:any)=>{e.preventDefault();hapusFotoRiwayat(foto.id,foto.file_url,r.id);}}
                             style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>

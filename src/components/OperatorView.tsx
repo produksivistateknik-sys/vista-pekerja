@@ -3201,7 +3201,7 @@ export function OperatorView({user,viewMode}:any){
                               {fotoArr.map((f:any,fi:number)=>(
                                 <div key={`saved_${fi}`} style={{position:"relative" as const}}>
                                   <img onClick={()=>setFotoViewerPk({fotos:fotoArr,startIndex:fi,label:`Pasang Komponen_${r.panel.nama}`})}
-                                    src={f.url} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                                    src={f.url} loading="lazy" style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
                                   <button onClick={(e:any)=>{e.stopPropagation();hapusFotoPk(r.panelId,f.url);}}
                                     style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                     <i className="ti ti-trash" style={{fontSize:10}}/>
@@ -3841,7 +3841,7 @@ export function OperatorView({user,viewMode}:any){
                             {fotoArr.map((f:any,fi:number)=>(
                               <div key={`saved_${fi}`} style={{position:"relative" as const}}>
                                 <img onClick={()=>setFotoViewerWiring({fotos:fotoArr,startIndex:fi,label:`${r.item?.nama}_${r.panel.nama}`})}
-                                  src={f.url} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                                  src={f.url} loading="lazy" style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
                                 <button onClick={(e:any)=>{e.stopPropagation();hapusFotoWiring(r.panelId,r.kode,f.url);}}
                                   style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                   <i className="ti ti-trash" style={{fontSize:10}}/>

@@ -386,7 +386,7 @@ export function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,
                         {fotoArr.map((f:any,fi:number)=>(
                           <div key={`saved_${fi}`} style={{position:"relative" as const}}>
                             <img onClick={()=>setFotoViewer({fotos:fotoArr,startIndex:fi,label:`${tugas.label}_${p.nama}`})}
-                              src={f.url} style={{width:62,height:62,borderRadius:10,objectFit:"cover" as const,border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.06)",cursor:"pointer"}}/>
+                              src={f.url} loading="lazy" style={{width:62,height:62,borderRadius:10,objectFit:"cover" as const,border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.06)",cursor:"pointer"}}/>
                             <button onClick={(e:any)=>{e.stopPropagation();hapusFotoTersimpan(p.id,f.url);}}
                               style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                               <i className="ti ti-trash" style={{fontSize:10}}/>
