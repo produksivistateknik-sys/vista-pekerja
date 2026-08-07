@@ -74,6 +74,42 @@ export function getLatestProgress(cl:any, proses:string){
   }
   return cl?.progress?.[proses]||0;
 }
+// Ambil progress dari history (sumber paling akurat) - cermin dari
+// vista-teknik/src/lib/panelHelpers.ts getProgressFromHistory.
+export function getProgressFromHistory(cl:any, proses:string):number{
+  const hist=cl?.history?.[proses];
+  if(hist&&hist.length>0){
+    const sorted=[...hist].sort((a:any,b:any)=>{
+      const tA=a.ts||a.tanggal||"";
+      const tB=b.ts||b.tanggal||"";
+      return tB.localeCompare(tA);
+    });
+    return sorted[0].pct||0;
+  }
+  return -1;
+}
+// Ambil progress terbaik: history > progressByDate > progress. Cermin dari
+// vista-teknik/src/lib/panelHelpers.ts getBestProgress/getBestProgressMap.
+export function getBestProgress(cl:any, proses:string):number{
+  const fromHist=getProgressFromHistory(cl,proses);
+  if(fromHist>=0)return fromHist;
+  const fromDate=getLatestProgress(cl,proses);
+  if(fromDate>0)return fromDate;
+  return cl?.progress?.[proses]||0;
+}
+// BUG FIX (7 Agu 2026): computeProsesStatus dulu dikasih cl.progress mentah - field itu
+// diupdate lewat updatePctManual/updateQtyProses yang salah satunya (updateQtyProses) NULIS
+// KE SERVER DI-DEBOUNCE, jadi rawan race sama write lain (klik PCT_STEPS/Kunci Progress) yang
+// nulis progressByDate+history duluan - hasilnya cl.progress[proses] bisa nyangkut nilai LAMA
+// sendirian walau progressByDate+history udah bener 100% (kejadian nyata: AFIF/FS.4/POTONG/
+// CAPACITOR BANK-2, kolom Status di Rencana Harian bilang "Selesai" tapi Status Pipeline bilang
+// "In Progress"). Fix: bangun progressMap dari getBestProgress buat SEMUA proses (gating chain-
+// nya juga baca proses SEBELUMNYA, harus sumber yang sama), bukan cl.progress mentah.
+export function getBestProgressMap(cl:any):Record<string,number>{
+  const map:Record<string,number>={};
+  ALL_PROSES.forEach(pr=>{map[pr]=getBestProgress(cl,pr);});
+  return map;
+}
 export type ProsesStatus="NOT YET"|"TO DO"|"IN PROGRESS"|"DONE";
 // Ambang progress proses SEBELUMNYA (dalam rantai ALL_PROSES) supaya komponen ini dianggap
 // "siap dikerjakan" (TO DO) - di bawah ini masih NOT YET. Cermin dari computeProsesStatus() di

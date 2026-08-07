@@ -7,7 +7,7 @@ import {
   timerKey, BUSBAR_TAHAP_LABEL,
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
-  computeProsesStatus, getRelevantProsesForKode, type ProsesStatus,
+  computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
 } from "../lib/panelHelpers";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
@@ -2047,7 +2047,7 @@ export function OperatorView({user,viewMode}:any){
             const idsKompRow=getFlatOperatorIds(task,kode);
             const sudahPernahMulai=idsKompRow.some((pid:number)=>!!timerPernahMulai[`${panelId}_${kode}_${proses}_${pid}`]);
             const relevantProsesKode=getRelevantProsesForKode(kode,panel.tipe,prosesRelevanSet,prosesRelevanHasMapping);
-            const pipelineStatus=computeProsesStatus(cl.progress,proses,relevantProsesKode);
+            const pipelineStatus=computeProsesStatus(getBestProgressMap(cl),proses,relevantProsesKode);
             rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
               isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp,
               aktualSelesai:getFirstCompletionDate(cl,proses),wiringBadge,sudahDisimpan100,sudahPernahMulai,pipelineStatus});
