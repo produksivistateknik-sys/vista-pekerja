@@ -111,6 +111,13 @@ export function computeProsesStatus(progressMap:Record<string,number>|undefined|
   if(progress>=100)return "DONE";
   if(progress>0)return "IN PROGRESS";
   if(proses==="BUSBAR"||proses==="QC TEST")return "TO DO";
+  // WIRING CONTROL/WIRING POWER (7 Agu 2026): sengaja gak nunggu PASANG KOMPONEN kayak chain
+  // normal - gate langsung ke progress RAKIT (skip PASANG KOMPONEN sepenuhnya), dan threshold-nya
+  // "udah IN PROGRESS" (progress>0), BUKAN ambang 25% standar. Cermin dari fix yang sama di
+  // vista-teknik/src/lib/panelHelpers.ts.
+  if(proses==="WIRING CONTROL"||proses==="WIRING POWER"){
+    return(progressMap?.["RAKIT"]||0)>0?"TO DO":"NOT YET";
+  }
   const chain=(relevantProses&&relevantProses.length>0)?ALL_PROSES.filter(p=>relevantProses.includes(p)):ALL_PROSES;
   const prosesIdx=chain.indexOf(proses);
   if(prosesIdx<=0)return "TO DO";
