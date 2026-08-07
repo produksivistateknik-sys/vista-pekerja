@@ -182,12 +182,12 @@ export function OperatorView({user,viewMode}:any){
   useEffect(()=>{
     try{localStorage.setItem(wsKey+"_komp",JSON.stringify({tanggal:TODAY,data:selectedKomponen}));}catch{}
   },[selectedKomponen,wsKey]);
-  // Sistem Section (RENDAM/PAINTING doang - lihat simpanSectionPaintingRendam). carryOverPct =
+  // Sistem Section (POTONG/RENDAM/PAINTING - lihat simpanSectionPaintingRendam). carryOverPct =
   // snapshot progress SEBELUM collect, dipasang begitu komponen dikonfirmasi collect - biar badge
   // "Lanjutan X%" nunjukin angka BEKU dari section sebelumnya, bukan ikut berubah pas qty diketik
   // ulang di section yang lagi jalan. sectionMulaiMap = timestamp lokal "Mulai" pertama kali buat
   // section yang lagi terbuka (persisted per proses+tanggal, direset begitu section disimpan) -
-  // dipakai buat rentang waktu di Tab Review Painting.
+  // dipakai buat rentang waktu di Tab Review Potong/Painting.
   const [carryOverPct,setCarryOverPct]=useState<Record<string,number>>(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem(wsKey+"_carryOverPct")||"{}");
@@ -1440,88 +1440,17 @@ export function OperatorView({user,viewMode}:any){
     return true;
   };
 
-  // Khusus POTONG: simpan checkpoint progress buat SEMUA komponen terkumpul sekaligus
-  // (skip yang masih 0% - biar gak keluar alert berulang per baris).
-  // BUG FIX (Sprint 4, 5 Agu 2026): dulu manggil lockSingleKomponen() satu-satu berurutan - tiap
-  // panggilan nulis update() checklist sendiri dibangun dari panelsMap yang sama/stale (dibaca
-  // sekali per panggilan, gak ikut ke-update oleh panggilan sebelumnya dalam loop yang sama).
-  // Kalau 2+ komponen eligible ada di PANEL YANG SAMA, yang diproses belakangan nimpa balik hasil
-  // tulis komponen sebelumnya di panel itu - persis root cause yang ditemukan & diperbaiki di
-  // simpanSectionPaintingRendam (Section PAINTING/RENDAM). Sekarang digrup per panel dulu - kalau
-  // cuma 1 komponen eligible di panel itu, tetap lewat lockSingleKomponen (gak ada resiko timpa-
-  // menimpa, gak perlu ubah jalur yang udah kepakai luas); kalau 2+, satu update checklist per
-  // panel yang nyakup semua komponennya sekaligus.
-  const lockBulkKomponen=async(proses:string,rows:any[])=>{
-    const eligible=rows.filter((r:any)=>r.pct>0);
-    if(eligible.length===0){alert("Belum ada progress yang bisa disimpan.");return;}
-    const byPanel=new Map<number,any[]>();
-    eligible.forEach((r:any)=>{
-      if(!byPanel.has(r.panelId))byPanel.set(r.panelId,[]);
-      byPanel.get(r.panelId)!.push(r);
-    });
-    for(const[panelId,panelRows] of byPanel){
-      if(panelRows.length===1){
-        await lockSingleKomponen(panelId,panelRows[0].kode,proses);
-        continue;
-      }
-      const panel=panelsMap[panelId];
-      if(!panel)continue;
-      const newChecklist={...panel.checklist};
-      const checkpointEntries:any[]=[];
-      const autoStopCandidates:{kode:string;pct:number;idsKomp:number[]}[]=[];
-      let adaPerubahan=false;
-      for(const r of panelRows){
-        const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses===proses&&(t.komponen||[]).includes(r.kode));
-        if(!task)continue;
-        if(!canLockKomponen(task,r.kode,panelId,proses))continue;
-        const cl=newChecklist[r.kode];
-        if(!cl||cl.qty===0)continue;
-        const pct=getProgressOnDate(cl,proses,viewDate);
-        if(pct===0)continue;
-        const prevHist=cl.history?.[proses]||[];
-        const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
-        const idsKomp=(task.pekerja_per_komponen||{})[r.kode]||[];
-        const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
-        const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
-        if(existIdx>=0){
-          if(prevHist[existIdx].pct===pct)continue;
-          const updatedHist=[...prevHist];
-          updatedHist[existIdx]={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
-          newChecklist[r.kode]={...cl,history:{...(cl.history||{}),[proses]:updatedHist}};
-        } else {
-          const newEntry={pct,tanggal:viewDate,shift,ts:new Date().toISOString()};
-          newChecklist[r.kode]={...cl,history:{...(cl.history||{}),[proses]:[...prevHist,newEntry]}};
-        }
-        adaPerubahan=true;
-        checkpointEntries.push({panel_id:panelId,kode_komponen:r.kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate});
-        autoStopCandidates.push({kode:r.kode,pct,idsKomp});
-      }
-      if(!adaPerubahan)continue;
-      try{
-        if(checkpointEntries.length>0){
-          const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert(checkpointEntries));
-          if(cpErr)throw cpErr;
-        }
-        const{error:panelErr}=await withRetry(()=>supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId));
-        if(panelErr)throw panelErr;
-        setPanelsMap((prev:any)=>({...prev,[panelId]:{...prev[panelId],checklist:newChecklist}}));
-        for(const c of autoStopCandidates){
-          await autoStopTimerJikaSelesai(panelId,c.kode,proses,c.pct,c.idsKomp);
-        }
-      }catch{
-        alert('Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Simpan Semua Progress lagi.');
-      }
-    }
-  };
-
-  // Sistem Section (RENDAM/PAINTING doang - "digabung 1 login Painting" tapi section counter
-  // TERPISAH per proses, karena keduanya sudah tampil sebagai band/card sendiri-sendiri).
+  // Sistem Section - dipakai POTONG, RENDAM, PAINTING (section counter TERPISAH per proses,
+  // karena semuanya sudah tampil sebagai band/card sendiri-sendiri).
   // SENGAJA gak reuse lockSingleKomponen: fungsi itu nge-UPDATE entry history yang sudah ada
-  // buat tanggal+shift yang sama (existIdx merge) - tepat buat POTONG (1 checkpoint/hari), tapi
+  // buat tanggal+shift yang sama (existIdx merge) - cocok buat checkpoint-per-hari biasa, tapi
   // SALAH buat section, karena 1 komponen yang lanjut di 2 section beda di hari yang sama HARUS
   // jadi 2 entry history terpisah (masing-masing section number-nya sendiri), bukan ketimpa jadi
-  // 1. Nomor section dihitung dari section tertinggi yang sudah ada hari ini (baca dari
-  // panelsMap yang sudah termuat) - TIDAK ada tabel/counter terpisah.
+  // 1. Nomor section dihitung dari section tertinggi yang sudah ada hari ini DI SHIFT AKTIF ini
+  // (baca dari panelsMap yang sudah termuat) - TIDAK ada tabel/counter terpisah. BUG FIX (7 Agu
+  // 2026): dulu cuma filter tanggal, section ikut lanjut nomor lintas shift (Shift 2 nerusin
+  // nomor terakhir Shift 1) - sekarang di-scope juga ke shift aktif (variabel `shift`, dari
+  // state sesi kerja yang sudah ada), Shift 2 selalu mulai dari Section 1 baru.
   const simpanSectionPaintingRendam=async(proses:string,rows:any[])=>{
     const eligible=rows.filter((r:any)=>r.pct>0);
     if(eligible.length===0){alert("Belum ada progress yang bisa disimpan.");return;}
@@ -1536,7 +1465,7 @@ export function OperatorView({user,viewMode}:any){
     Object.values(panelsMap).forEach((p:any)=>{
       Object.values(p.checklist||{}).forEach((cl:any)=>{
         (cl?.history?.[proses]||[]).forEach((h:any)=>{
-          if(h.tanggal===viewDate&&typeof h.section==="number"&&h.section>maxSection)maxSection=h.section;
+          if(h.tanggal===viewDate&&String(h.shift)===String(shift)&&typeof h.section==="number"&&h.section>maxSection)maxSection=h.section;
         });
       });
     });
@@ -2426,7 +2355,7 @@ export function OperatorView({user,viewMode}:any){
                       <button onClick={()=>setKomponenPopupJenis(null)}
                         style={{padding:"8px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",cursor:"pointer"}}>Batal</button>
                       <button onClick={()=>{
-                          if(proses==="RENDAM"||proses==="PAINTING"){
+                          if(proses==="POTONG"||proses==="RENDAM"||proses==="PAINTING"){
                             // Snapshot progress SEBELUM collect - badge "Lanjutan X%" pakai angka
                             // beku ini, bukan pct yang ikut berubah pas qty diketik ulang.
                             setCarryOverPct((prevCo:any)=>{
@@ -2587,9 +2516,9 @@ export function OperatorView({user,viewMode}:any){
             background:adaTimerJalanPotong?"#dc2626":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
           {adaTimerJalanPotong?`⏹ Selesai ${potongTimerInfo.label}`:"▶ Mulai"}
         </button>
-        <button onClick={()=>lockBulkKomponen(proses,bulkTargetRows)}
+        <button onClick={()=>simpanSectionPaintingRendam(proses,bulkTargetRows)}
           style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-          💾 Simpan Semua Progress
+          💾 Simpan Progress
         </button>
       </div>
     ):null;
@@ -3125,7 +3054,7 @@ export function OperatorView({user,viewMode}:any){
                       const locked=isCellLocked(r.panelId,r.kode,proses);
                       const floor=getLockedFloor(r.panelId,r.kode,proses);
                       const qtyLocked=PROSES_QTY_LOCK_SEBELUM_MULAI.includes(proses)&&!r.sudahPernahMulai;
-                      const lanjutanPct=(proses==="RENDAM"||proses==="PAINTING")?carryOverPct[`${proses}_${r.panelId}_${r.kode}`]:undefined;
+                      const lanjutanPct=(proses==="POTONG"||proses==="RENDAM"||proses==="PAINTING")?carryOverPct[`${proses}_${r.panelId}_${r.kode}`]:undefined;
                       return(
                         <>
                         {lanjutanPct!==undefined&&(

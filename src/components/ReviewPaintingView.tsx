@@ -63,7 +63,7 @@ export function ReviewPaintingView(){
               const delta=qtySkrg-qtySblm;
               if(delta<=0)return;
               rows.push({
-                proses,section:h.section,sectionMulai:h.sectionMulai,tanggal:h.tanggal,
+                proses,section:h.section,sectionMulai:h.sectionMulai,tanggal:h.tanggal,shift:h.shift||"1",
                 panelId:p.id,panelNama:p.nama,proyek:woMap[p.wo_id]?.proyek||"(Tanpa Proyek)",wo:woMap[p.wo_id]?.wo||"",
                 kode,namaKomponen:kodeNamaMap[kode]||kode,qtyDelta:delta,qtyTotal,ts:h.ts,
               });
@@ -94,27 +94,39 @@ export function ReviewPaintingView(){
     return()=>{cancelled=true;};
   },[viewDate,kodeNamaMap]);
 
-  // PROSES -> SECTION -> PANEL -> list komponen (1 section bisa lintas proyek/panel, jadi
-  // dikelompokkan lagi per panel di dalam section biar gampang dipindai, bukan list rata).
+  // PROSES -> SHIFT -> SECTION -> PANEL -> list komponen (1 section bisa lintas proyek/panel,
+  // jadi dikelompokkan lagi per panel di dalam section biar gampang dipindai, bukan list rata).
+  // BUG FIX (7 Agu 2026): nomor section sekarang di-scope per shift (Shift 2 selalu mulai dari
+  // Section 1 baru) - key grouping dipecah shift+section biar Section 1 Shift 1 gak numpuk sama
+  // Section 1 Shift 2 kalau kebetulan angkanya sama.
   const groupedProses=useMemo(()=>{
-    const byProses:Record<string,Record<number,{section:number,mulai:string,selesai:string,items:any[]}>>={RENDAM:{},PAINTING:{}};
+    const byProses:Record<string,Record<string,{shift:string,section:number,mulai:string,selesai:string,items:any[]}>>={RENDAM:{},PAINTING:{}};
     entries.forEach((r:any)=>{
-      if(!byProses[r.proses][r.section])byProses[r.proses][r.section]={section:r.section,mulai:r.sectionMulai,selesai:r.ts,items:[]};
-      const grp=byProses[r.proses][r.section];
+      const key=r.shift+"|"+r.section;
+      if(!byProses[r.proses][key])byProses[r.proses][key]={shift:r.shift,section:r.section,mulai:r.sectionMulai,selesai:r.ts,items:[]};
+      const grp=byProses[r.proses][key];
       if(r.ts>grp.selesai)grp.selesai=r.ts;
       grp.items.push(r);
     });
-    return["RENDAM","PAINTING"].map(proses=>({
-      proses,
-      sections:Object.values(byProses[proses]).sort((a,b)=>b.section-a.section).map(sec=>{
+    return["RENDAM","PAINTING"].map(proses=>{
+      const allSections=Object.values(byProses[proses]).map(sec=>{
         const byPanel:Record<number,{panelNama:string,proyek:string,items:any[]}>={};
         sec.items.forEach((r:any)=>{
           if(!byPanel[r.panelId])byPanel[r.panelId]={panelNama:r.panelNama,proyek:r.proyek,items:[]};
           byPanel[r.panelId].items.push(r);
         });
         return{...sec,panels:Object.values(byPanel).sort((a,b)=>a.panelNama.localeCompare(b.panelNama))};
-      }),
-    })).filter(g=>g.sections.length>0);
+      });
+      const byShift:Record<string,typeof allSections>={};
+      allSections.forEach(sec=>{
+        if(!byShift[sec.shift])byShift[sec.shift]=[];
+        byShift[sec.shift].push(sec);
+      });
+      const shifts=Object.keys(byShift).sort((a,b)=>a.localeCompare(b)).map(shift=>({
+        shift,sections:byShift[shift].sort((a,b)=>b.section-a.section),
+      }));
+      return{proses,shifts};
+    }).filter(g=>g.shifts.length>0);
   },[entries]);
 
   const toggleSection=(key:string)=>setExpandedSection(prev=>({...prev,[key]:!(prev[key]??true)}));
@@ -152,19 +164,26 @@ export function ReviewPaintingView(){
           <div style={{fontSize:12,marginTop:4}}>Belum ada section yang disimpan di tanggal ini</div>
         </div>
       ):(
-        groupedProses.map(({proses,sections})=>{
+        groupedProses.map(({proses,shifts})=>{
           const pc=PROSES_COLOR[proses]||"#7c3aed";
-          const totalQtyProses=sections.reduce((s:number,sec:any)=>s+sec.items.reduce((s2:number,r:any)=>s2+r.qtyDelta,0),0);
+          const totalSections=shifts.reduce((s:number,sh:any)=>s+sh.sections.length,0);
+          const totalQtyProses=shifts.reduce((s:number,sh:any)=>s+sh.sections.reduce((s2:number,sec:any)=>s2+sec.items.reduce((s3:number,r:any)=>s3+r.qtyDelta,0),0),0);
           return(
           <div key={proses} style={{marginBottom:18}}>
             <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:9}}>
               <span style={{width:26,height:26,borderRadius:8,background:pc+"1c",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14}}>{PROSES_ICON[proses]}</span>
               <span style={{fontWeight:800,fontSize:13,color:"#1e293b",letterSpacing:.2}}>{proses}</span>
               <span style={{flex:1,height:1,background:pc+"26"}}/>
-              <span style={{fontSize:10,fontWeight:700,color:pc,background:pc+"14",borderRadius:20,padding:"3px 9px"}}>{sections.length} section · {totalQtyProses} pcs</span>
+              <span style={{fontSize:10,fontWeight:700,color:pc,background:pc+"14",borderRadius:20,padding:"3px 9px"}}>{totalSections} section · {totalQtyProses} pcs</span>
             </div>
+            {shifts.map(({shift,sections}:any)=>(
+            <div key={shift} style={{marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:6,paddingLeft:2}}>
+                <span style={{fontSize:9.5,fontWeight:800,color:"#64748b",letterSpacing:.3}}>SHIFT {shift}</span>
+                <span style={{flex:1,height:1,background:"#e2e8f0"}}/>
+              </div>
             {sections.map((sec:any)=>{
-              const secKey=proses+"|"+sec.section;
+              const secKey=proses+"|"+shift+"|"+sec.section;
               const isOpen=expandedSection[secKey]??true;
               const totalQty=sec.items.reduce((s:number,r:any)=>s+r.qtyDelta,0);
               return(
@@ -213,6 +232,8 @@ export function ReviewPaintingView(){
                 </div>
               );
             })}
+            </div>
+            ))}
           </div>
           );
         })
