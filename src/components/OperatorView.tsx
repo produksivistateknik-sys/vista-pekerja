@@ -8,12 +8,10 @@ import {
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
   computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
+  PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA,
 } from "../lib/panelHelpers";
-import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { Badge, Card, Lbl, Inp, Btn } from "./ui/Primitives";
-import { MediaPickerSheet } from "./ui/MediaPickerSheet";
-import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { WoUrgentBanner } from "./WoUrgentBanner";
 
 // Warna status pipeline (readiness per-komponen, dari computeProsesStatus) - cermin dari
@@ -116,33 +114,9 @@ export function OperatorView({user,viewMode}:any){
       setProsesRelevanHasMapping(hasMappingSet);
     });
   },[]);
-  // FITUR (7 Agu 2026): auto-arsip Pasang Komponen (Assembling Luar tahap ASSEMBLING, Wiring
-  // Control tahap WIRING) begitu operator klik "Simpan Progress" - berapapun persennya, gak
-  // nunggu 100% kayak trigger DB panels_auto_archive_seksi() yang lama. Perlu tau progress
-  // arsip TERAKHIR per (seksi,panelId,kode) buat badge "↻ Sudah di arsip" begitu komponen yang
-  // sama di-collect ulang buat lanjutin progress. Realtime-subscribed biar sinkron kalau ada
-  // sesi lain/reload nulis ke tabel yang sama.
-  const [arsipPasangKomponenMap,setArsipPasangKomponenMap]=useState<Record<string,number>>({});
-  const fetchArsipPasangKomponen=async()=>{
-    const{data}=await supabase.from("panel_seksi_archived").select("panel_id,seksi,kode,data").in("seksi",["assembling_luar","wiring_control"]);
-    const map:Record<string,number>={};
-    (data||[]).forEach((r:any)=>{
-      const tahap=r.seksi==="assembling_luar"?"ASSEMBLING":"WIRING";
-      // Komponen tahap (Box Control/Pintu) simpen di pasangKomponenTahap[tahap].progress; komponen
-      // non-tahap (mis. Groundplate, lewat updatePctManual) simpen progress polos di data.progress.
-      const pctTahap=r.data?.pasangKomponenTahap?.[tahap]?.progress;
-      const pct=typeof pctTahap==="number"?pctTahap:r.data?.progress;
-      if(typeof pct==="number")map[`${r.seksi}|${r.panel_id}|${r.kode}`]=pct;
-    });
-    setArsipPasangKomponenMap(map);
-  };
-  useEffect(()=>{
-    fetchArsipPasangKomponen();
-    const ch=supabase.channel("realtime-panel-seksi-archived-op")
-      .on("postgres_changes",{event:"*",schema:"public",table:"panel_seksi_archived"},fetchArsipPasangKomponen)
-      .subscribe();
-    return()=>{supabase.removeChannel(ch);};
-  },[]);
+  // Fetch+realtime arsip Pasang Komponen (buat badge "Sudah di arsip") DIHAPUS dari sini (7 Agu
+  // 2026) - progress Pasang Komponen (termasuk archive-nya) full pindah ke tab "Komponen"
+  // terpisah (KomponenPasangView.tsx), gak lagi ditampilkan/diedit dari OperatorView.
   const getEffCfg=(tipe:string)=>(bomPanelTypes?.[tipe]?.wps?.length>0)?bomPanelTypes[tipe]:(PANEL_TYPES as any)[tipe];
   const [shift,setShift]=useState(()=>{
     try{
@@ -384,8 +358,8 @@ export function OperatorView({user,viewMode}:any){
   // WIRING CONTROL, sekarang (5 Agu 2026 sore) jadi band Card terpisah sendiri - lihat render
   // "Kontribusi Pasang Komponen" tepat setelah {myProses.map(...)} di bawah.
   // progress["WIRING CONTROL"] (kerja kabel beneran) TETAP independen, gak kesentuh sama sekali.
-  const PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA=["Box Control","Pintu"];
-  const PASANG_KOMPONEN_URUTAN_TAHAP=["ASSEMBLING","WIRING"];
+  // PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA/PASANG_KOMPONEN_URUTAN_TAHAP di-import dari panelHelpers
+  // (7 Agu 2026) - dipakai bareng KomponenPasangView (tab "Komponen" baru).
   // Proses qty-mode yang qty-nya dikunci sampai operator klik Mulai (biar gak bisa keisi
   // tanpa operator ter-assign). RENDAM/PAINTING/RAKIT/PASANG KOMPONEN dulu gak ada di sini -
   // itu lubang yang sama persis kayak bug "operator kosong padahal 100%" yang udah diperbaiki
@@ -1009,130 +983,8 @@ export function OperatorView({user,viewMode}:any){
     }
   };
 
-  // Foto Pemasangan buat Box Control/Pintu di WIRING CONTROL - disimpan per-kode di
-  // checklist[kode].fotoPemasangan, gak nyentuh progress/timer/qty proses yang udah jalan.
-  const[stagedFotoWiring,setStagedFotoWiring]=useState<Record<string,{file:File,previewUrl:string}[]>>({});
-  const[savingFotoWiring,setSavingFotoWiring]=useState<string|null>(null);
-  const[fotoViewerWiring,setFotoViewerWiring]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
-
-  const pilihFotoWiring=(panelId:number,kode:string,fileList:FileList|null)=>{
-    if(!fileList||fileList.length===0)return;
-    const key=`${panelId}_${kode}`;
-    const dipilih=Array.from(fileList).map(file=>({file,previewUrl:URL.createObjectURL(file)}));
-    setStagedFotoWiring(prev=>({...prev,[key]:[...(prev[key]||[]),...dipilih]}));
-  };
-  const batalkanFotoWiring=(panelId:number,kode:string,idx:number)=>{
-    const key=`${panelId}_${kode}`;
-    setStagedFotoWiring(prev=>{
-      const arr=prev[key]||[];
-      URL.revokeObjectURL(arr[idx]?.previewUrl);
-      return{...prev,[key]:arr.filter((_,i)=>i!==idx)};
-    });
-  };
-  const simpanFotoWiring=async(panelId:number,kode:string)=>{
-    const key=`${panelId}_${kode}`;
-    const staged=stagedFotoWiring[key]||[];
-    if(staged.length===0)return;
-    const panel=panelsMap[panelId];
-    if(!panel)return;
-    setSavingFotoWiring(key);
-    try{
-      const cl=panel.checklist?.[kode]||{};
-      const existing=cl.fotoPemasangan||[];
-      const fotoTerupload:any[]=[];
-      for(const s of staged){
-        const blob=await compressImageNp(s.file);
-        const path=`${panelId}/${kode}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-        const{error:upErr}=await supabase.storage.from("wiring-komponen-photos").upload(path,blob,{contentType:"image/jpeg"});
-        if(upErr){alert(`Gagal upload salah satu foto: ${upErr.message}`);continue;}
-        const{data:urlData}=supabase.storage.from("wiring-komponen-photos").getPublicUrl(path);
-        fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
-      }
-      const newFoto=[...existing,...fotoTerupload];
-      const newChecklist={...panel.checklist,[kode]:{...cl,fotoPemasangan:newFoto}};
-      await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
-      setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
-      staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
-      setStagedFotoWiring(prev=>{const next={...prev};delete next[key];return next;});
-    }catch(err:any){
-      alert("Terjadi kesalahan: "+err.message);
-    }
-    setSavingFotoWiring(null);
-  };
-
-  // Hapus foto Wiring yang SUDAH tersimpan - progress tahap (pasangKomponenTahap.WIRING) sama
-  // sekali gak disentuh, cuma checklist[kode].fotoPemasangan. Kalau ini bikin fotoPemasangan
-  // kosong lagi, syarat wajib foto di simpanProgressTahapPasangKomponen otomatis berlaku lagi
-  // pas operator coba Simpan Progress berikutnya - gak perlu state tambahan.
-  const hapusFotoWiring=async(panelId:number,kode:string,fotoUrl:string)=>{
-    if(!window.confirm("Hapus foto ini?"))return;
-    const panel=panelsMap[panelId];
-    if(!panel)return;
-    const cl=panel.checklist?.[kode]||{};
-    const newFoto=(cl.fotoPemasangan||[]).filter((f:any)=>f.url!==fotoUrl);
-    const newChecklist={...panel.checklist,[kode]:{...cl,fotoPemasangan:newFoto}};
-    await hapusFotoDariStorage("wiring-komponen-photos",fotoUrl);
-    await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
-    setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
-  };
-
-  // Foto Pemasangan Pasang Komponen (Assembling Luar) - PER PANEL (bukan per-kode, satu
-  // galeri buat seluruh pemasangan panel itu), disimpan di kolom panels.pasang_komponen_photos.
-  const[stagedFotoPk,setStagedFotoPk]=useState<Record<number,{file:File,previewUrl:string}[]>>({});
-  const[savingFotoPk,setSavingFotoPk]=useState<number|null>(null);
-  const[fotoViewerPk,setFotoViewerPk]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
-
-  const pilihFotoPk=(panelId:number,fileList:FileList|null)=>{
-    if(!fileList||fileList.length===0)return;
-    const dipilih=Array.from(fileList).map(file=>({file,previewUrl:URL.createObjectURL(file)}));
-    setStagedFotoPk(prev=>({...prev,[panelId]:[...(prev[panelId]||[]),...dipilih]}));
-  };
-  const batalkanFotoPk=(panelId:number,idx:number)=>{
-    setStagedFotoPk(prev=>{
-      const arr=prev[panelId]||[];
-      URL.revokeObjectURL(arr[idx]?.previewUrl);
-      return{...prev,[panelId]:arr.filter((_,i)=>i!==idx)};
-    });
-  };
-  const simpanFotoPk=async(panelId:number)=>{
-    const staged=stagedFotoPk[panelId]||[];
-    if(staged.length===0)return;
-    const panel=panelsMap[panelId];
-    if(!panel)return;
-    setSavingFotoPk(panelId);
-    try{
-      const existing=panel.pasang_komponen_photos||[];
-      const fotoTerupload:any[]=[];
-      for(const s of staged){
-        const blob=await compressImageNp(s.file);
-        const path=`${panelId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-        const{error:upErr}=await supabase.storage.from("pasang-komponen-photos").upload(path,blob,{contentType:"image/jpeg"});
-        if(upErr){alert(`Gagal upload salah satu foto: ${upErr.message}`);continue;}
-        const{data:urlData}=supabase.storage.from("pasang-komponen-photos").getPublicUrl(path);
-        fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
-      }
-      const newFoto=[...existing,...fotoTerupload];
-      await supabase.from("panels").update({pasang_komponen_photos:newFoto}).eq("id",panelId);
-      setPanelsMap(prev=>({...prev,[panelId]:{...panel,pasang_komponen_photos:newFoto}}));
-      staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
-      setStagedFotoPk(prev=>{const next={...prev};delete next[panelId];return next;});
-    }catch(err:any){
-      alert("Terjadi kesalahan: "+err.message);
-    }
-    setSavingFotoPk(null);
-  };
-
-  // Hapus foto Assembling Luar yang SUDAH tersimpan - progress tahap (pasangKomponenTahap.
-  // ASSEMBLING) sama sekali gak disentuh, cuma panels.pasang_komponen_photos.
-  const hapusFotoPk=async(panelId:number,fotoUrl:string)=>{
-    if(!window.confirm("Hapus foto ini?"))return;
-    const panel=panelsMap[panelId];
-    if(!panel)return;
-    const newFoto=(panel.pasang_komponen_photos||[]).filter((f:any)=>f.url!==fotoUrl);
-    await hapusFotoDariStorage("pasang-komponen-photos",fotoUrl);
-    await supabase.from("panels").update({pasang_komponen_photos:newFoto}).eq("id",panelId);
-    setPanelsMap(prev=>({...prev,[panelId]:{...panel,pasang_komponen_photos:newFoto}}));
-  };
+  // Foto Pemasangan Wiring Control/Assembling Luar (state+handler upload/hapus) DIHAPUS dari
+  // sini (7 Agu 2026) - pindah ke tab "Komponen" terpisah (KomponenPasangView.tsx).
 
   // Kunci progress — simpan ke Supabase
   // Kunci progress SATU komponen aja (dipanggil dari tombol per kartu di mobile)
@@ -1356,173 +1208,11 @@ export function OperatorView({user,viewMode}:any){
     return true;
   };
 
-  // ── PASANG KOMPONEN (Box Control/Pintu): 2 tahap independen (ASSEMBLING + WIRING) yang
-  // digabung jadi progress["PASANG KOMPONEN"] - pola PERSIS sama kayak BUSBAR di atas, cuma
-  // "urutan" cuma 2 tahap dan tahap WIRING wajib foto sebelum bisa disimpan (lihat
-  // simpanProgressTahapPasangKomponen). Reuse hitungProgressBusbarGabungan buat rata-ratanya -
-  // fungsinya generic (cuma butuh {tahap:{progress}} + urutan), gak busbar-spesifik walau namanya.
-  const getPasangKomponenTahapState=(cl:any)=>{
-    if(cl?.pasangKomponenTahap){
-      const fresh:any={};
-      PASANG_KOMPONEN_URUTAN_TAHAP.forEach((t:string)=>{fresh[t]=cl.pasangKomponenTahap[t]||{progress:0,sudahDisimpan100:false};});
-      return fresh;
-    }
-    // Migrasi lunak: progress PASANG KOMPONEN lama (qty-based, sebelum fitur tahap ini ada)
-    // dianggap murni kontribusi ASSEMBLING - WIRING mulai dari 0%, biar gak ada progress yang
-    // keliatan mundur pas fitur ini pertama kali jalan buat panel yang sudah ada.
-    const existing=cl?.progress?.["PASANG KOMPONEN"]||0;
-    return{ASSEMBLING:{progress:existing,sudahDisimpan100:existing>=100},WIRING:{progress:0,sudahDisimpan100:false}};
-  };
-  // AUDIT FIX (5 Agu 2026): Box Control/Pintu SEBELUM fitur tahap ini ada sudah bisa punya
-  // operator PASANG KOMPONEN ter-assign lewat jalur biasa (pekerja_per_komponen[kode] = array
-  // flat, BUKAN object per-tahap). Baca langsung .ASSEMBLING/.WIRING dari array flat balik
-  // undefined -> [] - assignment lama jadi KELIATAN KOSONG padahal ada histori operatornya.
-  // Helper ini migrasi lunak sama persis prinsip getPasangKomponenTahapState: array flat lama
-  // dianggap operator ASSEMBLING (itu yang eksis duluan), WIRING mulai kosong.
-  const getPasangKomponenOperatorIds=(task:any,kode:string,tahap:string):number[]=>{
-    const v=(task?.pekerja_per_komponen||{})[kode];
-    if(Array.isArray(v))return tahap==="ASSEMBLING"?v:[];
-    return (v&&typeof v==="object")?(v[tahap]||[]):[];
-  };
-  const canSimpanPasangKomponenTahap=(task:any,panelId:number,kode:string,tahap:string):boolean=>{
-    const ids=getPasangKomponenOperatorIds(task,kode,tahap);
-    if(ids.length===0)return false;
-    return ids.some((pid:number)=>!!timerAktif[timerKey(panelId,kode,"PASANG KOMPONEN",pid,tahap)]||!!timerSelesaiHariIni[timerKey(panelId,kode,"PASANG KOMPONEN",pid,tahap)]);
-  };
-  const updatePctManualPasangKomponenTahap=async(panelId:number,kode:string,tahap:string,pct:number)=>{
-    const panel=panelsMap[panelId];
-    if(!panel)return;
-    const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{}};
-    const tahapState=getPasangKomponenTahapState(cl);
-    const newTahap={...tahapState,[tahap]:{...tahapState[tahap],progress:pct}};
-    const combined=hitungProgressBusbarGabungan(newTahap,PASANG_KOMPONEN_URUTAN_TAHAP);
-    const newChecklist={
-      ...panel.checklist,
-      [kode]:{
-        ...cl,
-        pasangKomponenTahap:newTahap,
-        progressByDate:{...(cl.progressByDate||{}),"PASANG KOMPONEN":{...((cl.progressByDate||{})["PASANG KOMPONEN"]||{}),[viewDate]:combined}},
-        progress:{...(cl.progress||{}),"PASANG KOMPONEN":combined},
-      }
-    };
-    setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
-    try{
-      const{error}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId));
-      if(error)throw error;
-      if(combined>0){
-        const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses==="PASANG KOMPONEN"&&(t.komponen||[]).includes(kode));
-        const idsKomp=getPasangKomponenOperatorIds(task,kode,tahap);
-        const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
-        const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
-        await withRetry(()=>supabase.from('progress_checkpoint_log').insert({
-          panel_id:panelId,kode_komponen:kode,proses:"PASANG KOMPONEN",checkpoint:combined,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
-        }));
-      }
-    }catch{
-      alert("Gagal simpan progress ke server - koneksi lambat. Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.");
-    }
-  };
-  // BUG FIX (6 Agu 2026): sebelumnya fungsi ini SELALU cari task lewat proses==="PASANG
-  // KOMPONEN" sendiri, walau dipanggil buat tahap WIRING (yang task-nya proses WIRING CONTROL -
-  // lihat pkTasks=tasksByProses["WIRING CONTROL"] di caller). Kalau panel itu gak kebetulan ada
-  // task PASANG KOMPONEN terpisah hari itu (Wiring Control kerja komponen Box Control/Pintu
-  // independen dari Assembling Luar - ini valid & umum), task jadi undefined -> return false
-  // TANPA alert - operator klik Simpan Progress dan gak kejadian apa-apa, kelihatan kayak error.
-  // Fix: terima `task` yang udah bener dari caller (r.task), jangan re-derive di sini.
-  const simpanProgressTahapPasangKomponen=async(task:any,panelId:number,kode:string,tahap:string):Promise<boolean>=>{
-    const panel=panelsMap[panelId];
-    if(!panel)return false;
-    if(!task)return false;
-    const cl=panel.checklist?.[kode];
-    if(!cl)return false;
-    if(!canSimpanPasangKomponenTahap(task,panelId,kode,tahap)){
-      alert('Belum bisa disimpan - pastikan operator sudah dipilih dan timer sudah pernah dijalankan buat tahap ini.');
-      return false;
-    }
-    const tahapState=getPasangKomponenTahapState(cl);
-    const pctTahap=tahapState[tahap]?.progress||0;
-    if(pctTahap===0){alert('Progress tahap ini masih 0%, belum ada yang bisa disimpan.');return false;}
-    // Tahap WIRING wajib punya minimal 1 foto pemasangan sebelum bisa disimpan - beda dari
-    // ASSEMBLING yang gak wajib foto. ini gantiin section "Foto Pemasangan" lama yang cuma
-    // pelengkap opsional, sekarang jadi syarat wajib buat tahap kontribusi Wiring Control.
-    if(tahap==="WIRING"&&(cl.fotoPemasangan||[]).length===0){
-      alert('Belum bisa disimpan - upload minimal 1 foto pemasangan dulu.');
-      return false;
-    }
-    const newTahap={
-      ...tahapState,
-      [tahap]:{...tahapState[tahap],progress:pctTahap,sudahDisimpan100:pctTahap>=100},
-    };
-    const combined=hitungProgressBusbarGabungan(newTahap,PASANG_KOMPONEN_URUTAN_TAHAP);
-
-    const prevHist=cl.history?.["PASANG KOMPONEN"]||[];
-    const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
-    const idsKomp=getPasangKomponenOperatorIds(task,kode,tahap);
-    const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
-    const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
-    const checkpointEntry={panel_id:panelId,kode_komponen:kode,proses:"PASANG KOMPONEN",checkpoint:combined,pekerja_nama:pekerjaNamaLog,tanggal:viewDate};
-
-    // AUDIT FIX (5 Agu 2026): base checklist buat commit final ini diambil FRESH dari DB tepat
-    // sebelum ditulis - bukan panelsMap lokal yang bisa basi (OperatorView gak punya realtime
-    // subscription buat tabel panels, cuma renhar). Pola sama persis fix saveQtyEdit di
-    // ManajemenWO hari ini, biar gak nimpa balik perubahan pekerja lain ke kode LAIN (atau field
-    // lain di kode yang sama, misal fotoPemasangan) di panel yang sama.
-    const{data:freshRow}=await supabase.from('panels').select('checklist').eq('id',panelId).single();
-    const freshChecklist=freshRow?.checklist||panel.checklist;
-    const freshCl=freshChecklist[kode]||cl;
-    const newChecklist={...freshChecklist};
-    const patchBase={pasangKomponenTahap:newTahap,progress:{...(freshCl.progress||{}),"PASANG KOMPONEN":combined},progressByDate:{...(freshCl.progressByDate||{}),"PASANG KOMPONEN":{...((freshCl.progressByDate||{})["PASANG KOMPONEN"]||{}),[viewDate]:combined}}};
-    if(existIdx>=0){
-      const updatedHist=[...prevHist];
-      updatedHist[existIdx]={...updatedHist[existIdx],pct:combined,ts:new Date().toISOString()};
-      newChecklist[kode]={...freshCl,...patchBase,history:{...(freshCl.history||{}),"PASANG KOMPONEN":updatedHist}};
-    } else {
-      const newEntry={pct:combined,tanggal:viewDate,shift,ts:new Date().toISOString()};
-      newChecklist[kode]={...freshCl,...patchBase,history:{...(freshCl.history||{}),"PASANG KOMPONEN":[...prevHist,newEntry]}};
-    }
-
-    try{
-      const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert([checkpointEntry]));
-      if(cpErr)throw cpErr;
-      const{error:panelErr}=await withRetry(()=>supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId));
-      if(panelErr)throw panelErr;
-    }catch{
-      alert('Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Simpan Progress lagi.');
-      return false;
-    }
-    setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
-    await autoStopTimerJikaSelesai(panelId,kode,"PASANG KOMPONEN",pctTahap,idsKomp,tahap);
-
-    // FITUR (7 Agu 2026): auto-arsip begitu "Simpan Progress" diklik - berapapun persennya,
-    // gak nunggu 100%. ON CONFLICT (panel_id,seksi,kode) di tabel yang sama persis dipakai
-    // trigger panels_auto_archive_seksi() (unique constraint sudah ada) - jadi ini UPDATE entry
-    // yang sama kalau komponen ini pernah diarsip sebelumnya, bukan bikin baris baru (anti-
-    // duplikasi udah dijamin skema, gak perlu logic tambahan). Best-effort - progress utama
-    // udah aman tersimpan di atas, kegagalan di sini gak boleh gagalin seluruh aksi Simpan.
-    const seksi=tahap==="ASSEMBLING"?"assembling_luar":"wiring_control";
-    try{
-      const itemNama=getEffCfg(panel.tipe)?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
-      const{data:woRow}=panel.wo_id?await supabase.from("work_orders").select("wo").eq("id",panel.wo_id).maybeSingle():{data:null};
-      const archiveData=tahap==="ASSEMBLING"
-        ?{pasangKomponenTahap:{ASSEMBLING:newTahap.ASSEMBLING},pasang_komponen_photos:panel.pasang_komponen_photos||[]}
-        :{pasangKomponenTahap:{WIRING:newTahap.WIRING},fotoPemasangan:freshCl.fotoPemasangan||cl.fotoPemasangan||[]};
-      const{error:arsipErr}=await withRetry(()=>supabase.from("panel_seksi_archived").upsert({
-        panel_id:panelId,wo_id:panel.wo_id||null,seksi,kode,komponen_nama:itemNama,data:archiveData,
-        panel_nama:panel.nama,panel_tipe:panel.tipe,proyek_snapshot:task.proyek||null,wo_number_snapshot:woRow?.wo||null,
-        diarsipkan_pada:new Date().toISOString(),diarsipkan_oleh:user.nama,
-      },{onConflict:"panel_id,seksi,kode"}));
-      if(arsipErr)throw arsipErr;
-      // Uncollect - card langsung hilang dari daftar aktif (BUKAN dihapus datanya, cuma status
-      // "lagi dikerjakan" di UI) - operator bisa collect ulang kapan aja buat lanjutin progress,
-      // badge "↻ Sudah di arsip" (arsipPasangKomponenMap) nunjukin progress terakhir begitu itu
-      // terjadi.
-      const selKeyProses=tahap==="ASSEMBLING"?"PASANG KOMPONEN":"KONTRIBUSI PASANG KOMPONEN";
-      const selKey=`${selKeyProses}_${panelId}`;
-      setSelectedKomponen((prev:any)=>({...prev,[selKey]:(prev[selKey]||[]).filter((k:string)=>k!==kode)}));
-    }catch{ /* best-effort, progress utama udah kesimpen */ }
-
-    return true;
-  };
+  // PASANG KOMPONEN tahap (Box Control/Pintu: getPasangKomponenTahapState/
+  // updatePctManualPasangKomponenTahap/simpanProgressTahapPasangKomponen dst) DIHAPUS dari sini
+  // (7 Agu 2026) - pindah total ke tab "Komponen" terpisah (KomponenPasangView.tsx), termasuk
+  // upsert arsip + uncollect-nya. Data yang dibaca/ditulis SAMA PERSIS (checklist[kode].
+  // pasangKomponenTahap), gak ada migrasi data.
 
   // Sistem Section - dipakai POTONG, RENDAM, PAINTING (section counter TERPISAH per proses,
   // karena semuanya sudah tampil sebagai band/card sendiri-sendiri).
@@ -2788,9 +2478,6 @@ export function OperatorView({user,viewMode}:any){
                     display:"flex",flexDirection:"column",gap:10,
                     opacity:isLocked?0.55:1,
                     pointerEvents:isLocked?"none" as const:"auto" as const}}>
-                    {proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"&&(
-                      <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4}}>SECTION 1 · FABRIKASI</div>
-                    )}
                     {isBusbarProses?(
                       // ── BUSBAR: SEMUA tahap (4/3) tampil sekaligus, masing-masing berdiri sendiri
                       // (operator, timer, persentase, simpan) - gak ada "tahap aktif"/estafet lagi.
@@ -3029,120 +2716,11 @@ export function OperatorView({user,viewMode}:any){
                       <div>AKTUAL: <b style={{color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtD(r.aktualSelesai):"–"}</b></div>
                     </div>
 
-                    {proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"&&PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(r.item?.nama)?(()=>{
-                      // Box Control/Pintu: kartu PASANG KOMPONEN cuma nampilin & isi tahap
-                      // ASSEMBLING (kontribusi Assembling Luar) - tahap WIRING diisi dari band
-                      // terpisah "Kontribusi Pasang Komponen" (lihat di bawah semua kartu proses),
-                      // digabung jadi progress["PASANG KOMPONEN"] via hitungProgressBusbarGabungan.
-                      // AUDIT FIX (5 Agu 2026): tambah cek user.sub_bagian==="Assembling Luar" -
-                      // konsisten sama cardMode asli (pct-mode PASANG KOMPONEN cuma buat sub_bagian
-                      // ini). Sebelumnya kondisi ini gak cek sub_bagian sama sekali, jadi viewer
-                      // LAIN yang kebetulan punya akses PASANG KOMPONEN juga bakal lihat UI tahap
-                      // ini buat Box Control/Pintu, bukan pengalaman normal mereka.
-                      const clAsm=panelsMap[r.panelId]?.checklist?.[r.kode];
-                      const tahapStateAsm=getPasangKomponenTahapState(clAsm);
-                      const stAsm=tahapStateAsm.ASSEMBLING||{progress:0,sudahDisimpan100:false};
-                      const pctAsm=stAsm.progress||0;
-                      const idsKompAsm=getPasangKomponenOperatorIds(r.task,r.kode,"ASSEMBLING");
-                      const workersAsm=idsKompAsm.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
-                      const bisaEditAsm=canSimpanPasangKomponenTahap(r.task,r.panelId,r.kode,"ASSEMBLING");
-                      const timerKeysAsm=workersAsm.map((w:any)=>timerKey(r.panelId,r.kode,"PASANG KOMPONEN",w.id,"ASSEMBLING"));
-                      const anyTimerRunningAsm=timerKeysAsm.some((k:string)=>!!timerAktif[k]);
-                      const anyLoadingAsm=timerKeysAsm.some((k:string)=>timerLoading===k);
-                      let durasiLabelAsm="";
-                      const runningKeyAsm=timerKeysAsm.find((k:string)=>timerAktif[k]);
-                      if(runningKeyAsm){
-                        const timer=timerAktif[runningKeyAsm];
-                        const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
-                        const totalMenit=(timerDurasiSelesai[runningKeyAsm]||0)+menitBerjalan;
-                        const jam=Math.floor(totalMenit/60);
-                        const menit=Math.round(totalMenit%60);
-                        const detik=Math.max(0,Math.round(totalMenit*60));
-                        durasiLabelAsm=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
-                      }
-                      const flashKeyAsm=`${r.panelId}_${r.kode}_PASANG KOMPONEN_ASSEMBLING`;
-                      const flashingAsm=!!savedFlash[flashKeyAsm];
-                      const arsipPctAsm=arsipPasangKomponenMap[`assembling_luar|${r.panelId}|${r.kode}`];
-                      return(
-                        <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                          <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4}}>KONTRIBUSI ASSEMBLING LUAR</div>
-                          {arsipPctAsm!==undefined&&pctAsm===0&&(
-                            <div>
-                              <span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:20,padding:"2px 8px"}}>
-                                ↻ Sudah di arsip - {arsipPctAsm}%
-                              </span>
-                            </div>
-                          )}
-                          {workersAsm.length===0?(
-                            <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:"ASSEMBLING"});setTempPekerjaIds(idsKompAsm);}}
-                              style={{fontSize:12,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center"}}>
-                              + Pilih Operator
-                            </button>
-                          ):(
-                            <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
-                              {workersAsm.map((w:any)=>(
-                                <span key={w.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,
-                                  color:DIVISI_CONFIG[w.divisi]?.color||"#64748b",background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
-                                  borderRadius:20,padding:"4px 10px"}}>
-                                  {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
-                                </span>
-                              ))}
-                              <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:"ASSEMBLING"});setTempPekerjaIds(idsKompAsm);}}
-                                style={{fontSize:10,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"4px 8px",cursor:"pointer"}}>
-                                ✏️ Edit Operator
-                              </button>
-                            </div>
-                          )}
-                          {workersAsm.length>0&&(
-                            <button disabled={anyLoadingAsm}
-                              onClick={()=>{
-                                if(anyTimerRunningAsm){
-                                  workersAsm.forEach((w:any)=>{
-                                    const k=timerKey(r.panelId,r.kode,"PASANG KOMPONEN",w.id,"ASSEMBLING");
-                                    if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,"PASANG KOMPONEN","ASSEMBLING");
-                                  });
-                                } else {
-                                  workersAsm.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,"PASANG KOMPONEN",viewDate,"ASSEMBLING"));
-                                }
-                              }}
-                              style={{fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,cursor:anyLoadingAsm?"not-allowed":"pointer",
-                                background:anyTimerRunningAsm?"#fef2f2":"#f0fdf4",color:anyTimerRunningAsm?"#dc2626":"#16a34a"}}>
-                              {anyLoadingAsm?"...":anyTimerRunningAsm?`⏹ Selesai ${durasiLabelAsm}`:"▶ Mulai"}
-                            </button>
-                          )}
-                          <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                            {PCT_STEPS.map((s:number)=>{
-                              const reached=pctAsm>=s;
-                              const isNext=s===PCT_STEPS.find((x:number)=>x>pctAsm);
-                              const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
-                              return(
-                                <button key={s} disabled={!bisaEditAsm}
-                                  onClick={()=>{if(bisaEditAsm)updatePctManualPasangKomponenTahap(r.panelId,r.kode,"ASSEMBLING",reached?prevStep:s);}}
-                                  style={{flex:1,minWidth:40,padding:"9px 4px",borderRadius:8,border:"none",
-                                    cursor:bisaEditAsm?"pointer":"not-allowed",
-                                    background:reached?pColor(s):isNext?"#eff6ff":"#f1f5f9",
-                                    color:reached?"#fff":isNext?pc:"#94a3b8",
-                                    fontWeight:700,fontSize:11,outline:isNext&&bisaEditAsm?`2px solid ${pc}`:"none"}}>
-                                  {reached?"✓":`${s}%`}
-                                </button>
-                              );
-                            })}
-                          </div>
-                          <button disabled={pctAsm===0} onClick={async()=>{
-                              const berhasil=await simpanProgressTahapPasangKomponen(r.task,r.panelId,r.kode,"ASSEMBLING");
-                              if(berhasil&&pctAsm<100){
-                                setSavedFlash(prev=>({...prev,[flashKeyAsm]:true}));
-                                setTimeout(()=>setSavedFlash(prev=>({...prev,[flashKeyAsm]:false})),1500);
-                              }
-                            }}
-                            style={{fontSize:12,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,
-                              cursor:pctAsm===0?"not-allowed":"pointer",
-                              background:flashingAsm?"#16a34a":"#eff6ff",color:flashingAsm?"#fff":"#1d4ed8"}}>
-                            {flashingAsm?"✅ Tersimpan":"💾 Simpan Progress"}
-                          </button>
-                        </div>
-                      );
-                    })():cardMode==='qty'?(()=>{
+                    {/* Kartu tahap ASSEMBLING (Box Control/Pintu) DIHAPUS (7 Agu 2026) - pindah ke
+                        tab "Komponen" terpisah (KomponenPasangView). PASANG KOMPONEN sekarang
+                        fallback ke branch pct-mode di bawah (di-null-kan di situ juga - progress
+                        Pasang Komponen full pindah ke tab baru, gak lagi diisi dari sini). */}
+                    {cardMode==='qty'?(()=>{
                       const locked=isCellLocked(r.panelId,r.kode,proses);
                       const floor=getLockedFloor(r.panelId,r.kode,proses);
                       const qtyLocked=PROSES_QTY_LOCK_SEBELUM_MULAI.includes(proses)&&!r.sudahPernahMulai;
@@ -3185,91 +2763,26 @@ export function OperatorView({user,viewMode}:any){
                         </div>
                         </>
                       );
-                    })():isBusbarProses?null:(()=>{
-                      // Pasang Komponen (Assembling Luar) pakai mode % - tapi tetap kunci
-                      // sampai operator dipilih dulu, konsisten sama semangat "Klik Mulai
-                      // dulu" yang berlaku di mode qty. Proses lain yang lewat jalur PCT_STEPS
-                      // ini gak kepengaruh (bisaEditPk default ke bisaEdit apa adanya).
-                      const bisaEditPk=(proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar")?(bisaEdit&&workers.length>0):bisaEdit;
-                      const arsipPctPk=(proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"&&r.pct===0)?arsipPasangKomponenMap[`assembling_luar|${r.panelId}|${r.kode}`]:undefined;
+                    })():(isBusbarProses||proses==="PASANG KOMPONEN")?null:(()=>{
                       return(
-                      <>
-                      {arsipPctPk!==undefined&&(
-                        <div style={{marginBottom:6}}>
-                          <span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:20,padding:"2px 8px"}}>
-                            ↻ Sudah di arsip - {arsipPctPk}%
-                          </span>
-                        </div>
-                      )}
                       <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
                         {PCT_STEPS.map((s:number)=>{
                           const reached=r.pct>=s;
                           const isNext=!done&&s===PCT_STEPS.find((x:number)=>x>r.pct);
                           const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
                           return(
-                            <button key={s} disabled={!bisaEditPk}
-                              onClick={()=>{if(bisaEditPk)updatePctManual(r.panelId,r.kode,proses,reached?prevStep:s);}}
+                            <button key={s} disabled={!bisaEdit}
+                              onClick={()=>{if(bisaEdit)updatePctManual(r.panelId,r.kode,proses,reached?prevStep:s);}}
                               style={{flex:1,minWidth:40,padding:"9px 4px",borderRadius:8,border:"none",
-                                cursor:bisaEditPk?"pointer":"not-allowed",
+                                cursor:bisaEdit?"pointer":"not-allowed",
                                 background:reached?pColor(s):isNext?"#eff6ff":"#f1f5f9",
                                 color:reached?"#fff":isNext?pc:"#94a3b8",
-                                fontWeight:700,fontSize:11,outline:isNext&&bisaEditPk?`2px solid ${pc}`:"none"}}>
+                                fontWeight:700,fontSize:11,outline:isNext&&bisaEdit?`2px solid ${pc}`:"none"}}>
                               {reached?"✓":`${s}%`}
                             </button>
                           );
                         })}
                       </div>
-                      </>
-                      );
-                    })()}
-                    {proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"&&(()=>{
-                      const panelPk=panelsMap[r.panelId];
-                      const fotoArr=panelPk?.pasang_komponen_photos||[];
-                      const staged=stagedFotoPk[r.panelId]||[];
-                      const saving=savingFotoPk===r.panelId;
-                      return(
-                        <div style={{borderTop:"1px solid #f1f5f9",paddingTop:8,marginTop:2}}>
-                          <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4,marginBottom:6}}>SECTION 2 · PEMASANGAN (FOTO)</div>
-                          {fotoArr.length===0&&staged.length===0?(
-                            <div style={{fontSize:11,color:"#94a3b8",padding:"2px 0 6px"}}>Belum ada foto</div>
-                          ):(
-                            <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
-                              {fotoArr.map((f:any,fi:number)=>(
-                                <div key={`saved_${fi}`} style={{position:"relative" as const}}>
-                                  <img onClick={()=>setFotoViewerPk({fotos:fotoArr,startIndex:fi,label:`Pasang Komponen_${r.panel.nama}`})}
-                                    src={f.url} loading="lazy" style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
-                                  <button onClick={(e:any)=>{e.stopPropagation();hapusFotoPk(r.panelId,f.url);}}
-                                    style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                                    <i className="ti ti-trash" style={{fontSize:10}}/>
-                                  </button>
-                                </div>
-                              ))}
-                              {staged.map((s,si)=>(
-                                <div key={`staged_${si}`} style={{position:"relative" as const}}>
-                                  <img src={s.previewUrl} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1.5px dashed #0891b2"}}/>
-                                  <button onClick={()=>batalkanFotoPk(r.panelId,si)}
-                                    style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                                    <i className="ti ti-x" style={{fontSize:10}}/>
-                                  </button>
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
-                            <MediaPickerSheet disabled={saving}
-                              triggerStyle={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#0891b2",background:"#ecfeff",border:"1px dashed #67e8f9",borderRadius:6,padding:"6px 10px",
-                                cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}
-                              onFiles={(files)=>pilihFotoPk(r.panelId,files)}>
-                              + Tambah Foto
-                            </MediaPickerSheet>
-                            {staged.length>0&&(
-                              <button onClick={()=>simpanFotoPk(r.panelId)} disabled={saving}
-                                style={{fontSize:11,fontWeight:700,color:"#fff",background:saving?"#94a3b8":"#0891b2",border:"none",borderRadius:6,padding:"6px 12px",cursor:saving?"not-allowed":"pointer"}}>
-                                {saving?"⏳ Menyimpan...":"💾 Simpan Foto"}
-                              </button>
-                            )}
-                          </div>
-                        </div>
                       );
                     })()}
                   </div>
@@ -3585,378 +3098,9 @@ export function OperatorView({user,viewMode}:any){
         );
       })}
 
-      {/* Band terpisah "Kontribusi Pasang Komponen" - kontribusi operator Wiring Control ke
-          progress["PASANG KOMPONEN"] gabungan (tahap WIRING), diambil dari task WIRING CONTROL
-          yang komponennya Box Control/Pintu. Dulu sub-section kecil nempel di kartu WIRING
-          CONTROL, sekarang band sendiri persis pola RAKIT/PASANG KOMPONEN (grid pilih per jenis
-          komponen + popup pilih panel + kartu detail per item). Data yang dibaca/ditulis SAMA
-          PERSIS (checklist[kode].pasangKomponenTahap.WIRING, pekerja_per_komponen[kode].WIRING,
-          fotoPemasangan) - progress yang sudah diisi lewat section lama otomatis tampil di sini,
-          gak ada migrasi data. Mobile-only, sama seperti pola aslinya. */}
-      {viewMode==='mobile'&&(()=>{
-        const pkTasks=tasksByProses["WIRING CONTROL"]||[];
-        if(!pkTasks.length)return null;
-        const pkRows:any[]=[];
-        const seenPkKeys=new Set<string>();
-        pkTasks.forEach((task:any)=>{
-          const panelId=task.panel_id||task.panelId;
-          const panel=panelsMap[panelId];
-          if(!panel)return;
-          const panelCfg=getEffCfg(panel.tipe);
-          if(!panelCfg)return;
-          const allItems=panelCfg.wps.flatMap((w:any)=>w.items);
-          (task.komponen||[]).forEach((kode:string)=>{
-            if(kode.startsWith("__wiring_"))return;
-            const item=allItems.find((it:any)=>it.kode===kode);
-            if(!item||!PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(item.nama))return;
-            const cl=panel.checklist?.[kode];
-            // BUG FIX (5 Agu 2026): sama seperti loop rows.push utama - komponen qty=0 gak boleh
-            // tampil jadi baris pekerjaan (lihat komentar lengkap di loop utama).
-            if(!(cl?.qty>0))return;
-            const rowKey=`${panelId}_${kode}`;
-            if(seenPkKeys.has(rowKey))return;
-            seenPkKeys.add(rowKey);
-            const tahapState=getPasangKomponenTahapState(cl);
-            const st=tahapState.WIRING||{progress:0,sudahDisimpan100:false};
-            pkRows.push({task,panel,panelId,item,kode,pct:st.progress||0,sudahDisimpan100:st.sudahDisimpan100});
-          });
-        });
-        if(!pkRows.length)return null;
-        const proses="KONTRIBUSI PASANG KOMPONEN";
-        const pc="#f97316";
-        const isDone=(r:any)=>r.pct===100;
-        const visibleRows=pkRows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode));
-        return(
-          <Card style={{marginBottom:20,padding:0,overflow:"hidden"}}>
-            <div style={{background:pc,padding:"10px 16px",display:"flex",justifyContent:"space-between",alignItems:"center"}}>
-              <div style={{fontWeight:800,fontSize:14,color:"#fff"}}>Kontribusi Pasang Komponen</div>
-              <div style={{display:"flex",gap:8,alignItems:"center"}}>
-                <span style={{fontSize:12,color:"#ffffff99"}}>Shift {shift}</span>
-                <span style={{background:"#ffffff22",color:"#fff",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
-                  {visibleRows.filter((r:any)=>isDone(r)).length}/{visibleRows.length} selesai
-                </span>
-              </div>
-            </div>
-            <div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
-              {(()=>{
-                const seenNama=new Set();
-                const jenisList:any[]=[];
-                pkRows.forEach((r:any)=>{
-                  const nama=r.item?.nama||r.kode;
-                  if(!seenNama.has(nama)){seenNama.add(nama);jenisList.push({namaKomponen:nama});}
-                });
-                return jenisList.map((jg:any)=>{
-                  const groupRows=pkRows.filter((r:any)=>(r.item?.nama||r.kode)===jg.namaKomponen);
-                  const panelCount=new Set(groupRows.map((r:any)=>r.panelId)).size;
-                  const selRows=groupRows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode));
-                  const selCount=selRows.length;
-                  const belumDikerjakanCount=selRows.filter((r:any)=>(r.pct||0)===0).length;
-                  const dikerjakanCount=selRows.filter((r:any)=>(r.pct||0)>0&&(r.pct||0)<100).length;
-                  const selesaiCount=selRows.filter((r:any)=>(r.pct||0)>=100).length;
-                  const groupSudahTuntas=groupRows.length>0&&groupRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
-                  return(
-                    <button key={jg.namaKomponen} disabled={groupSudahTuntas}
-                      onClick={()=>{setKomponenPopupJenis({proses,namaKomponen:jg.namaKomponen});setTempSelectedPanelJenis(selRows.map((r:any)=>r.panelId));}}
-                      style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
-                        padding:"6px 12px",borderRadius:8,border:groupSudahTuntas?"1px solid #e2e8f0":selCount>0?"1.5px solid #f97316":"1px solid #e2e8f0",
-                        background:groupSudahTuntas?"#f8fafc":selCount>0?"#fff7ed":"#fff",
-                        cursor:groupSudahTuntas?"not-allowed":"pointer",textAlign:"left",opacity:groupSudahTuntas?0.5:1}}>
-                      <span style={{fontSize:9,color:"#94a3b8"}}>{panelCount} panel</span>
-                      <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{jg.namaKomponen}</span>
-                      {groupSudahTuntas?(
-                        <span style={{fontSize:9,color:"#16a34a",fontWeight:600}}>✅ Selesai semua</span>
-                      ):selCount>0?(
-                        <span style={{fontSize:9,color:"#ea580c",fontWeight:600,display:"flex",gap:6,flexWrap:"wrap" as const}}>
-                          {belumDikerjakanCount>0&&<span>{belumDikerjakanCount} belum</span>}
-                          {dikerjakanCount>0&&<span>{dikerjakanCount} dikerjakan</span>}
-                          {selesaiCount>0&&<span style={{color:"#16a34a"}}>{selesaiCount} selesai</span>}
-                        </span>
-                      ):(
-                        <span style={{fontSize:9,color:"#94a3b8",fontWeight:600}}>+ Pilih Panel</span>
-                      )}
-                    </button>
-                  );
-                });
-              })()}
-            </div>
-            {komponenPopupJenis&&komponenPopupJenis.proses===proses&&(()=>{
-              const groupRows=pkRows.filter((r:any)=>(r.item?.nama||r.kode)===komponenPopupJenis.namaKomponen);
-              return(
-                <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
-                  onClick={()=>setKomponenPopupJenis(null)}>
-                  <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,border:"1.5px solid #e2e8f0",width:"100%",maxWidth:400,maxHeight:"80vh",display:"flex",flexDirection:"column",overflow:"hidden"}}>
-                    <div style={{padding:"14px 16px",borderBottom:"1.5px solid #e2e8f0",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
-                      <div style={{minWidth:0}}>
-                        <div style={{fontSize:17,fontWeight:800,color:"#1e293b"}}>{komponenPopupJenis.namaKomponen}</div>
-                        <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>Pilih panel yang mau dikerjakan</div>
-                      </div>
-                      <button onClick={()=>setKomponenPopupJenis(null)}
-                        style={{flexShrink:0,width:28,height:28,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700}}>×</button>
-                    </div>
-                    <div style={{overflowY:"auto",padding:"8px 16px",flex:1}}>
-                      {groupRows.map((r:any)=>{
-                        const checked=tempSelectedPanelJenis.includes(r.panelId);
-                        const panelKeyPopup=`${proses}_${r.panelId}`;
-                        const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
-                        const sudahSelesai=r.pct===100&&r.sudahDisimpan100;
-                        const isDisabled=alreadyConfirmed||sudahSelesai;
-                        return(
-                          <label key={r.panelId} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
-                            cursor:isDisabled?"not-allowed":"pointer",opacity:isDisabled?0.55:1}}>
-                            <input type="checkbox" checked={checked} disabled={isDisabled}
-                              onChange={()=>{
-                                if(isDisabled)return;
-                                setTempSelectedPanelJenis((prev:number[])=>checked?prev.filter(id=>id!==r.panelId):[...prev,r.panelId]);
-                              }}
-                              style={{width:16,height:16}}/>
-                            <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
-                              <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                                <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{r.panel.nama}</span>
-                                {isDisabled&&(()=>{
-                                  const pct=r.pct||0;
-                                  const statusBadgeLabel=pct>=100?"Selesai":pct>0?"Dikerjakan":"Belum";
-                                  const statusBadgeColor=pct>=100?"#16a34a":pct>0?"#2563eb":"#94a3b8";
-                                  const statusBadgeBg=pct>=100?"#dcfce7":pct>0?"#dbeafe":"#f1f5f9";
-                                  return(
-                                    <span style={{fontSize:9,fontWeight:700,background:statusBadgeBg,color:statusBadgeColor,borderRadius:6,padding:"1px 6px"}}>
-                                      {statusBadgeLabel}
-                                    </span>
-                                  );
-                                })()}
-                              </div>
-                              <span style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek}</span>
-                            </div>
-                          </label>
-                        );
-                      })}
-                    </div>
-                    <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:"1px solid #f1f5f9"}}>
-                      <button onClick={()=>setTempSelectedPanelJenis(groupRows.filter((r:any)=>{
-                          const alreadyConfirmed=(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode);
-                          const sudahSelesai=r.pct===100&&r.sudahDisimpan100;
-                          return !alreadyConfirmed&&!sudahSelesai;
-                        }).map((r:any)=>r.panelId))}
-                        style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
-                      <button onClick={()=>setTempSelectedPanelJenis([])}
-                        style={{fontSize:11,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
-                      <div style={{flex:1}}/>
-                      <button onClick={()=>setKomponenPopupJenis(null)}
-                        style={{padding:"8px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",fontSize:12,fontWeight:600,color:"#64748b",cursor:"pointer"}}>Batal</button>
-                      <button onClick={()=>{
-                          setSelectedKomponen((prev:any)=>{
-                            const next={...prev};
-                            groupRows.forEach((r:any)=>{
-                              const key=`${proses}_${r.panelId}`;
-                              const existing=next[key]||[];
-                              const isSel=tempSelectedPanelJenis.includes(r.panelId);
-                              const already=existing.includes(r.kode);
-                              if(isSel&&!already)next[key]=[...existing,r.kode];
-                              else if(!isSel&&already)next[key]=existing.filter((k:string)=>k!==r.kode);
-                            });
-                            return next;
-                          });
-                          setKomponenPopupJenis(null);
-                          setStatusFilter("ALL");
-                          scrollDanHighlightGroup(proses,komponenPopupJenis.namaKomponen);
-                        }}
-                        style={{padding:"8px 14px",borderRadius:8,border:"none",background:"#f97316",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
-                        Konfirmasi ({tempSelectedPanelJenis.length})
-                      </button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })()}
-            <div style={{display:"flex",flexDirection:"column",gap:10,padding:"4px 2px"}}>
-              {visibleRows.length===0?(
-                <div style={{textAlign:"center",padding:"24px 10px",color:"#94a3b8",fontSize:12}}>
-                  Belum ada komponen dikumpulkan.<br/>Tap panel di atas untuk pilih komponen.
-                </div>
-              ):(
-                <div style={{display:"flex",flexDirection:"column",gap:10,padding:"0 14px 14px"}}>
-                  {visibleRows.map((r:any)=>{
-                    const clWiring=panelsMap[r.panelId]?.checklist?.[r.kode];
-                    const tahapStateWiring=getPasangKomponenTahapState(clWiring);
-                    const stWiring=tahapStateWiring.WIRING||{progress:0,sudahDisimpan100:false};
-                    const pctWiring=stWiring.progress||0;
-                    const idsKompWiring=getPasangKomponenOperatorIds(r.task,r.kode,"WIRING");
-                    const workersWiring=idsKompWiring.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
-                    const bisaEditWiring=canSimpanPasangKomponenTahap(r.task,r.panelId,r.kode,"WIRING");
-                    const timerKeysWiring=workersWiring.map((w:any)=>timerKey(r.panelId,r.kode,"PASANG KOMPONEN",w.id,"WIRING"));
-                    const anyTimerRunningWiring=timerKeysWiring.some((k:string)=>!!timerAktif[k]);
-                    const anyLoadingWiring=timerKeysWiring.some((k:string)=>timerLoading===k);
-                    let durasiLabelWiring="";
-                    const runningKeyWiring=timerKeysWiring.find((k:string)=>timerAktif[k]);
-                    if(runningKeyWiring){
-                      const timer=timerAktif[runningKeyWiring];
-                      const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
-                      const totalMenit=(timerDurasiSelesai[runningKeyWiring]||0)+menitBerjalan;
-                      const jam=Math.floor(totalMenit/60);
-                      const menit=Math.round(totalMenit%60);
-                      const detik=Math.max(0,Math.round(totalMenit*60));
-                      durasiLabelWiring=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
-                    }
-                    const flashKeyWiring=`${r.panelId}_${r.kode}_PASANG KOMPONEN_WIRING`;
-                    const flashingWiring=!!savedFlash[flashKeyWiring];
-                    const cl=clWiring;
-                    const fotoArr=cl?.fotoPemasangan||[];
-                    const keyFoto=`${r.panelId}_${r.kode}`;
-                    const staged=stagedFotoWiring[keyFoto]||[];
-                    const saving=savingFotoWiring===keyFoto;
-                    return(
-                      <div key={`${r.task.id}_${r.kode}`} style={{border:`1.5px solid ${stWiring.sudahDisimpan100?"#bbf7d0":"#e2e8f0"}`,borderRadius:10,padding:"10px 12px",
-                        background:stWiring.sudahDisimpan100?"#f0fdf4":"#fff",display:"flex",flexDirection:"column",gap:6}}>
-                        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
-                          <div>
-                            <div style={{fontSize:10,fontWeight:600,color:"#64748b"}}>{r.task.proyek}</div>
-                            <div style={{fontSize:14,fontWeight:800,color:"#1e293b"}}>{r.panel.nama}</div>
-                            <div style={{fontSize:10,color:"#64748b"}}>{renderNamaKomponen(r.item?.nama)} · <span style={{fontFamily:"'DM Mono',monospace"}}>{r.kode}</span></div>
-                          </div>
-                          {stWiring.sudahDisimpan100&&<span style={{fontSize:9,fontWeight:700,color:"#16a34a"}}>✅ Selesai</span>}
-                        </div>
-                        {(()=>{
-                          const arsipPctWiring=arsipPasangKomponenMap[`wiring_control|${r.panelId}|${r.kode}`];
-                          if(arsipPctWiring===undefined||pctWiring!==0)return null;
-                          return(
-                            <div>
-                              <span style={{fontSize:10,fontWeight:700,color:"#7c3aed",background:"#f5f3ff",border:"1px solid #ddd6fe",borderRadius:20,padding:"2px 8px"}}>
-                                ↻ Sudah di arsip - {arsipPctWiring}%
-                              </span>
-                            </div>
-                          );
-                        })()}
-                        {workersWiring.length===0?(
-                          <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:"WIRING"});setTempPekerjaIds(idsKompWiring);}}
-                            style={{fontSize:12,color:"#ea580c",fontWeight:700,background:"#fff7ed",border:"1.5px dashed #fdba74",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center"}}>
-                            + Pilih Operator
-                          </button>
-                        ):(
-                          <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
-                            {workersWiring.map((w:any)=>(
-                              <span key={w.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,
-                                color:DIVISI_CONFIG[w.divisi]?.color||"#64748b",background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
-                                borderRadius:20,padding:"4px 10px"}}>
-                                {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
-                              </span>
-                            ))}
-                            <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:"WIRING"});setTempPekerjaIds(idsKompWiring);}}
-                              style={{fontSize:10,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"4px 8px",cursor:"pointer"}}>
-                              ✏️ Edit Operator
-                            </button>
-                          </div>
-                        )}
-                        {workersWiring.length>0&&(
-                          <button disabled={anyLoadingWiring}
-                            onClick={()=>{
-                              if(anyTimerRunningWiring){
-                                workersWiring.forEach((w:any)=>{
-                                  const k=timerKey(r.panelId,r.kode,"PASANG KOMPONEN",w.id,"WIRING");
-                                  if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,"PASANG KOMPONEN","WIRING");
-                                });
-                              } else {
-                                workersWiring.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,"PASANG KOMPONEN",viewDate,"WIRING"));
-                              }
-                            }}
-                            style={{fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,cursor:anyLoadingWiring?"not-allowed":"pointer",
-                              background:anyTimerRunningWiring?"#fef2f2":"#f0fdf4",color:anyTimerRunningWiring?"#dc2626":"#16a34a"}}>
-                            {anyLoadingWiring?"...":anyTimerRunningWiring?`⏹ Selesai ${durasiLabelWiring}`:"▶ Mulai"}
-                          </button>
-                        )}
-                        <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                          {PCT_STEPS.map((s:number)=>{
-                            const reached=pctWiring>=s;
-                            const isNext=s===PCT_STEPS.find((x:number)=>x>pctWiring);
-                            const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
-                            return(
-                              <button key={s} disabled={!bisaEditWiring}
-                                onClick={()=>{if(bisaEditWiring)updatePctManualPasangKomponenTahap(r.panelId,r.kode,"WIRING",reached?prevStep:s);}}
-                                style={{flex:1,minWidth:40,padding:"9px 4px",borderRadius:8,border:"none",
-                                  cursor:bisaEditWiring?"pointer":"not-allowed",
-                                  background:reached?pColor(s):isNext?"#fff7ed":"#f1f5f9",
-                                  color:reached?"#fff":isNext?"#ea580c":"#94a3b8",
-                                  fontWeight:700,fontSize:11,outline:isNext&&bisaEditWiring?"2px solid #ea580c":"none"}}>
-                                {reached?"✓":`${s}%`}
-                              </button>
-                            );
-                          })}
-                        </div>
-                        <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.4,marginTop:2}}>FOTO PEMASANGAN (WAJIB)</div>
-                        {fotoArr.length===0&&staged.length===0?(
-                          <div style={{fontSize:11,color:"#94a3b8",padding:"2px 0 6px"}}>Belum ada foto</div>
-                        ):(
-                          <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
-                            {fotoArr.map((f:any,fi:number)=>(
-                              <div key={`saved_${fi}`} style={{position:"relative" as const}}>
-                                <img onClick={()=>setFotoViewerWiring({fotos:fotoArr,startIndex:fi,label:`${r.item?.nama}_${r.panel.nama}`})}
-                                  src={f.url} loading="lazy" style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
-                                <button onClick={(e:any)=>{e.stopPropagation();hapusFotoWiring(r.panelId,r.kode,f.url);}}
-                                  style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                                  <i className="ti ti-trash" style={{fontSize:10}}/>
-                                </button>
-                              </div>
-                            ))}
-                            {staged.map((s,si)=>(
-                              <div key={`staged_${si}`} style={{position:"relative" as const}}>
-                                <img src={s.previewUrl} style={{width:52,height:52,borderRadius:6,objectFit:"cover" as const,border:"1.5px dashed #ea580c"}}/>
-                                <button onClick={()=>batalkanFotoWiring(r.panelId,r.kode,si)}
-                                  style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                                  <i className="ti ti-x" style={{fontSize:10}}/>
-                                </button>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                        <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
-                          <MediaPickerSheet disabled={saving}
-                            triggerStyle={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#ea580c",background:"#fff7ed",border:"1px dashed #fdba74",borderRadius:6,padding:"6px 10px",
-                              cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}
-                            onFiles={(files)=>pilihFotoWiring(r.panelId,r.kode,files)}>
-                            + Tambah Foto
-                          </MediaPickerSheet>
-                          {staged.length>0&&(
-                            <button onClick={()=>simpanFotoWiring(r.panelId,r.kode)} disabled={saving}
-                              style={{fontSize:11,fontWeight:700,color:"#fff",background:saving?"#94a3b8":"#ea580c",border:"none",borderRadius:6,padding:"6px 12px",cursor:"pointer"}}>
-                              {saving?"⏳ Menyimpan...":"💾 Simpan Foto"}
-                            </button>
-                          )}
-                        </div>
-                        <button disabled={pctWiring===0} onClick={async()=>{
-                            const berhasil=await simpanProgressTahapPasangKomponen(r.task,r.panelId,r.kode,"WIRING");
-                            if(berhasil&&pctWiring<100){
-                              setSavedFlash(prev=>({...prev,[flashKeyWiring]:true}));
-                              setTimeout(()=>setSavedFlash(prev=>({...prev,[flashKeyWiring]:false})),1500);
-                            }
-                          }}
-                          style={{fontSize:12,fontWeight:700,border:"none",borderRadius:10,padding:"12px 14px",minHeight:44,
-                            cursor:pctWiring===0?"not-allowed":"pointer",
-                            background:flashingWiring?"#16a34a":"#fff7ed",color:flashingWiring?"#fff":"#ea580c"}}>
-                          {flashingWiring?"✅ Tersimpan":"💾 Simpan Progress"}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-            <div style={{padding:"12px 16px",borderTop:"1px solid #f1f5f9",background:"#fafafa"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:6}}>📝 CATATAN {proses}</div>
-              <div style={{display:"flex",gap:8}}>
-                <input value={catatan[proses]||""} onChange={e=>setCatatan(prev=>({...prev,[proses]:e.target.value}))}
-                  placeholder={`Catatan kendala untuk ${proses}...`}
-                  style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
-                    background:"#fff",fontSize:12,color:"#1e293b"}}/>
-                <Btn color="#f97316" style={{padding:"7px 16px",fontSize:12}}
-                  onClick={()=>{
-                    setSavedNote(prev=>({...prev,[proses]:true}));
-                    setTimeout(()=>setSavedNote(prev=>({...prev,[proses]:false})),2000);
-                  }}>
-                  {savedNote[proses]?"✓ Terkirim":"Simpan"}
-                </Btn>
-              </div>
-            </div>
-          </Card>
-        );
-      })()}
+      {/* Band "Kontribusi Pasang Komponen" DIHAPUS (7 Agu 2026) - pindah ke tab "Komponen"
+          terpisah (KomponenPasangView), lihat App.tsx. Data yang dibaca/ditulis SAMA PERSIS
+          (checklist[kode].pasangKomponenTahap.WIRING, fotoPemasangan) - gak ada migrasi data. */}
 
       {/* TOMBOL KUNCI PROGRESS */}
       {todayTasks.length>0&&(
@@ -4016,12 +3160,6 @@ export function OperatorView({user,viewMode}:any){
             </div>
           </div>
         </div>
-      )}
-      {fotoViewerWiring&&(
-        <FotoZoomViewerPekerja fotos={fotoViewerWiring.fotos} startIndex={fotoViewerWiring.startIndex} label={fotoViewerWiring.label} onClose={()=>setFotoViewerWiring(null)}/>
-      )}
-      {fotoViewerPk&&(
-        <FotoZoomViewerPekerja fotos={fotoViewerPk.fotos} startIndex={fotoViewerPk.startIndex} label={fotoViewerPk.label} onClose={()=>setFotoViewerPk(null)}/>
       )}
     </div>
   );

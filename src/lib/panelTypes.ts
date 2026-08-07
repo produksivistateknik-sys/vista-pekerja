@@ -167,7 +167,10 @@ export const DIVISI_CONFIG: Record<string,any> = {
     subBagianProses:{Painting:["RENDAM","PAINTING"]}},
   assembling: {label:"Assembling",    icon:"⚙️", color:"#059669",bg:"#ecfdf5",proses:null,manualName:true,
     subBagianPassword:{"Assembling Luar":"asmluar123","Assembling Dalam":"asmdalam123"},
-    subBagianProses:{"Assembling Luar":["RAKIT","PASANG KOMPONEN"],"Assembling Dalam":["BUSBAR"]}},
+    // PASANG KOMPONEN dihapus dari daftar collectible "Tugas Saya" Assembling Luar (7 Agu 2026) -
+    // input progress-nya full pindah ke tab "Komponen" terpisah (KomponenPasangView, gak lewat
+    // raw_schedule/collect sama sekali, mirror QS) - biar gak ada stub kartu kosong tanpa isi.
+    subBagianProses:{"Assembling Luar":["RAKIT"],"Assembling Dalam":["BUSBAR"]}},
   // manualName:true - nama login jadi dropdown dari tabel pekerja (semua nama operator per
   // divisi ini), pakai 1 password bersama (field password di bawah), persis pola Potong/
   // Bending/Stel dkk di mekanik. Sebelumnya QC/Wiring lewat operator_users (username+password

@@ -47,6 +47,11 @@ export const BUSBAR_TAHAP_LABEL:Record<string,string>={FABRIKASI:"Fabrikasi",PLA
 export function getUrutanTahapBusbar(kode:string):string[]{
   return(kode==="COUPLER"||kode==="GROUND")?BUSBAR_URUTAN_TAHAP_SINGKAT:BUSBAR_URUTAN_TAHAP_LENGKAP;
 }
+// PASANG KOMPONEN 2-tahap (Box Control/Pintu: ASSEMBLING punya Assembling Luar, WIRING punya
+// Wiring Control) - export dari sini (7 Agu 2026) biar OperatorView DAN KomponenPasangView
+// (tab "Komponen" baru) pakai satu sumber yang sama, gak duplikat literal berisiko kepencar.
+export const PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA=["Box Control","Pintu"];
+export const PASANG_KOMPONEN_URUTAN_TAHAP=["ASSEMBLING","WIRING"];
 export function hitungProgressBusbarGabungan(busbarTahap:any,urutan:string[]):number{
   if(!busbarTahap||urutan.length===0)return 0;
   const total=urutan.reduce((s,t)=>s+(busbarTahap[t]?.progress||0),0);
