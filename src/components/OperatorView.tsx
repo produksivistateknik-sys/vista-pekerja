@@ -565,6 +565,13 @@ export function OperatorView({user,viewMode}:any){
   // Depend ke renhar (bukan panelsMap!) - panelsMap berubah tiap qty diketik lokal,
   // kalau jadi dependency effect ini bakal resubscribe terus-menerus dan bikin race
   // condition antara update lokal vs echo dari server (progress bisa "balik" gak 100%).
+  // BUG FIX (8 Agu 2026): dulu di sini ada logic "rescale" progress pakai rasio qty-lama/qty-
+  // baru begitu qty berubah (mis. progress 80% dari 4/5, admin kurangin qty ke 3 -> rasio
+  // 5/3≈1.67 -> progress otomatis "dibulatkan" jadi 100%) - progress OTOMATIS ke-timpa TANPA
+  // siapapun sadar/konfirmasi, kebalikan dari yang seharusnya (qty dikurangi di bawah progress
+  // yang udah ada harus di-WARNING ke admin dulu, bukan di-override diam-diam - itu sekarang
+  // ditangani di ManajemenWO.tsx saveQtyEdit). checklist dari server (payload.new) sudah APA
+  // ADANYA sesuai yang ditulis admin - gak perlu dimanipulasi lagi di sini, tinggal dipakai.
   useEffect(()=>{
     const panelIds=[...new Set(renhar.map((t:any)=>t.panel_id||t.panelId).filter(Boolean))];
     if(!panelIds.length) return;
@@ -574,27 +581,7 @@ export function OperatorView({user,viewMode}:any){
         (payload:any)=>{
           const updated=payload.new;
           if(!panelIds.includes(updated.id)) return;
-          setPanelsMap(prev=>{
-            const oldPanel=prev[updated.id];
-            if(!oldPanel) return {...prev,[updated.id]:updated};
-            // Recalculate progress jika qty berubah
-            const oldChecklist=oldPanel.checklist||{};
-            const newChecklist={...updated.checklist};
-            Object.keys(newChecklist).forEach(kode=>{
-              const oldQty=oldChecklist[kode]?.qty||1;
-              const newQty=newChecklist[kode]?.qty||1;
-              if(newQty!==oldQty && oldQty>0 && newQty>0){
-                const ratio=oldQty/newQty;
-                const newProgress:any={};
-                Object.keys(newChecklist[kode]?.progress||{}).forEach(pr=>{
-                  const old=newChecklist[kode].progress[pr]||0;
-                  newProgress[pr]=Math.min(100,Math.round(old*ratio));
-                });
-                newChecklist[kode]={...newChecklist[kode],progress:newProgress};
-              }
-            });
-            return{...prev,[updated.id]:{...updated,checklist:newChecklist}};
-          });
+          setPanelsMap(prev=>({...prev,[updated.id]:updated}));
         }
       )
       .subscribe();
