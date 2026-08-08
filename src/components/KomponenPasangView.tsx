@@ -14,7 +14,6 @@ export type KomponenPasangTugas={
   label:string;icon:string;color:string;
   tahap:"ASSEMBLING"|"WIRING";
   fotoBucket:string;
-  fotoScope:"panel"|"kode"; // panel = pasang_komponen_photos (shared 1 galeri/panel), kode = fotoPemasangan (per-komponen)
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -159,7 +158,7 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     const pct=getProgress(panelsRaw.find((p:any)=>p.id===panel.id)||panel,kode,isTahap);
     if(pct===0){alert("Progress masih 0%, belum ada yang bisa disimpan.");return;}
     const clNow=panel.checklist?.[kode];
-    if(tugas.fotoScope==="kode"&&(clNow?.fotoPemasangan||[]).length===0){
+    if((clNow?.fotoPemasangan||[]).length===0){
       alert("Belum bisa disimpan - upload minimal 1 foto pemasangan dulu.");
       return;
     }
@@ -188,11 +187,16 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
       if(panelErr)throw panelErr;
       setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
 
+      // Dua galeri foto koeksis (8 Agu 2026): fotoPemasangan per-komponen (baru, WAJIB diisi
+      // sebelum Simpan Progress - lihat gate di atas) + pasang_komponen_photos umum per-panel
+      // (galeri lama sebelum tab ini per-komponen, TETAP dipertahankan biar foto2 lama gak
+      // hilang dari tampilan - operator masih bisa nambah foto ke situ juga kalau perlu).
+      // Snapshot KEDUANYA ke arsip biar bukti foto lengkap gak keputus di histori.
       const wo=woMap[panel.wo_id];
       const archiveData=isTahap
         ?{pasangKomponenTahap:{[tugas.tahap]:freshCl.pasangKomponenTahap?.[tugas.tahap]||{progress:pct,sudahDisimpan100:pct>=100}},
-           ...(tugas.fotoScope==="panel"?{pasang_komponen_photos:panel.pasang_komponen_photos||[]}:{fotoPemasangan:freshCl.fotoPemasangan||[]})}
-        :{progress:pct,pasang_komponen_photos:panel.pasang_komponen_photos||[]};
+           fotoPemasangan:freshCl.fotoPemasangan||[],pasang_komponen_photos:panel.pasang_komponen_photos||[]}
+        :{progress:pct,fotoPemasangan:freshCl.fotoPemasangan||[],pasang_komponen_photos:panel.pasang_komponen_photos||[]};
       const{error:arsipErr}=await withRetry(()=>supabase.from("panel_seksi_archived").upsert({
         panel_id:panel.id,wo_id:panel.wo_id||null,seksi:tugas.seksi,kode,komponen_nama:nama,data:archiveData,
         panel_nama:panel.nama,panel_tipe:panel.tipe,proyek_snapshot:wo?.proyek||null,wo_number_snapshot:wo?.wo||null,
@@ -238,7 +242,7 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
         const{data:urlData}=supabase.storage.from(tugas.fotoBucket).getPublicUrl(path);
         fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
       }
-      if(tugas.fotoScope==="panel"){
+      if(key.startsWith("panelfoto_")){
         const newFoto=[...(panel.pasang_komponen_photos||[]),...fotoTerupload];
         await supabase.from("panels").update({pasang_komponen_photos:newFoto}).eq("id",panel.id);
         setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,pasang_komponen_photos:newFoto}:p));
@@ -260,7 +264,7 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
   const hapusFotoTersimpan=async(panel:any,kode:string|null,fotoUrl:string)=>{
     if(!window.confirm("Hapus foto ini?"))return;
     await hapusFotoDariStorage(tugas.fotoBucket,fotoUrl);
-    if(tugas.fotoScope==="panel"){
+    if(kode===null){
       const newFoto=(panel.pasang_komponen_photos||[]).filter((f:any)=>f.url!==fotoUrl);
       await supabase.from("panels").update({pasang_komponen_photos:newFoto}).eq("id",panel.id);
       setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,pasang_komponen_photos:newFoto}:p));
@@ -455,7 +459,7 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
                           <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{r.nama}</span>
                           <span style={{fontSize:11,fontWeight:800,color:pct>=100?"#16a34a":tugas.color}}>{pct}%</span>
                         </div>
-                        <div style={{display:"flex",gap:6,marginBottom:tugas.fotoScope==="kode"?10:0}}>
+                        <div style={{display:"flex",gap:6,marginBottom:10}}>
                           {PCT_STEPS.map((s:number)=>{
                             const reached=pct>=s;
                             // BUG FIX (7 Agu 2026): "isNext" (highlight langkah berikutnya) cuma
@@ -475,10 +479,9 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
                             );
                           })}
                         </div>
-                        {tugas.fotoScope==="kode"&&(
-                          <>
+                        <>
                             <div style={{display:"flex",alignItems:"center",gap:5,fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.3}}>
-                              <i className="ti ti-camera" style={{fontSize:11}}/> FOTO PEMASANGAN {r.isTahap&&tugas.tahap==="WIRING"?"(WAJIB)":""}
+                              <i className="ti ti-camera" style={{fontSize:11}}/> FOTO PEMASANGAN (WAJIB)
                             </div>
                             {fotoKodeArr.length===0&&stagedKodeFoto.length===0?(
                               <div style={{fontSize:11,color:"#cbd5e1",padding:"2px 0 8px",fontStyle:"italic" as const}}>Belum ada foto</div>
@@ -518,8 +521,7 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
                                 </button>
                               )}
                             </div>
-                          </>
-                        )}
+                        </>
                         <button onClick={()=>simpanProgress(p,r.kode,r.nama,r.isTahap)} disabled={saving||pct===0||sudahDiarsip}
                           style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,width:"100%",
                             background:sudahDiarsip?"#dcfce7":saving||pct===0?"#cbd5e1":tugas.color,
@@ -531,8 +533,10 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
                       </div>
                     );
                   })}
-                  {tugas.fotoScope==="panel"&&(
-                    <div style={{border:"1.5px solid #eef0f3",borderRadius:12,padding:"12px 13px",background:"#fafbfc"}}>
+                  {/* Galeri umum panel (lama, sebelum tab ini per-komponen) - TETAP dipertahankan
+                      biar foto yang udah pernah ke-upload gak hilang dari tampilan, operator
+                      masih bisa nambah foto umum ke sini kapan saja (8 Agu 2026). */}
+                  <div style={{border:"1.5px solid #eef0f3",borderRadius:12,padding:"12px 13px",background:"#fafbfc"}}>
                       <div style={{display:"flex",alignItems:"center",gap:5,fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:0.3}}>
                         <i className="ti ti-camera" style={{fontSize:11}}/> FOTO PEMASANGAN PANEL (SEMUA KOMPONEN)
                       </div>
@@ -574,7 +578,6 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
                         </button>
                       )}
                     </div>
-                  )}
                 </div>
               )}
             </div>

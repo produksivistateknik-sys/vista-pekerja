@@ -25,8 +25,8 @@ const TUGAS_QS={field:"qs",label:"QS",icon:"📋",color:"#7c3aed",progressField:
 // Tab "Komponen" (GANTI section "Kontribusi Pasang Komponen" yang dulu nempel di card
 // OperatorView, 7 Agu 2026) - pola navigasi SAMA PERSIS Tab QS di atas, tapi per-komponen bukan
 // per-panel (lihat KomponenPasangView.tsx).
-const TUGAS_KOMPONEN_WIRING:KomponenPasangTugas={seksi:"wiring_control",label:"Komponen",icon:"🔌",color:"#6366f1",tahap:"WIRING",fotoBucket:"wiring-komponen-photos",fotoScope:"kode"};
-const TUGAS_KOMPONEN_ASSEMBLING:KomponenPasangTugas={seksi:"assembling_luar",label:"Komponen",icon:"🔧",color:"#059669",tahap:"ASSEMBLING",fotoBucket:"pasang-komponen-photos",fotoScope:"panel"};
+const TUGAS_KOMPONEN_WIRING:KomponenPasangTugas={seksi:"wiring_control",label:"Komponen",icon:"🔌",color:"#6366f1",tahap:"WIRING",fotoBucket:"wiring-komponen-photos"};
+const TUGAS_KOMPONEN_ASSEMBLING:KomponenPasangTugas={seksi:"assembling_luar",label:"Komponen",icon:"🔧",color:"#059669",tahap:"ASSEMBLING",fotoBucket:"pasang-komponen-photos"};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MAIN APP
