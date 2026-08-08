@@ -199,6 +199,12 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
         diarsipkan_pada:new Date().toISOString(),diarsipkan_oleh:user.nama,
       },{onConflict:"panel_id,seksi,kode"}));
       if(arsipErr)throw arsipErr;
+      // BUG FIX (8 Agu 2026): update arsipMap OPTIMISTIC di sini (jangan nunggu round-trip
+      // realtime) - biar begitu operator dismiss alert, kartu ini LANGSUNG hilang dari
+      // accordion (lihat filter relevanBelumArsip di render), sesuai spek awal "Simpan ->
+      // komponen langsung hilang dari card aktif, masuk arsip" - bukan cuma nunjukin badge
+      // "Sudah Diarsip" doang sambil kartu tetap nangkring di situ.
+      setArsipMap(prev=>({...prev,[`${panel.id}|${kode}`]:pct}));
       alert("Progress tersimpan & diarsipkan.");
     }catch(err:any){
       alert("Gagal simpan: "+(err?.message||"koneksi bermasalah, coba lagi."));
@@ -397,6 +403,15 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
           const relevan=komponenRelevanPanel(p);
           const selesaiPanel=relevan.filter(r=>getProgress(p,r.kode,r.isTahap)>=100).length;
           const allDonePanel=selesaiPanel===relevan.length;
+          // BUG FIX (8 Agu 2026): komponen yang progress-nya SAMA PERSIS kayak yang terakhir
+          // diarsip HILANG dari accordion (sesuai spek "Simpan -> langsung hilang dari card
+          // aktif") - header panel (selesaiPanel/relevan.length) TETAP hitung dari `relevan`
+          // penuh, cuma isi accordion-nya yang difilter.
+          const relevanBelumArsip=relevan.filter(r=>{
+            const pctR=getProgress(p,r.kode,r.isTahap);
+            const arsipPctR=arsipMap[`${p.id}|${r.kode}`];
+            return !(arsipPctR!==undefined&&arsipPctR===pctR);
+          });
           const expanded=expandedPanel.has(p.id);
           const fotoPanelArr=p.pasang_komponen_photos||[];
           const stagedPanelKey=`panelfoto_${p.id}`;
@@ -418,7 +433,12 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
               </div>
               {expanded&&(
                 <div style={{padding:"2px 15px 16px",borderTop:"1px solid #f1f5f9",display:"flex",flexDirection:"column" as const,gap:12,marginTop:12}}>
-                  {relevan.map(r=>{
+                  {relevanBelumArsip.length===0&&relevan.length>0&&(
+                    <div style={{textAlign:"center" as const,padding:"16px 0",color:"#16a34a",fontSize:12,fontWeight:700}}>
+                      ✅ Semua komponen sudah diarsip
+                    </div>
+                  )}
+                  {relevanBelumArsip.map(r=>{
                     const pct=getProgress(p,r.kode,r.isTahap);
                     const key=`${p.id}_${r.kode}`;
                     const saving=savingKey===key;
