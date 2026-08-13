@@ -12,6 +12,7 @@ import { QCChecklistTab } from "./components/QCChecklistTab";
 import { KomponenProgressView } from "./components/KomponenProgressView";
 import { KomponenPasangView, type KomponenPasangTugas } from "./components/KomponenPasangView";
 import { TrackingKomponenView } from "./components/TrackingKomponenView";
+import { PermintaanView } from "./components/PermintaanView";
 import { OperatorHome } from "./components/OperatorHome";
 // Sprint 5-7 (5 Agu 2026): seluruh komponen/const yang tadinya nempel di App.tsx dipindah
 // keluar ke src/lib/ dan src/components/ - struktur/nama fungsi/isi PERSIS SAMA, cuma
@@ -76,7 +77,7 @@ export default function App(){
     :user.divisi==="wiring_ctrl"?TUGAS_KOMPONEN_WIRING
     :user.divisi==="assembling"&&user.sub_bagian==="Assembling Luar"?TUGAS_KOMPONEN_ASSEMBLING
     :null;
-  const [bottomTab,setBottomTab]=useState<"tugas"|"komponen"|"arsip">("tugas");
+  const [bottomTab,setBottomTab]=useState<"tugas"|"komponen"|"arsip"|"permintaan">("tugas");
 
   // Banner ajakan aktifkan push notification pengingat Maintenance Rutin - subscribe di-key ke
   // `divisi` (bukan per-orang, device login pakai password bersama per sub-bagian). Cuma muncul
@@ -176,7 +177,8 @@ export default function App(){
           </div>
         )}
         <div style={{flex:1,overflowY:"auto"}}>
-          {bottomTab==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
+          {bottomTab==="permintaan"?<PermintaanView user={user}/>
+            :bottomTab==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
             :bottomTab==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas}/>
             :user.divisi==="nameplate"?<NameplateView user={user}/>
             :user.divisi==="qc"?<QCChecklistTab user={user}/>
@@ -192,6 +194,12 @@ export default function App(){
             gap:2,color:bottomTab==="tugas"?cfg?.color:"#94a3b8"}}>
             <span style={{fontSize:18}}>📋</span>
             <span style={{fontSize:9,fontWeight:700,letterSpacing:.3}}>Tugas Saya</span>
+          </button>
+          <button onClick={()=>setBottomTab("permintaan")} style={{flex:1,border:"none",background:"none",cursor:"pointer",
+            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+            gap:2,color:bottomTab==="permintaan"?cfg?.color:"#94a3b8"}}>
+            <span style={{fontSize:18}}>📝</span>
+            <span style={{fontSize:9,fontWeight:700,letterSpacing:.3}}>Permintaan</span>
           </button>
           {komponenPasangTugas&&(
             <button onClick={()=>setBottomTab("komponen")} style={{flex:1,border:"none",background:"none",cursor:"pointer",
