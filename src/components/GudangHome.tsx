@@ -36,15 +36,15 @@ export function GudangHome({user}:{user:any}){
   const[tab,setTab]=useState<GudangTab>("permintaan");
 
   return(
-    <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
-      <div style={{flex:1,overflowY:"auto"}}>
+    <div style={{display:"flex",flexDirection:"column",height:"100%",width:"100%"}}>
+      <div style={{flex:1,overflowY:"auto",width:"100%"}}>
         {tab==="permintaan"&&<PermintaanGudangTab user={user}/>}
         {tab==="tarik"&&<TarikGudangTab user={user}/>}
         {tab==="database"&&<DatabaseGudangTab/>}
         {tab==="progress"&&<KomponenProgressView user={user} tugas={TUGAS_WAREHOUSE_GUDANG}/>}
         {tab==="riwayat"&&<RiwayatGudangTab/>}
       </div>
-      <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",
+      <div style={{position:"sticky",bottom:0,left:0,right:0,width:"100%",background:"#fff",borderTop:"1.5px solid #e2e8f0",
         display:"flex",minHeight:52,paddingBottom:"env(safe-area-inset-bottom)",zIndex:100,boxShadow:"0 -2px 10px #00000010"}}>
         {TABS.map(t=>(
           <button key={t.key} onClick={()=>setTab(t.key)} style={{flex:1,border:"none",background:"none",cursor:"pointer",
