@@ -234,13 +234,23 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     setSavingKey("foto_"+key);
     try{
       const fotoTerupload:any[]=[];
+      const gagal:typeof staged=[];
+      // Tiap foto punya try-catch SENDIRI (bukan satu try besar buat seluruh loop) - kalau foto
+      // ke-2 dari 3 gagal kompres/upload, foto ke-1 yang udah kepalang naik + foto ke-3 gak ikut
+      // batal. Foto yang gagal DIKUMPULKAN (bukan cuma di-skip) biar tetap nangkring di
+      // stagedFoto - dulu di sini staged dihapus tanpa syarat abis loop, jadi foto yang gagal
+      // upload (storage penuh/network) ikut hilang dari layar seolah berhasil tersimpan.
       for(const s of staged){
-        const blob=await compressImageNp(s.file);
-        const path=`${pathPrefix}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-        const{error:upErr}=await supabase.storage.from(tugas.fotoBucket).upload(path,blob,{contentType:"image/jpeg"});
-        if(upErr){alert(`Gagal upload salah satu foto: ${upErr.message}`);continue;}
-        const{data:urlData}=supabase.storage.from(tugas.fotoBucket).getPublicUrl(path);
-        fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+        try{
+          const blob=await compressImageNp(s.file);
+          const path=`${pathPrefix}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+          const{error:upErr}=await supabase.storage.from(tugas.fotoBucket).upload(path,blob,{contentType:"image/jpeg"});
+          if(upErr)throw upErr;
+          const{data:urlData}=supabase.storage.from(tugas.fotoBucket).getPublicUrl(path);
+          fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+        }catch(fotoErr:any){
+          gagal.push(s);
+        }
       }
       if(key.startsWith("panelfoto_")){
         const newFoto=[...(panel.pasang_komponen_photos||[]),...fotoTerupload];
@@ -254,8 +264,20 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
         await supabase.from("panels").update({checklist:newChecklist}).eq("id",panel.id);
         setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
       }
-      staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
-      setStagedFoto(prev=>{const next={...prev};delete next[key];return next;});
+      // Cuma revoke+buang staged foto yang BERHASIL diupload. Yang gagal tetap di stagedFoto[key]
+      // (di-filter by reference dari state TERKINI, bukan snapshot awal, biar aman kalau operator
+      // sempat nambah foto lain pas upload masih jalan) - operator tinggal tap Simpan lagi buat retry.
+      const berhasilSet=new Set(staged.filter(s=>!gagal.includes(s)));
+      staged.forEach(s=>{if(berhasilSet.has(s))URL.revokeObjectURL(s.previewUrl);});
+      setStagedFoto(prev=>{
+        const sisa=(prev[key]||[]).filter(s=>!berhasilSet.has(s));
+        const next={...prev};
+        if(sisa.length>0)next[key]=sisa;else delete next[key];
+        return next;
+      });
+      if(gagal.length>0){
+        alert(`${gagal.length} dari ${staged.length} foto GAGAL diupload (kemungkinan storage penuh atau koneksi bermasalah). Foto yang gagal TETAP ada di layar - coba tap Simpan lagi.`);
+      }
     }catch(err:any){
       alert("Terjadi kesalahan: "+err.message);
     }
