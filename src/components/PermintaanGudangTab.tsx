@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { SectionCard, SegmentedControl, EmptyState } from "./gudang/GudangUI";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB PERMINTAAN (dalam GudangHome) - sisi Gudang buat proses masuk BBMB (submit/
@@ -47,19 +48,11 @@ export function PermintaanGudangTab({user}:{user:any}){
 
   return(
     <div style={{padding:16}} className="fi">
-      <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:12}}>📋 Permintaan Masuk</div>
-      <div style={{display:"flex",gap:6,marginBottom:14,background:"#f1f5f9",borderRadius:12,padding:4}}>
-        {(["BBMB","BBMU"] as const).map(j=>(
-          <button key={j} onClick={()=>setJenisTab(j)}
-            style={{flex:1,padding:"9px 8px",border:"none",borderRadius:9,cursor:"pointer",
-              fontWeight:700,fontSize:13,fontFamily:"inherit",
-              background:jenisTab===j?"#fff":"transparent",color:jenisTab===j?"#0369a1":"#64748b",
-              boxShadow:jenisTab===j?"0 1px 3px rgba(0,0,0,0.08)":"none"}}>
-            {j==="BBMB"?"BBMB (Bantu)":"BBMU (Utama)"}
-          </button>
-        ))}
-      </div>
-      {jenisTab==="BBMB"?<BBMBList adminName={adminName}/>:<BBMUList adminName={adminName}/>}
+      <SectionCard icon="📋" title="Permintaan Masuk" subtitle="Proses permintaan BBMB & BBMU dari operator">
+        <SegmentedControl options={[{key:"BBMB",label:"BBMB (Bantu)",icon:"🧰"},{key:"BBMU",label:"BBMU (Utama)",icon:"⚙️"}]}
+          value={jenisTab} onChange={setJenisTab}/>
+        {jenisTab==="BBMB"?<BBMBList adminName={adminName}/>:<BBMUList adminName={adminName}/>}
+      </SectionCard>
     </div>
   );
 }
@@ -115,7 +108,9 @@ function BBMBList({adminName}:{adminName:string}){
   const divisiKeys=Object.keys(grouped).sort();
 
   if(loading)return<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
-  if(divisiKeys.length===0)return<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>✅ Tidak ada permintaan BBMB yang menunggu.</div>;
+  if(divisiKeys.length===0)return<EmptyState title="Tidak ada permintaan BBMB"
+    description="Semua permintaan bantu sudah diproses. Permintaan baru dari operator akan muncul di sini."
+    tip="Pastikan stok tersedia sebelum memproses permintaan baru."/>;
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:18}}>
@@ -242,7 +237,8 @@ function BBMUList({adminName}:{adminName:string}){
       {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
       ):filtered.length===0?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Belum ada permintaan BBMU dari {BBMU_SUBTABS.find(t=>t.key===subTab)!.label}.</div>
+        <EmptyState title="Belum ada permintaan BBMU"
+          description={`Belum ada permintaan dari ${BBMU_SUBTABS.find(t=>t.key===subTab)!.label}. Permintaan baru akan muncul di sini.`}/>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {filtered.map(p=>(

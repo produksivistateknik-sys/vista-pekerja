@@ -132,10 +132,17 @@ export default function App(){
     setPage("app");
   }}/>;
 
+  const doLogout=()=>{if(window.confirm("Keluar dari aplikasi?")){setUser(null);try{localStorage.removeItem("vista_pekerja_session");}catch{}setPage("landing");}};
+
   return(
     <div style={{minHeight:"100vh",background:"#f1f5f9"}}>
       <style>{GCss}</style>
       <div style={{display:"flex",flexDirection:"column",minHeight:"100vh"}}>
+        {/* Divisi "gudang" punya header sendiri (lihat GudangHeader di GudangHome.tsx) - header
+            global di bawah ini SENGAJA dilewati buat gudang, sama persis pola bottom-nav yang
+            udah lebih dulu dikecualikan (lihat "user.divisi!=='gudang'" di bawah). Header global
+            ini TETAP dipakai apa adanya buat semua divisi lain - gak diubah sama sekali. */}
+        {user.divisi!=="gudang"&&(
         <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",padding:"6px 16px",
           minHeight:52,paddingTop:"max(6px, env(safe-area-inset-top))",display:"flex",alignItems:"center",justifyContent:"space-between",
           flexWrap:"wrap",rowGap:6,
@@ -162,13 +169,14 @@ export default function App(){
                 cursor:"pointer",fontSize:15,color:"#64748b"}}>
               🔄
             </button>
-            <button onClick={()=>{if(window.confirm("Keluar dari aplikasi?")){setUser(null);try{localStorage.removeItem("vista_pekerja_session");}catch{}setPage("landing");}}}
+            <button onClick={doLogout}
               style={{display:"flex",alignItems:"center",gap:6,background:"#fef2f2",border:"1.5px solid #fecaca",color:"#dc2626",flexShrink:0,whiteSpace:"nowrap",
                 borderRadius:8,padding:"10px 14px",minHeight:40,cursor:"pointer",fontSize:12,fontWeight:700}}>
               <i className="ti ti-logout" style={{fontSize:15}}/> Keluar
             </button>
           </div>
         </div>
+        )}
         {showPushBanner&&(
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"#eff6ff",borderBottom:"1px solid #bfdbfe"}}>
             <div style={{fontSize:18}}>🔔</div>
@@ -181,7 +189,7 @@ export default function App(){
           </div>
         )}
         <div style={{flex:1,overflowY:"auto"}}>
-          {user.divisi==="gudang"?<GudangHome user={user}/>
+          {user.divisi==="gudang"?<GudangHome user={user} onLogout={doLogout}/>
             :bottomTab==="permintaan"?<PermintaanView user={user}/>
             :bottomTab==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
             :bottomTab==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas}/>

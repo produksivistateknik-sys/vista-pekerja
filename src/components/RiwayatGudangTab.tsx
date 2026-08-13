@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { SectionCard, EmptyState } from "./gudang/GudangUI";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB RIWAYAT (dalam GudangHome) - histori aksi harian: submit/reject BBMB,
@@ -83,16 +84,14 @@ export function RiwayatGudangTab(){
 
   return(
     <div style={{padding:16}} className="fi">
-      <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:4}}>🕒 Riwayat Harian</div>
-      <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>Aksi submit/reject/status/tarik yang sudah diproses</div>
-
+      <SectionCard icon="🕒" title="Riwayat Harian" subtitle="Aksi submit/reject/status/tarik yang sudah diproses">
       <input type="date" value={tanggal} onChange={(e:any)=>setTanggal(e.target.value)}
         style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:14}}/>
 
       {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
       ):rows.length===0?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Belum ada aksi tercatat di tanggal ini.</div>
+        <EmptyState title="Belum ada aksi" description="Belum ada aksi submit/reject/status/tarik yang tercatat di tanggal ini."/>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {rows.map((r:any)=>{
@@ -118,6 +117,7 @@ export function RiwayatGudangTab(){
           })}
         </div>
       )}
+      </SectionCard>
     </div>
   );
 }

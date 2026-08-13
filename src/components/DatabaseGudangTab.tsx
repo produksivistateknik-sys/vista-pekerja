@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import * as XLSX from "xlsx";
 import { supabase } from "../lib/supabase";
+import { SectionCard, EmptyState } from "./gudang/GudangUI";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB DATABASE (dalam GudangHome) - upload master komponen_bbmb_master via
@@ -106,9 +107,7 @@ export function DatabaseGudangTab(){
 
   return(
     <div style={{padding:16}} className="fi">
-      <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:4}}>🗄️ Database Master Komponen</div>
-      <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>Upload Excel/CSV buat nambah daftar komponen BBMB</div>
-
+      <SectionCard icon="📤" title="Upload Master Komponen" subtitle="Upload Excel/CSV buat nambah daftar komponen BBMB">
       <div
         onDragOver={(e:any)=>{e.preventDefault();setDragOver(true);}}
         onDragLeave={()=>setDragOver(false)}
@@ -149,19 +148,17 @@ export function DatabaseGudangTab(){
           <button onClick={resetUpload} style={{marginTop:8,padding:"8px 16px",borderRadius:9,border:"1px solid #bbf7d0",background:"#fff",color:"#16a34a",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>Upload File Lain</button>
         </div>
       )}
+      </SectionCard>
 
-      <div style={{height:1,background:"#f1f5f9",margin:"18px 0 14px"}}/>
-
-      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-        <div style={{fontWeight:800,fontSize:13,color:"#1e293b"}}>Komponen Terdaftar</div>
-        <span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{masterList.length} total</span>
-      </div>
+      <SectionCard icon="🗄️" title="Komponen Terdaftar" subtitle="Cari & kelola daftar komponen BBMB"
+        right={<span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700,flexShrink:0}}>{masterList.length} total</span>}>
       <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="🔍 Cari nama komponen..."
         style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontFamily:"inherit",marginBottom:10}}/>
       {loadingList?(
         <div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>Memuat...</div>
       ):filteredList.length===0?(
-        <div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>{search?"Gak ada komponen yang cocok.":"Belum ada komponen terdaftar."}</div>
+        <EmptyState title={search?"Tidak ditemukan":"Belum ada komponen"}
+          description={search?"Gak ada komponen yang cocok dengan pencarian.":"Upload file Excel/CSV di atas buat mulai isi daftar komponen BBMB."}/>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto" as const}}>
           {filteredList.map((m:any)=>(
@@ -172,6 +169,7 @@ export function DatabaseGudangTab(){
           ))}
         </div>
       )}
+      </SectionCard>
     </div>
   );
 }

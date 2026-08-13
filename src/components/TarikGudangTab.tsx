@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { SectionCard, EmptyState } from "./gudang/GudangUI";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB TARIK (dalam GudangHome) - antrian fisik: item BBMB yang sudah di-Submit
@@ -75,13 +76,13 @@ export function TarikGudangTab({user}:{user:any}){
 
   return(
     <div style={{padding:16}} className="fi">
-      <div style={{fontWeight:800,fontSize:16,color:"#1e293b",marginBottom:4}}>📦 Tarik Komponen</div>
-      <div style={{fontSize:12,color:"#64748b",marginBottom:14}}>Antrian barang yang sudah disiapkan, menunggu diambil fisik</div>
-
+      <SectionCard icon="📦" title="Tarik Komponen" subtitle="Antrian barang yang sudah disiapkan, menunggu diambil fisik">
       {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
       ):rows.length===0?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>✅ Tidak ada barang yang menunggu diambil.</div>
+        <EmptyState title="Tidak ada barang menunggu"
+          description="Semua barang yang sudah disiapkan sudah diambil. Antrian baru akan muncul di sini."
+          tip="Barang muncul di sini setelah BBMB disubmit atau BBMU ditandai tersedia."/>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
           {rows.map((r:any)=>(
@@ -112,6 +113,7 @@ export function TarikGudangTab({user}:{user:any}){
           ))}
         </div>
       )}
+      </SectionCard>
     </div>
   );
 }
