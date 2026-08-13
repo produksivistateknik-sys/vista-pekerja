@@ -188,7 +188,10 @@ export const DIVISI_CONFIG: Record<string,any> = {
   // Progress/Riwayat). SENGAJA terpisah total dari komponen>Warehouse di atas (proses fisik
   // "tarik komponen keluar" beda konsep dari warehouse_progress per-panel yang lama) - beda
   // divisi key, beda password, icon beda (🚚 bukan 📦) biar gak ketuker di layar login. Satu
-  // password bersama (bukan subBagianPassword) - gak ada sub-peran di dalam Gudang, sama pola
-  // dengan wiring_ctrl/wiring_pwr/qc (nama dipilih dari tabel pekerja yang divisi='gudang').
-  gudang:     {label:"Gudang",         icon:"🚚", color:"#0369a1",bg:"#eff6ff",password:"gudang123",  proses:null,manualName:true},
+  // password bersama (bukan subBagianPassword - gak ada sub-peran di dalam Gudang).
+  // namaBebas:true (FIX 13 Agu 2026) - nama diketik manual/bebas (BUKAN dropdown dari tabel
+  // pekerja) tanpa perlu klik sub-bagian dulu, beda dari pola Warehouse/QS yang butuh
+  // subBagianPassword+pilih sub-bagian buat dapet free-text. Lihat Login.tsx: flag generik
+  // ini dibaca terpisah dari isNamaBebas (yang khusus literal "Warehouse"/"QS").
+  gudang:     {label:"Gudang",         icon:"🚚", color:"#0369a1",bg:"#eff6ff",password:"gudang123",  proses:null,manualName:true,namaBebas:true},
 };

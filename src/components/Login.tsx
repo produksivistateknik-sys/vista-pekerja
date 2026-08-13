@@ -37,6 +37,10 @@ export function Login({onLogin}:any){
   const isManualName=!!(DIVISI_CONFIG as any)[div]?.manualName;
   const subBagianOptions=(DIVISI_CONFIG as any)[div]?.subBagianPassword;
   const [subBagianTerpilih,setSubBagianTerpilih]=useState<string|null>(null);
+  // Divisi tanpa sub-bagian tapi nama tetap free-text (mis. Gudang) - beda dari isNamaBebas di
+  // bawah (khusus Warehouse/QS yang butuh pilih sub-bagian dulu). Cuma berlaku kalau divisi ini
+  // gak punya subBagianOptions - hindari tabrakan kalau suatu saat ada divisi yang pakai keduanya.
+  const namaBebasDivisi=!subBagianOptions&&!!(DIVISI_CONFIG as any)[div]?.namaBebas;
 
   const go=async()=>{
     if(isManualName&&subBagianOptions){
@@ -63,6 +67,18 @@ export function Login({onLogin}:any){
       if(!pekerjaTerpilih){setErr("Data pekerja gak valid, coba pilih ulang.");setLoading(false);return;}
       setSuccess(true);
       setTimeout(()=>onLogin({id:pekerjaTerpilih.id,nama:pekerjaTerpilih.nama,name:pekerjaTerpilih.nama,divisi:div,sub_bagian:subBagianTerpilih}),800);
+      setLoading(false);
+      return;
+    }
+    if(isManualName&&namaBebasDivisi){
+      if(!namaManualTeks.trim()){setErr("Ketik nama kamu!");return;}
+      if(!pwd){setErr("Masukkan password!");return;}
+      setLoading(true);
+      const expectedPwd=(DIVISI_CONFIG as any)[div]?.password;
+      if(pwd!==expectedPwd){setErr("Password salah!");setLoading(false);return;}
+      const namaBebas=namaManualTeks.trim();
+      setSuccess(true);
+      setTimeout(()=>onLogin({id:0,nama:namaBebas,name:namaBebas,divisi:div}),800);
       setLoading(false);
       return;
     }
@@ -213,7 +229,7 @@ export function Login({onLogin}:any){
             <div className="lg-label">Nama</div>
             <div style={{position:"relative"}}>
               <span className="lg-icon">👤</span>
-              {isManualName&&(subBagianTerpilih==="Warehouse"||subBagianTerpilih==="QS")?(
+              {isManualName&&(subBagianTerpilih==="Warehouse"||subBagianTerpilih==="QS"||namaBebasDivisi)?(
                 <input className="lg-sel" type="text" value={namaManualTeks}
                   onChange={(e:any)=>{setNamaManualTeks(e.target.value);setErr("");}}
                   placeholder="Ketik nama kamu..."/>
