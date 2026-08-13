@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 // Status koneksi global + retry - dipisah dari App.tsx (Sprint 5, 5 Agu 2026)
 // ─────────────────────────────────────────────────────────────────────────────
 const TIMER_REQUEST_TIMEOUT_MS=15000;
-export function withTimeout<T>(promise:PromiseLike<T>, ms:number):Promise<T>{
+function withTimeout<T>(promise:PromiseLike<T>, ms:number):Promise<T>{
   return Promise.race([
     Promise.resolve(promise),
     new Promise<T>((_,reject)=>setTimeout(()=>reject(new Error("Request timeout - koneksi lambat")),ms)),
@@ -15,7 +15,7 @@ export function withTimeout<T>(promise:PromiseLike<T>, ms:number):Promise<T>{
 // header lewat useKoneksiStatus(). Module-level pub-sub sederhana (bukan Context - belum ada pola
 // itu di file ini), biar OperatorView/NameplateView/dkk yang manggil withRetry gak perlu prop-
 // drilling status ke komponen lain yang render badge-nya.
-export type KoneksiStatus="ok"|"lambat"|"putus";
+type KoneksiStatus="ok"|"lambat"|"putus";
 let koneksiListeners:((s:KoneksiStatus)=>void)[]=[];
 function laporKoneksi(s:KoneksiStatus){ koneksiListeners.forEach(fn=>fn(s)); }
 export function useKoneksiStatus():KoneksiStatus{

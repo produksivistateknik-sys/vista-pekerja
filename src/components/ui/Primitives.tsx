@@ -30,11 +30,6 @@ export function Inp({style={},...p}:any){
   return <input style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
     background:"#f8fafc",color:"#1e293b",fontSize:13,...style}} {...p}/>;
 }
-// @ts-ignore
-export function _Sel({style={},children,...p}:any){
-  return <select style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
-    background:"#f8fafc",color:"#1e293b",fontSize:13,...style}} {...p}>{children}</select>;
-}
 export function Btn({children,color="#2563eb",outline=false,style={},...p}:any){
   return <button style={{padding:"8px 18px",borderRadius:8,
     border:outline?`1.5px solid ${color}`:"none",cursor:"pointer",

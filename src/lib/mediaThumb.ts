@@ -9,5 +9,4 @@
 export type MediaFoto={url:string,mime?:string,name?:string,uploaded_by?:string,uploaded_at?:string};
 
 export const isVideoFoto=(f:MediaFoto):boolean=>!!f.mime&&f.mime.startsWith("video/");
-export const isImageFoto=(f:MediaFoto):boolean=>!f.mime||f.mime.startsWith("image/");
 export const isGenericFoto=(f:MediaFoto):boolean=>!!f.mime&&!f.mime.startsWith("image/")&&!f.mime.startsWith("video/");
