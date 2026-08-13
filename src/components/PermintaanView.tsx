@@ -28,7 +28,6 @@ const STATUS_COLOR:Record<Jenis,Record<string,string>>={
 const emptyItem=():ItemRow=>({value:"",namaKomponen:"",qty:1});
 
 const selStyle:any={width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
-const inpStyle:any={width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",fontFamily:"inherit"};
 
 export function PermintaanView({user}:{user:any}){
   const namaOperator=user?.nama||user?.name||"Operator";
@@ -223,20 +222,26 @@ export function PermintaanView({user}:{user:any}){
           {jenisTab==="BBMU"&&panelKomponenList.length===0&&(
             <div style={{fontSize:12,color:"#94a3b8",marginBottom:10,background:"#f8fafc",borderRadius:8,padding:"8px 10px"}}>Panel ini belum punya komponen BOM (qty&gt;0).</div>
           )}
-          <div style={{display:"flex",flexDirection:"column" as const,gap:8,marginBottom:10}}>
+          <div style={{display:"flex",flexDirection:"column" as const,gap:12,marginBottom:10}}>
             {items.map((it,idx)=>(
-              <div key={idx} style={{display:"flex",gap:8,alignItems:"center",background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:10}}>
-                <div style={{flex:1,minWidth:0}}>
-                  <select value={it.value} disabled={komponenDisabled} onChange={(e:any)=>onPilihKomponen(idx,e.target.value)} style={{...selStyle,padding:"8px 10px",fontSize:13}}>
-                    <option value="">{komponenDisabled?"Pilih panel dulu...":"Pilih komponen..."}</option>
-                    {komponenOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
-                  </select>
+              <div key={idx} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,padding:14}}>
+                <select value={it.value} disabled={komponenDisabled} onChange={(e:any)=>onPilihKomponen(idx,e.target.value)} style={{...selStyle,padding:"9px 10px",fontSize:13}}>
+                  <option value="">{komponenDisabled?"Pilih panel dulu...":"Pilih komponen..."}</option>
+                  {komponenOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
+                  <div style={{display:"flex",alignItems:"center",border:"1.5px solid #cbd5e1",borderRadius:10,overflow:"hidden"}}>
+                    <button onClick={()=>updateItem(idx,{qty:Math.max(1,it.qty-1)})}
+                      style={{width:34,height:34,border:"none",background:"#f8fafc",color:"#475569",fontSize:17,fontWeight:700,cursor:"pointer"}}>−</button>
+                    <input type="number" min="1" value={it.qty} onChange={(e:any)=>updateItem(idx,{qty:Math.max(1,Number(e.target.value))})}
+                      style={{width:44,height:34,border:"none",borderLeft:"1px solid #e2e8f0",borderRight:"1px solid #e2e8f0",textAlign:"center" as const,fontSize:14,fontWeight:700,color:"#0f172a",background:"#fff",fontFamily:"inherit"}}/>
+                    <button onClick={()=>updateItem(idx,{qty:it.qty+1})}
+                      style={{width:34,height:34,border:"none",background:"#f8fafc",color:"#475569",fontSize:17,fontWeight:700,cursor:"pointer"}}>+</button>
+                  </div>
+                  <button onClick={()=>hapusBaris(idx)} disabled={items.length<=1}
+                    style={{width:34,height:34,borderRadius:8,border:"1px solid #fecaca",background:items.length<=1?"#f8fafc":"#fef2f2",
+                      color:items.length<=1?"#cbd5e1":"#dc2626",cursor:items.length<=1?"default":"pointer",fontSize:15,fontWeight:700}}>×</button>
                 </div>
-                <input type="number" min="1" value={it.qty} onChange={(e:any)=>updateItem(idx,{qty:Number(e.target.value)})}
-                  style={{...inpStyle,width:64,padding:"8px 8px",fontSize:13,textAlign:"center" as const}}/>
-                <button onClick={()=>hapusBaris(idx)} disabled={items.length<=1}
-                  style={{width:34,height:34,flexShrink:0,borderRadius:8,border:"1px solid #fecaca",background:items.length<=1?"#f8fafc":"#fef2f2",
-                    color:items.length<=1?"#cbd5e1":"#dc2626",cursor:items.length<=1?"default":"pointer",fontSize:15,fontWeight:700}}>×</button>
               </div>
             ))}
           </div>
