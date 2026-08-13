@@ -13,6 +13,7 @@ import { KomponenProgressView } from "./components/KomponenProgressView";
 import { KomponenPasangView, type KomponenPasangTugas } from "./components/KomponenPasangView";
 import { TrackingKomponenView } from "./components/TrackingKomponenView";
 import { PermintaanView } from "./components/PermintaanView";
+import { GudangHome } from "./components/GudangHome";
 import { OperatorHome } from "./components/OperatorHome";
 // Sprint 5-7 (5 Agu 2026): seluruh komponen/const yang tadinya nempel di App.tsx dipindah
 // keluar ke src/lib/ dan src/components/ - struktur/nama fungsi/isi PERSIS SAMA, cuma
@@ -54,7 +55,10 @@ export default function App(){
     setViewMode(next);
     try{localStorage.setItem("vista_pekerja_viewmode",next);}catch{}
   };
-  const isOperatorDivisi=user&&!["nameplate","qc","komponen"].includes(user.divisi);
+  // "gudang" (13 Agu 2026) - login baru full-mobile 5-tab, sengaja dikecualikan sama seperti
+  // nameplate/qc/komponen (gak butuh/gak boleh toggle desktop-mobile, UI-nya sendiri sudah
+  // punya bottom-nav 5-tab terpisah - lihat GudangHome.tsx).
+  const isOperatorDivisi=user&&!["nameplate","qc","komponen","gudang"].includes(user.divisi);
 
   // Tab bawah "Arsip" - cuma muncul buat divisi/sub_bagian yang punya seksi arsip otomatis
   // (Warehouse/QS/QC/Assembling Luar/Wiring Control). Assembling Luar dan Wiring Control DIPISAH
@@ -177,7 +181,8 @@ export default function App(){
           </div>
         )}
         <div style={{flex:1,overflowY:"auto"}}>
-          {bottomTab==="permintaan"?<PermintaanView user={user}/>
+          {user.divisi==="gudang"?<GudangHome user={user}/>
+            :bottomTab==="permintaan"?<PermintaanView user={user}/>
             :bottomTab==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
             :bottomTab==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas}/>
             :user.divisi==="nameplate"?<NameplateView user={user}/>
@@ -187,6 +192,7 @@ export default function App(){
             :user.divisi==="komponen"?<TrackingKomponenView user={user}/>
             :<OperatorHome user={user} viewMode={viewMode}/>}
         </div>
+        {user.divisi!=="gudang"&&(
         <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",
           display:"flex",minHeight:52,paddingBottom:"env(safe-area-inset-bottom)",zIndex:100,boxShadow:"0 -2px 10px #00000010"}}>
           <button onClick={()=>setBottomTab("tugas")} style={{flex:1,border:"none",background:"none",cursor:"pointer",
@@ -218,6 +224,7 @@ export default function App(){
             </button>
           )}
         </div>
+        )}
       </div>
     </div>
   );

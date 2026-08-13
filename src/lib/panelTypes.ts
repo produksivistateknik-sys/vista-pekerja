@@ -184,4 +184,11 @@ export const DIVISI_CONFIG: Record<string,any> = {
     // (Pasang Komponen, divisi "assembling") buat kebutuhan itu. Data lama sub_bagian=Assembling
     // di fcs_tracking_komponen TETAP ada, cuma gak bisa login buat nambah data baru lagi.
     subBagianPassword:{Warehouse:"warehouse123",QS:"qs123"}},
+  // Divisi BARU (13 Agu 2026) - login "Gudang", full mobile 5-tab (Permintaan/Tarik/Database/
+  // Progress/Riwayat). SENGAJA terpisah total dari komponen>Warehouse di atas (proses fisik
+  // "tarik komponen keluar" beda konsep dari warehouse_progress per-panel yang lama) - beda
+  // divisi key, beda password, icon beda (🚚 bukan 📦) biar gak ketuker di layar login. Satu
+  // password bersama (bukan subBagianPassword) - gak ada sub-peran di dalam Gudang, sama pola
+  // dengan wiring_ctrl/wiring_pwr/qc (nama dipilih dari tabel pekerja yang divisi='gudang').
+  gudang:     {label:"Gudang",         icon:"🚚", color:"#0369a1",bg:"#eff6ff",password:"gudang123",  proses:null,manualName:true},
 };
