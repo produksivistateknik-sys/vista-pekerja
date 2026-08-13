@@ -236,7 +236,7 @@ export function TrackingKomponenView({user}:any){
             <Lbl>Catatan</Lbl>
             <textarea value={catatan} onChange={(e:any)=>setCatatan(e.target.value)}
               placeholder="Tulis catatan, misal: komponen lengkap, diserahkan ke assembling"
-              style={{width:"100%",minHeight:60,padding:"12px 14px",borderRadius:12,border:"1.5px solid #cbd5e1",fontSize:15,fontWeight:500,color:"#0f172a",fontFamily:"inherit",resize:"vertical" as const}}/>
+              style={{width:"100%",minHeight:60,padding:"12px 14px",borderRadius:12,border:"1.5px solid #cbd5e1",fontSize:15,fontWeight:500,color:"#0f172a",background:"#fff",fontFamily:"inherit",resize:"vertical" as const}}/>
           </div>
 
           <div style={{marginBottom:16}}>
