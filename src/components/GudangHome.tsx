@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { PermintaanGudangTab } from "./PermintaanGudangTab";
+import { TarikGudangTab } from "./TarikGudangTab";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // GUDANG HOME - shell navigasi 5-tab (full mobile, gak ada toggle desktop/mobile
@@ -28,7 +29,7 @@ export function GudangHome({user}:{user:any}){
     <div style={{display:"flex",flexDirection:"column",height:"100%"}}>
       <div style={{flex:1,overflowY:"auto"}}>
         {tab==="permintaan"&&<PermintaanGudangTab user={user}/>}
-        {tab==="tarik"&&<PlaceholderTab label="Tarik Komponen Keluar"/>}
+        {tab==="tarik"&&<TarikGudangTab user={user}/>}
         {tab==="database"&&<PlaceholderTab label="Database Master Komponen"/>}
         {tab==="progress"&&<PlaceholderTab label="Progress (reuse KomponenProgressView)"/>}
         {tab==="riwayat"&&<PlaceholderTab label="Riwayat Harian"/>}
