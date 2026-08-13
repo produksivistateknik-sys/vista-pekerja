@@ -7,14 +7,16 @@ import { Lbl, Card } from "./ui/Primitives";
 // komponen. Independen total dari modul lama (komponen_stok/Warehouse progress
 // panel) - tabel sendiri (permintaan/permintaan_item/komponen_bbmb_master).
 // BBMB (Bantu): komponen dari master komponen_bbmb_master (diisi admin lewat
-// upload Excel). BBMU (Utama): komponen auto dari BOM riil panel yang dipilih
-// (bom_master + panel.checklist), gak ada master terpisah - sama pola dengan
-// KomponenPasangView. Tab ini SENGAJA muncul buat SEMUA divisi (gak dikondisikan
-// kayak tab Komponen/Arsip), jadi App.tsx render ini tanpa cek user.divisi.
+// upload Excel), tiap item punya qty+satuan bebas. BBMU (Utama): SEJAK 14 Agu
+// 2026 disederhanakan jadi 1 row permintaan header per submit (proyek/panel/
+// catatan bebas + status), TIDAK LAGI pakai permintaan_item sama sekali -
+// permintaan_item sekarang eksklusif buat BBMB.
+// Tab ini SENGAJA muncul buat SEMUA divisi (gak dikondisikan kayak tab
+// Komponen/Arsip), jadi App.tsx render ini tanpa cek user.divisi.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Jenis="BBMB"|"BBMU";
-type ItemRow={value:string;namaKomponen:string;qty:number};
+type ItemRow={value:string;namaKomponen:string;qty:number;satuan:string};
 
 const STATUS_LABEL:Record<Jenis,Record<string,string>>={
   BBMB:{pending:"Menunggu",submit:"Disiapkan",reject:"Ditolak"},
@@ -25,9 +27,10 @@ const STATUS_COLOR:Record<Jenis,Record<string,string>>={
   BBMU:{pending:"#94a3b8",tersedia:"#16a34a",belum_lengkap:"#f59e0b",belum_datang:"#dc2626"},
 };
 
-const emptyItem=():ItemRow=>({value:"",namaKomponen:"",qty:1});
+const emptyItem=():ItemRow=>({value:"",namaKomponen:"",qty:1,satuan:""});
 
 const selStyle:any={width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
+const inpStyle:any={width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:13,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
 
 export function PermintaanView({user}:{user:any}){
   const namaOperator=user?.nama||user?.name||"Operator";
@@ -42,9 +45,9 @@ export function PermintaanView({user}:{user:any}){
   const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
 
   const[masterList,setMasterList]=useState<any[]>([]); // BBMB: komponen_bbmb_master
-  const[bomMap,setBomMap]=useState<Record<string,string>>({}); // BBMU: kode->nama dari bom_master
 
-  const[items,setItems]=useState<ItemRow[]>([emptyItem()]);
+  const[items,setItems]=useState<ItemRow[]>([emptyItem()]); // BBMB saja
+  const[catatan,setCatatan]=useState(""); // BBMU saja
   const[submitting,setSubmitting]=useState(false);
 
   const[riwayat,setRiwayat]=useState<any[]>([]);
@@ -55,17 +58,12 @@ export function PermintaanView({user}:{user:any}){
       .then(({data})=>setWoList(data??[]));
     supabase.from("komponen_bbmb_master").select("id,nama,satuan").order("nama",{ascending:true})
       .then(({data})=>setMasterList(data??[]));
-    supabase.from("bom_master").select("kode_komponen,nama_komponen")
-      .then(({data})=>{
-        const m:Record<string,string>={};
-        (data||[]).forEach((b:any)=>{m[b.kode_komponen]=b.nama_komponen;});
-        setBomMap(m);
-      });
   },[]);
 
   useEffect(()=>{
     setSelectedPanelId(null);
     setItems([emptyItem()]);
+    setCatatan("");
     if(selectedWoId){
       supabase.from("panels").select("id,no_pnl,nama,tipe,wo_id,checklist").eq("wo_id",selectedWoId).is("deleted_at",null)
         .order("no_pnl",{ascending:true}).then(({data})=>setPanelList(data??[]));
@@ -76,6 +74,7 @@ export function PermintaanView({user}:{user:any}){
 
   useEffect(()=>{
     setItems([emptyItem()]);
+    setCatatan("");
   },[selectedPanelId,jenisTab]);
 
   const fetchRiwayat=async()=>{
@@ -83,14 +82,14 @@ export function PermintaanView({user}:{user:any}){
     const{data:perms}=await supabase.from("permintaan").select("*")
       .eq("jenis",jenisTab).eq("operator_nama",namaOperator).eq("divisi",divisi)
       .order("created_at",{ascending:false}).limit(30);
-    if(perms&&perms.length>0){
+    if(jenisTab==="BBMB"&&perms&&perms.length>0){
       const ids=perms.map((p:any)=>p.id);
       const{data:itemRows}=await supabase.from("permintaan_item").select("*").in("permintaan_id",ids);
       const map:Record<number,any[]>={};
       (itemRows||[]).forEach((it:any)=>{(map[it.permintaan_id]=map[it.permintaan_id]||[]).push(it);});
       setRiwayat(perms.map((p:any)=>({...p,items:map[p.id]||[]})));
     } else {
-      setRiwayat([]);
+      setRiwayat(perms??[]);
     }
     setLoadingRiwayat(false);
   };
@@ -99,19 +98,11 @@ export function PermintaanView({user}:{user:any}){
     fetchRiwayat();
     const ch=supabase.channel(`realtime-permintaan-${jenisTab}-${namaOperator}`)
       .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},()=>fetchRiwayat())
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan"},()=>fetchRiwayat())
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[jenisTab]);
-
-  // Komponen panel BBMU: kode BOM yang qty>0 di checklist panel terpilih, nama dari bom_master.
-  const panelKomponenList=(()=>{
-    const panel=panelList.find((p:any)=>p.id===selectedPanelId);
-    if(!panel)return[];
-    return Object.entries(panel.checklist||{})
-      .filter(([,cl]:any)=>(cl?.qty||0)>0)
-      .map(([kode]:any)=>({kode,nama:bomMap[kode]||kode}));
-  })();
 
   const updateItem=(idx:number,patch:Partial<ItemRow>)=>{
     setItems(prev=>prev.map((it,i)=>i===idx?{...it,...patch}:it));
@@ -120,20 +111,15 @@ export function PermintaanView({user}:{user:any}){
   const hapusBaris=(idx:number)=>setItems(prev=>prev.length<=1?prev:prev.filter((_,i)=>i!==idx));
 
   const onPilihKomponen=(idx:number,value:string)=>{
-    if(jenisTab==="BBMB"){
-      const m=masterList.find((x:any)=>String(x.id)===value);
-      updateItem(idx,{value,namaKomponen:m?.nama||""});
-    } else {
-      const k=panelKomponenList.find((x:any)=>x.kode===value);
-      updateItem(idx,{value,namaKomponen:k?.nama||value});
-    }
+    const m=masterList.find((x:any)=>String(x.id)===value);
+    updateItem(idx,{value,namaKomponen:m?.nama||""});
   };
 
   const submitPermintaan=async()=>{
     if(!selectedWoId){alert("Pilih Work Order dulu");return;}
     if(!selectedPanelId){alert("Pilih Panel dulu");return;}
-    const itemsValid=items.filter(it=>it.namaKomponen&&Number(it.qty)>0);
-    if(itemsValid.length===0){alert("Isi minimal 1 komponen dengan qty lebih dari 0");return;}
+    const itemsValid=jenisTab==="BBMB"?items.filter(it=>it.namaKomponen&&Number(it.qty)>0):[];
+    if(jenisTab==="BBMB"&&itemsValid.length===0){alert("Isi minimal 1 komponen dengan qty lebih dari 0");return;}
     setSubmitting(true);
     const woObj=woList.find((w:any)=>w.id===selectedWoId);
     const panelObj=panelList.find((p:any)=>p.id===selectedPanelId);
@@ -141,40 +127,42 @@ export function PermintaanView({user}:{user:any}){
       jenis:jenisTab,operator_nama:namaOperator,divisi,sub_bagian:subBagian,
       wo_id:selectedWoId,panel_id:selectedPanelId,
       wo_number:woObj?.wo||null,proyek:woObj?.proyek||null,panel_nama:panelObj?.nama||null,
+      ...(jenisTab==="BBMU"?{catatan:catatan||null,status:"pending"}:{}),
     }).select().single();
     if(permErr||!perm){
       alert("Gagal mengirim permintaan: "+(permErr?.message||"unknown error"));
       setSubmitting(false);
       return;
     }
-    const rows=itemsValid.map(it=>({
-      permintaan_id:perm.id,
-      komponen_bbmb_master_id:jenisTab==="BBMB"&&it.value?Number(it.value):null,
-      kode_komponen:jenisTab==="BBMU"?it.value:null,
-      nama_komponen:it.namaKomponen,
-      qty:Number(it.qty),
-      status:"pending",
-    }));
-    const{error:itemErr}=await supabase.from("permintaan_item").insert(rows);
-    if(itemErr){
-      alert("Permintaan tersimpan tapi gagal simpan komponen: "+itemErr.message);
-      setSubmitting(false);
-      return;
+    if(jenisTab==="BBMB"){
+      const rows=itemsValid.map(it=>({
+        permintaan_id:perm.id,
+        komponen_bbmb_master_id:it.value?Number(it.value):null,
+        nama_komponen:it.namaKomponen,
+        qty:Number(it.qty),
+        satuan:it.satuan||null,
+        status:"pending",
+      }));
+      const{error:itemErr}=await supabase.from("permintaan_item").insert(rows);
+      if(itemErr){
+        alert("Permintaan tersimpan tapi gagal simpan komponen: "+itemErr.message);
+        setSubmitting(false);
+        return;
+      }
     }
     setSubmitting(false);
     setSelectedWoId(null);
     setItems([emptyItem()]);
+    setCatatan("");
     alert("Permintaan berhasil dikirim!");
     fetchRiwayat();
   };
 
   const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"-";
-  const komponenOptions=jenisTab==="BBMB"?masterList.map((m:any)=>({value:String(m.id),label:m.nama})):panelKomponenList.map((k:any)=>({value:k.kode,label:k.nama}));
-  const komponenDisabled=jenisTab==="BBMU"&&!selectedPanelId;
 
   return(
     <div style={{padding:16}} className="fi">
-      <div style={{fontWeight:800,fontSize:17,color:"#1e293b",marginBottom:4}}>📝 Permintaan Barang</div>
+      <div style={{fontWeight:800,fontSize:17,color:"#1e293b",marginBottom:4}}>Permintaan Barang</div>
       <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Halo {namaOperator}, ajukan permintaan komponen bantu atau utama</div>
 
       <div style={{display:"flex",gap:6,marginBottom:16,background:"#f1f5f9",borderRadius:12,padding:4}}>
@@ -189,10 +177,12 @@ export function PermintaanView({user}:{user:any}){
         ))}
       </div>
 
-      <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:12,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,padding:"12px 16px",boxShadow:"0 2px 8px rgba(0,0,0,0.04)"}}>
-        <div style={{width:42,height:42,borderRadius:11,background:"linear-gradient(135deg,#2dd4bf,#0d9488)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:19,boxShadow:"0 3px 10px #0d948844"}}>👤</div>
+      <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:12,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"12px 16px"}}>
+        <div style={{width:40,height:40,borderRadius:10,background:"#0d9488",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:17,color:"#fff",fontWeight:800}}>
+          {namaOperator.charAt(0).toUpperCase()}
+        </div>
         <div>
-          <div style={{fontSize:11,fontWeight:600,color:"#94a3b8"}}>Operator · Divisi</div>
+          <Lbl>Operator · Divisi</Lbl>
           <div style={{fontSize:14,fontWeight:800,color:"#0f172a"}}>{namaOperator} · {subBagian||divisi}</div>
         </div>
       </div>
@@ -216,31 +206,33 @@ export function PermintaanView({user}:{user:any}){
         </div>
       )}
 
-      {selectedWoId&&selectedPanelId&&(
+      {selectedWoId&&selectedPanelId&&jenisTab==="BBMB"&&(
         <>
           <Lbl>Daftar Komponen</Lbl>
-          {jenisTab==="BBMU"&&panelKomponenList.length===0&&(
-            <div style={{fontSize:12,color:"#94a3b8",marginBottom:10,background:"#f8fafc",borderRadius:8,padding:"8px 10px"}}>Panel ini belum punya komponen BOM (qty&gt;0).</div>
-          )}
           <div style={{display:"flex",flexDirection:"column" as const,gap:12,marginBottom:10}}>
             {items.map((it,idx)=>(
-              <div key={idx} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,padding:14}}>
-                <select value={it.value} disabled={komponenDisabled} onChange={(e:any)=>onPilihKomponen(idx,e.target.value)} style={{...selStyle,padding:"9px 10px",fontSize:13}}>
-                  <option value="">{komponenDisabled?"Pilih panel dulu...":"Pilih komponen..."}</option>
-                  {komponenOptions.map(o=><option key={o.value} value={o.value}>{o.label}</option>)}
+              <div key={idx} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:14}}>
+                <select value={it.value} onChange={(e:any)=>onPilihKomponen(idx,e.target.value)} style={{...selStyle,padding:"9px 10px",fontSize:13}}>
+                  <option value="">Pilih komponen...</option>
+                  {masterList.map((m:any)=><option key={m.id} value={String(m.id)}>{m.nama}</option>)}
                 </select>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:10}}>
-                  <div style={{display:"flex",alignItems:"center",border:"1.5px solid #cbd5e1",borderRadius:10,overflow:"hidden"}}>
+                <div style={{display:"flex",alignItems:"flex-end",gap:8,marginTop:10}}>
+                  <div style={{flex:1}}>
+                    <Lbl>Satuan</Lbl>
+                    <input type="text" placeholder="pcs, meter, roll..." value={it.satuan}
+                      onChange={(e:any)=>updateItem(idx,{satuan:e.target.value})} style={inpStyle}/>
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",border:"1.5px solid #cbd5e1",borderRadius:8,overflow:"hidden",flexShrink:0}}>
                     <button onClick={()=>updateItem(idx,{qty:Math.max(1,it.qty-1)})}
-                      style={{width:34,height:34,border:"none",background:"#f8fafc",color:"#475569",fontSize:17,fontWeight:700,cursor:"pointer"}}>−</button>
+                      style={{width:32,height:34,border:"none",background:"#f8fafc",color:"#475569",fontSize:16,fontWeight:700,cursor:"pointer"}}>−</button>
                     <input type="number" min="1" value={it.qty} onChange={(e:any)=>updateItem(idx,{qty:Math.max(1,Number(e.target.value))})}
-                      style={{width:44,height:34,border:"none",borderLeft:"1px solid #e2e8f0",borderRight:"1px solid #e2e8f0",textAlign:"center" as const,fontSize:14,fontWeight:700,color:"#0f172a",background:"#fff",fontFamily:"inherit"}}/>
+                      style={{width:40,height:34,border:"none",borderLeft:"1px solid #e2e8f0",borderRight:"1px solid #e2e8f0",textAlign:"center" as const,fontSize:14,fontWeight:700,color:"#0f172a",background:"#fff",fontFamily:"inherit"}}/>
                     <button onClick={()=>updateItem(idx,{qty:it.qty+1})}
-                      style={{width:34,height:34,border:"none",background:"#f8fafc",color:"#475569",fontSize:17,fontWeight:700,cursor:"pointer"}}>+</button>
+                      style={{width:32,height:34,border:"none",background:"#f8fafc",color:"#475569",fontSize:16,fontWeight:700,cursor:"pointer"}}>+</button>
                   </div>
                   <button onClick={()=>hapusBaris(idx)} disabled={items.length<=1}
                     style={{width:34,height:34,borderRadius:8,border:"1px solid #fecaca",background:items.length<=1?"#f8fafc":"#fef2f2",
-                      color:items.length<=1?"#cbd5e1":"#dc2626",cursor:items.length<=1?"default":"pointer",fontSize:15,fontWeight:700}}>×</button>
+                      color:items.length<=1?"#cbd5e1":"#dc2626",cursor:items.length<=1?"default":"pointer",fontSize:15,fontWeight:700,flexShrink:0}}>×</button>
                 </div>
               </div>
             ))}
@@ -250,16 +242,33 @@ export function PermintaanView({user}:{user:any}){
           </button>
 
           <button onClick={submitPermintaan} disabled={submitting}
-            style={{width:"100%",padding:"15px",borderRadius:12,border:"none",
-              background:submitting?"#94a3b8":"linear-gradient(135deg,#2dd4bf,#0d9488)",
-              color:"#fff",fontSize:16,fontWeight:800,cursor:submitting?"default":"pointer",fontFamily:"inherit",marginBottom:24,
-              boxShadow:submitting?"none":"0 4px 14px #0d948844"}}>
+            style={{width:"100%",padding:"14px",borderRadius:10,border:"none",
+              background:submitting?"#94a3b8":"#0d9488",
+              color:"#fff",fontSize:15,fontWeight:700,cursor:submitting?"default":"pointer",fontFamily:"inherit",marginBottom:20}}>
             {submitting?"Mengirim...":"Kirim Permintaan"}
           </button>
         </>
       )}
 
-      <div style={{fontSize:12,fontWeight:800,color:"#0f172a",textTransform:"uppercase" as const,letterSpacing:.4,marginBottom:8}}>Riwayat Saya ({jenisTab})</div>
+      {selectedWoId&&selectedPanelId&&jenisTab==="BBMU"&&(
+        <>
+          <Lbl>Catatan</Lbl>
+          <textarea value={catatan} onChange={(e:any)=>setCatatan(e.target.value)} rows={5}
+            placeholder="Tuliskan detail komponen utama yang dibutuhkan..."
+            style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:500,color:"#0f172a",background:"#fff",fontFamily:"inherit",resize:"vertical" as const,marginBottom:16}}/>
+
+          <button onClick={submitPermintaan} disabled={submitting}
+            style={{width:"100%",padding:"14px",borderRadius:10,border:"none",
+              background:submitting?"#94a3b8":"#0d9488",
+              color:"#fff",fontSize:15,fontWeight:700,cursor:submitting?"default":"pointer",fontFamily:"inherit",marginBottom:20}}>
+            {submitting?"Mengirim...":"Kirim Permintaan"}
+          </button>
+        </>
+      )}
+
+      <div style={{height:1,background:"#f1f5f9",margin:"4px 0 16px"}}/>
+
+      <Lbl>Riwayat Saya ({jenisTab})</Lbl>
       {loadingRiwayat?(
         <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Memuat...</div>
       ):riwayat.length===0?(
@@ -275,24 +284,34 @@ export function PermintaanView({user}:{user:any}){
                 </div>
                 <span style={{fontSize:10.5,fontWeight:600,color:"#94a3b8",whiteSpace:"nowrap" as const}}>{fmtDateTime(r.created_at)}</span>
               </div>
-              <div style={{display:"flex",flexDirection:"column" as const,gap:6}}>
-                {(r.items||[]).map((it:any)=>(
-                  <div key={it.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"6px 10px"}}>
-                    <span style={{fontSize:12.5,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>{it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}</span></span>
-                    <span style={{background:STATUS_COLOR[jenisTab][it.status]+"18",color:STATUS_COLOR[jenisTab][it.status],
-                      borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
-                      {STATUS_LABEL[jenisTab][it.status]||it.status}
-                    </span>
-                  </div>
-                ))}
-                {(r.items||[]).some((it:any)=>it.status==="reject"&&it.catatan_reject)&&(
-                  <div style={{fontSize:11,color:"#dc2626",marginTop:2}}>
-                    {(r.items||[]).filter((it:any)=>it.status==="reject"&&it.catatan_reject).map((it:any)=>(
-                      <div key={it.id}>⚠ {it.nama_komponen}: {it.catatan_reject}</div>
-                    ))}
-                  </div>
-                )}
-              </div>
+              {jenisTab==="BBMB"?(
+                <div style={{display:"flex",flexDirection:"column" as const,gap:6}}>
+                  {(r.items||[]).map((it:any)=>(
+                    <div key={it.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"6px 10px"}}>
+                      <span style={{fontSize:12.5,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>{it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span></span>
+                      <span style={{background:STATUS_COLOR.BBMB[it.status]+"18",color:STATUS_COLOR.BBMB[it.status],
+                        borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                        {STATUS_LABEL.BBMB[it.status]||it.status}
+                      </span>
+                    </div>
+                  ))}
+                  {(r.items||[]).some((it:any)=>it.status==="reject"&&it.catatan_reject)&&(
+                    <div style={{fontSize:11,color:"#dc2626",marginTop:2}}>
+                      {(r.items||[]).filter((it:any)=>it.status==="reject"&&it.catatan_reject).map((it:any)=>(
+                        <div key={it.id}>⚠ {it.nama_komponen}: {it.catatan_reject}</div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              ):(
+                <>
+                  {r.catatan&&<div style={{fontSize:12.5,color:"#334155",marginBottom:8,background:"#f8fafc",borderRadius:8,padding:"8px 10px"}}>{r.catatan}</div>}
+                  <span style={{background:STATUS_COLOR.BBMU[r.status||"pending"]+"18",color:STATUS_COLOR.BBMU[r.status||"pending"],
+                    borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>
+                    {STATUS_LABEL.BBMU[r.status||"pending"]||r.status}
+                  </span>
+                </>
+              )}
             </Card>
           ))}
         </div>
