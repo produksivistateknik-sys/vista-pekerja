@@ -170,7 +170,7 @@ function BBMBList({adminName}:{adminName:string}){
         <div onClick={()=>setRejectTarget(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:20,width:"100%",maxWidth:340}}>
             <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:4}}>Alasan Reject</div>
-            <div style={{fontSize:12,color:"#64748b",marginBottom:12}}>{rejectTarget.nama_komponen} ×{rejectTarget.qty}</div>
+            <div style={{fontSize:12,color:"#64748b",marginBottom:12}}>{rejectTarget.nama_komponen} ×{rejectTarget.qty}{rejectTarget.satuan?` ${rejectTarget.satuan}`:""}</div>
             <textarea autoFocus value={rejectCatatan} onChange={(e:any)=>setRejectCatatan(e.target.value)}
               placeholder="Contoh: stok kosong..."
               style={{width:"100%",minHeight:70,padding:"10px 12px",borderRadius:10,border:"1.5px solid #fecaca",fontSize:14,fontFamily:"inherit",resize:"vertical" as const,marginBottom:14}}/>
