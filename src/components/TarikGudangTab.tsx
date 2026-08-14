@@ -72,7 +72,7 @@ export function TarikGudangTab(){
 
   return(
     <div style={{padding:16}} className="fi">
-      <SectionCard icon="📦" title="Tarik Komponen" subtitle="Status pengambilan fisik BBMB - dikonfirmasi operator, bukan di sini">
+      <SectionCard icon="📦" title="Pengambilan Komponen" subtitle="Status pengambilan fisik BBMB - dikonfirmasi operator, bukan di sini">
       <div style={{display:"flex",gap:6,marginBottom:14,background:"#f1f5f9",borderRadius:12,padding:4}}>
         {([{k:"belum",l:"Belum Diambil"},{k:"sudah",l:"Sudah Diambil"}] as const).map(t=>(
           <button key={t.k} onClick={()=>setFilterMode(t.k)}

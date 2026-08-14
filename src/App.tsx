@@ -19,9 +19,10 @@ import { OperatorHome } from "./components/OperatorHome";
 // keluar ke src/lib/ dan src/components/ - struktur/nama fungsi/isi PERSIS SAMA, cuma
 // lokasinya pindah. App.tsx sekarang murni shell (routing halaman + header/nav).
 
-// Warehouse & QS - gaya sama persis Nameplate/Yellowmark (Fabrikasi % + Pemasangan Foto per
-// panel), tapi masing-masing cuma 1 tugas (bukan sepasang) dan bucket foto sendiri-sendiri.
-const TUGAS_WAREHOUSE={field:"warehouse",label:"Warehouse",icon:"📦",color:"#0d9488",progressField:"warehouse_progress" as const,fotoField:"warehouse_photos",historyField:"warehouse_history",updatedByField:"warehouse_updated_by",updatedAtField:"warehouse_updated_at",bucket:"warehouse-photos"};
+// QS - gaya sama persis Nameplate/Yellowmark (Fabrikasi % + Pemasangan Foto per panel), cuma 1
+// tugas (bukan sepasang) dan bucket foto sendiri. TUGAS_WAREHOUSE (pasangannya) dihapus 14 Agu
+// 2026 bareng login komponen>Warehouse - fungsinya sudah full pindah ke tab "Progress" login
+// "Gudang" (lihat TUGAS_WAREHOUSE_GUDANG di GudangHome.tsx, value-nya identik).
 const TUGAS_QS={field:"qs",label:"QS",icon:"📋",color:"#7c3aed",progressField:"qs_progress" as const,fotoField:"qs_photos",historyField:"qs_history",updatedByField:"qs_updated_by",updatedAtField:"qs_updated_at",bucket:"qs-photos"};
 
 // Tab "Komponen" (GANTI section "Kontribusi Pasang Komponen" yang dulu nempel di card
@@ -70,7 +71,6 @@ export default function App(){
   // pernah diisi.
   const arsipSeksi:string|null=!user?null
     :user.divisi==="qc"?"qc"
-    :user.divisi==="komponen"&&user.sub_bagian==="Warehouse"?"warehouse"
     :user.divisi==="komponen"&&user.sub_bagian==="QS"?"qs"
     :user.divisi==="assembling"&&user.sub_bagian==="Assembling Luar"?"assembling_luar"
     :user.divisi==="wiring_ctrl"?"wiring_control"
@@ -247,7 +247,6 @@ export default function App(){
             :bottomTab==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas}/>
             :user.divisi==="nameplate"?<NameplateView user={user}/>
             :user.divisi==="qc"?<QCChecklistTab user={user}/>
-            :user.divisi==="komponen"&&user.sub_bagian==="Warehouse"?<KomponenProgressView user={user} tugas={TUGAS_WAREHOUSE}/>
             :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS}/>
             :user.divisi==="komponen"?<TrackingKomponenView user={user}/>
             :<OperatorHome user={user} viewMode={viewMode}/>}

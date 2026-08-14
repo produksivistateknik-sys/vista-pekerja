@@ -30,7 +30,7 @@ type GudangTab="permintaan"|"tarik"|"database"|"progress"|"riwayat";
 
 const TABS:{key:GudangTab,label:string,icon:string}[]=[
   {key:"permintaan",label:"Permintaan",icon:"📋"},
-  {key:"tarik",label:"Tarik",icon:"📦"},
+  {key:"tarik",label:"Pengambilan",icon:"📦"},
   {key:"database",label:"Database",icon:"🗄️"},
   {key:"progress",label:"Progress",icon:"📊"},
   {key:"riwayat",label:"Riwayat",icon:"🕒"},

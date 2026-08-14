@@ -183,15 +183,23 @@ export const DIVISI_CONFIG: Record<string,any> = {
     // "Assembling" sengaja dihapus dari opsi login - sudah gantiin pakai Assembling Luar
     // (Pasang Komponen, divisi "assembling") buat kebutuhan itu. Data lama sub_bagian=Assembling
     // di fcs_tracking_komponen TETAP ada, cuma gak bisa login buat nambah data baru lagi.
-    subBagianPassword:{Warehouse:"warehouse123",QS:"qs123"}},
+    // "Warehouse" DIHAPUS dari sini (14 Agu 2026) - fungsinya sudah full di-reuse sebagai tab
+    // "Progress" di login "Gudang" (KomponenProgressView.tsx sama persis, tugas-nya identik
+    // dengan TUGAS_WAREHOUSE di App.tsx). Data panels.warehouse_progress/warehouse_photos/dll
+    // TETAP ada apa adanya - cuma pintu login lamanya yang ditutup, operator warehouse sekarang
+    // masuk lewat "Gudang" aja.
+    subBagianPassword:{QS:"qs123"}},
   // Divisi BARU (13 Agu 2026) - login "Gudang", full mobile 5-tab (Permintaan/Tarik/Database/
-  // Progress/Riwayat). SENGAJA terpisah total dari komponen>Warehouse di atas (proses fisik
-  // "tarik komponen keluar" beda konsep dari warehouse_progress per-panel yang lama) - beda
-  // divisi key, beda password, icon beda (🚚 bukan 📦) biar gak ketuker di layar login. Satu
-  // password bersama (bukan subBagianPassword - gak ada sub-peran di dalam Gudang).
+  // Progress/Riwayat). SENGAJA terpisah total dari komponen>Warehouse (login lama, DIHAPUS 14 Agu
+  // 2026 - lihat komentar di atas) - proses fisik "tarik komponen keluar" beda konsep dari
+  // warehouse_progress per-panel yang lama - beda divisi key, beda password, icon beda (🚚 bukan
+  // 📦) biar gak ketuker di layar login. Satu password bersama (bukan subBagianPassword - gak ada
+  // sub-peran di dalam Gudang).
   // namaBebas:true (FIX 13 Agu 2026) - nama diketik manual/bebas (BUKAN dropdown dari tabel
-  // pekerja) tanpa perlu klik sub-bagian dulu, beda dari pola Warehouse/QS yang butuh
-  // subBagianPassword+pilih sub-bagian buat dapet free-text. Lihat Login.tsx: flag generik
-  // ini dibaca terpisah dari isNamaBebas (yang khusus literal "Warehouse"/"QS").
+  // pekerja) tanpa perlu klik sub-bagian dulu, beda dari pola QS yang butuh subBagianPassword+
+  // pilih sub-bagian buat dapet free-text. Lihat Login.tsx: flag generik ini dibaca terpisah dari
+  // isNamaBebas (yang khusus literal "Warehouse"/"QS" - "Warehouse" sekarang gak pernah muncul
+  // lagi di subBagianPassword manapun, tapi string literalnya tetap sengaja dipertahankan di
+  // isNamaBebas buat jaga-jaga kalau ada sub-bagian lain bernama sama di masa depan).
   gudang:     {label:"Gudang",         icon:"🚚", color:"#0369a1",bg:"#eff6ff",password:"gudang123",  proses:null,manualName:true,namaBebas:true},
 };
