@@ -170,8 +170,8 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
         onClick={(e:any)=>{if(e.target===e.currentTarget)onClose();else e.stopPropagation();}}>
         {fotos.length>1&&index>0&&(
           <button onClick={goPrev}
-            style={{position:"absolute" as const,left:14,top:"50%",transform:"translateY(-50%)",width:40,height:40,borderRadius:99,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>
-            <i className="ti ti-chevron-left" style={{fontSize:20}}/>
+            style={{position:"absolute" as const,left:14,top:"50%",transform:"translateY(-50%)",width:44,height:44,borderRadius:99,background:"rgba(15,23,42,0.55)",color:"#fff",border:"1px solid rgba(255,255,255,0.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>
+            <i className="ti ti-chevron-left" style={{fontSize:24}}/>
           </button>
         )}
         {isVideo?(
@@ -218,8 +218,8 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
         )}
         {fotos.length>1&&index<fotos.length-1&&(
           <button onClick={goNext}
-            style={{position:"absolute" as const,right:14,top:"50%",transform:"translateY(-50%)",width:40,height:40,borderRadius:99,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>
-            <i className="ti ti-chevron-right" style={{fontSize:20}}/>
+            style={{position:"absolute" as const,right:14,top:"50%",transform:"translateY(-50%)",width:44,height:44,borderRadius:99,background:"rgba(15,23,42,0.55)",color:"#fff",border:"1px solid rgba(255,255,255,0.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>
+            <i className="ti ti-chevron-right" style={{fontSize:24}}/>
           </button>
         )}
       </div>
