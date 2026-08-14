@@ -38,7 +38,7 @@ const TABS:{key:GudangTab,label:string,icon:string}[]=[
 
 const TAB_SUBTITLE:Record<GudangTab,string>={
   permintaan:"Kelola permintaan dan distribusi komponen",
-  tarik:"Antrian barang yang sudah disiapkan, menunggu diambil",
+  tarik:"Status pengambilan fisik BBMB - dikonfirmasi operator",
   database:"Master komponen BBMB",
   progress:"Progress checklist gudang per panel",
   riwayat:"Riwayat aksi harian gudang",
@@ -68,7 +68,7 @@ export function GudangHome({user,onLogout}:{user:any;onLogout:()=>void}){
       <GudangHeader subtitle={TAB_SUBTITLE[tab]} notifCount={notifCount} onBellClick={()=>setTab("permintaan")} onLogout={onLogout}/>
       <div style={{flex:1,overflowY:"auto",width:"100%",paddingBottom:"calc(52px + env(safe-area-inset-bottom))"}}>
         {tab==="permintaan"&&<PermintaanGudangTab user={user}/>}
-        {tab==="tarik"&&<TarikGudangTab user={user}/>}
+        {tab==="tarik"&&<TarikGudangTab/>}
         {tab==="database"&&<DatabaseGudangTab/>}
         {tab==="progress"&&<KomponenProgressView user={user} tugas={TUGAS_WAREHOUSE_GUDANG}/>}
         {tab==="riwayat"&&<RiwayatGudangTab/>}

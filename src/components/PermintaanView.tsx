@@ -58,6 +58,7 @@ export function PermintaanView({user}:{user:any}){
 
   const[riwayat,setRiwayat]=useState<any[]>([]);
   const[loadingRiwayat,setLoadingRiwayat]=useState(true);
+  const[confirmingId,setConfirmingId]=useState<number|null>(null);
 
   useEffect(()=>{
     supabase.from("work_orders").select("id,wo,proyek").eq("is_archived",false).order("created_at",{ascending:false})
@@ -83,13 +84,16 @@ export function PermintaanView({user}:{user:any}){
     setCatatan("");
   },[selectedPanelId,jenisTab]);
 
-  // "Aktif" = masih pending (belum diproses Gudang) ATAU baru berubah status dan belum dilihat
-  // operator - dipakai buat ngurutin Riwayat Saya (yang butuh perhatian naik ke atas) DAN buat
-  // nentuin mana yang ditandai "sudah dibaca" begitu daftar ini ditampilkan.
+  // Riwayat SE-DIVISI (bukan cuma milik operator yang sedang login) - siapapun yang login di
+  // divisi yang sama bisa lihat & konfirmasi pengambilan permintaan siapa saja di divisi itu,
+  // gak dibatasi harus operator yang sama dengan yang minta.
+  // "Aktif" = masih pending (belum diproses Gudang), baru berubah status dan belum dilihat, ATAU
+  // (BBMB) sudah disiapkan tapi belum dikonfirmasi diambil - dipakai buat ngurutin (yang butuh
+  // perhatian naik ke atas) DAN nentuin mana yang ditandai "sudah dibaca" begitu list ini tampil.
   const fetchRiwayat=async()=>{
     setLoadingRiwayat(true);
     const{data:perms}=await supabase.from("permintaan").select("*")
-      .eq("jenis",jenisTab).eq("operator_nama",namaOperator).eq("divisi",divisi)
+      .eq("jenis",jenisTab).eq("divisi",divisi)
       .order("created_at",{ascending:false}).limit(30);
     if(jenisTab==="BBMB"&&perms&&perms.length>0){
       const ids=perms.map((p:any)=>p.id);
@@ -97,7 +101,7 @@ export function PermintaanView({user}:{user:any}){
       const map:Record<number,any[]>={};
       (itemRows||[]).forEach((it:any)=>{(map[it.permintaan_id]=map[it.permintaan_id]||[]).push(it);});
       const merged=perms.map((p:any)=>({...p,items:map[p.id]||[]}));
-      const isAktif=(p:any)=>(p.items||[]).some((it:any)=>it.status==="pending"||!it.dilihat_operator);
+      const isAktif=(p:any)=>(p.items||[]).some((it:any)=>it.status==="pending"||!it.dilihat_operator||(it.status==="submit"&&!it.sudah_diambil));
       merged.sort((a:any,b:any)=>{
         const diff=Number(isAktif(b))-Number(isAktif(a));
         return diff!==0?diff:(b.created_at||"").localeCompare(a.created_at||"");
@@ -121,13 +125,26 @@ export function PermintaanView({user}:{user:any}){
 
   useEffect(()=>{
     fetchRiwayat();
-    const ch=supabase.channel(`realtime-permintaan-${jenisTab}-${namaOperator}`)
+    const ch=supabase.channel(`realtime-permintaan-${jenisTab}-${divisi}`)
       .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},()=>fetchRiwayat())
       .on("postgres_changes",{event:"*",schema:"public",table:"permintaan"},()=>fetchRiwayat())
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[jenisTab]);
+  },[jenisTab,divisi]);
+
+  // Konfirmasi pengambilan fisik - SEKARANG dari sisi operator (bukan Gudang lagi, lihat
+  // TarikGudangTab.tsx yang sudah jadi read-only). Siapapun yang login saat ini yang
+  // mengonfirmasi (dicatat di diambil_oleh), gak harus operator yang sama dengan operator_nama
+  // permintaan aslinya. BBMB saja - BBMU gak punya tahap pengambilan fisik terpisah.
+  const konfirmasiDiambil=async(itemId:number)=>{
+    setConfirmingId(itemId);
+    await supabase.from("permintaan_item").update({
+      sudah_diambil:true,diambil_oleh:namaOperator,diambil_at:new Date().toISOString(),
+    }).eq("id",itemId);
+    setConfirmingId(null);
+    fetchRiwayat();
+  };
 
   const updateItem=(idx:number,patch:Partial<ItemRow>)=>{
     setItems(prev=>prev.map((it,i)=>i===idx?{...it,...patch}:it));
@@ -284,12 +301,12 @@ export function PermintaanView({user}:{user:any}){
 
       <div style={{height:1,background:"#f1f5f9",margin:"4px 0 16px"}}/>
 
-      <Lbl>Riwayat Saya ({jenisTab})</Lbl>
+      <Lbl>Riwayat Permintaan Divisi ({jenisTab})</Lbl>
       {loadingRiwayat?(
         <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Memuat...</div>
       ):riwayat.length===0?(
         <EmptyState variant="box-paper" title={`Belum ada permintaan ${jenisTab}`}
-          description="Permintaan yang kamu kirim akan muncul di sini."/>
+          description="Permintaan dari divisi ini akan muncul di sini."/>
       ):(
         <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
           {riwayat.map((r:any)=>(
@@ -304,12 +321,27 @@ export function PermintaanView({user}:{user:any}){
               {jenisTab==="BBMB"?(
                 <div style={{display:"flex",flexDirection:"column" as const,gap:6}}>
                   {(r.items||[]).map((it:any)=>(
-                    <div key={it.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"6px 10px"}}>
-                      <span style={{fontSize:12.5,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>{it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span></span>
-                      <span style={{background:STATUS_COLOR.BBMB[it.status]+"18",color:STATUS_COLOR.BBMB[it.status],
-                        borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
-                        {STATUS_LABEL.BBMB[it.status]||it.status}
-                      </span>
+                    <div key={it.id} style={{background:"#f8fafc",borderRadius:8,padding:"6px 10px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:12.5,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>{it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span></span>
+                        <span style={{background:STATUS_COLOR.BBMB[it.status]+"18",color:STATUS_COLOR.BBMB[it.status],
+                          borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                          {STATUS_LABEL.BBMB[it.status]||it.status}
+                        </span>
+                      </div>
+                      {it.status==="submit"&&!it.sudah_diambil&&(
+                        <button onClick={()=>konfirmasiDiambil(it.id)} disabled={confirmingId===it.id}
+                          style={{width:"100%",marginTop:6,padding:"7px",borderRadius:7,border:"none",
+                            background:confirmingId===it.id?"#94a3b8":accent,color:"#fff",fontWeight:700,fontSize:11,
+                            cursor:confirmingId===it.id?"default":"pointer",fontFamily:"inherit"}}>
+                          {confirmingId===it.id?"Menyimpan...":"Konfirmasi Sudah Diambil"}
+                        </button>
+                      )}
+                      {it.sudah_diambil&&(
+                        <div style={{marginTop:6,fontSize:10.5,color:"#16a34a",fontWeight:700}}>
+                          ✓ Sudah diambil oleh {it.diambil_oleh||"-"} — {fmtDateTime(it.diambil_at)}
+                        </div>
+                      )}
                     </div>
                   ))}
                   {(r.items||[]).some((it:any)=>it.status==="reject"&&it.catatan_reject)&&(

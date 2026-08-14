@@ -3,10 +3,13 @@ import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState } from "./gudang/GudangUI";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB TARIK (dalam GudangHome) - antrian fisik: item BBMB yang sudah di-Submit
-// atau item BBMU yang sudah "Tersedia" tapi belum diambil fisik oleh operator
-// peminta. Tombol "Sudah Diambil" set permintaan_item.sudah_diambil=true - item
-// hilang dari antrian ini begitu ditandai (masuk Riwayat, bukan dihapus).
+// TAB TARIK (dalam GudangHome) - READ-ONLY sejak 17 Agu 2026. Konfirmasi
+// pengambilan fisik SEKARANG dilakukan OPERATOR sendiri (lewat Riwayat Permintaan
+// di PermintaanView.tsx, tombol "Konfirmasi Sudah Diambil"), Gudang cuma bisa
+// LIHAT status "Belum Diambil"/"Sudah Diambil" - gak ada lagi tombol tandai
+// manual dari sisi ini. BBMB SAJA - BBMU gak punya tahap pengambilan fisik
+// terpisah (statusnya cukup di header permintaan: tersedia/belum_lengkap/
+// belum_datang, gak ada kolom sudah_diambil di tabel permintaan).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DIVISI_LABEL:Record<string,string>={
@@ -31,20 +34,18 @@ const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
 
 const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"-";
 
-export function TarikGudangTab({user}:{user:any}){
-  const adminName=user?.nama||user?.name||"Gudang";
+type FilterMode="belum"|"sudah";
+
+export function TarikGudangTab(){
+  const[filterMode,setFilterMode]=useState<FilterMode>("belum");
   const[loading,setLoading]=useState(true);
   const[rows,setRows]=useState<any[]>([]); // item + permintaan header digabung flat
-  const[processingId,setProcessingId]=useState<number|null>(null);
 
   const fetchData=async()=>{
     setLoading(true);
-    // Item BBMB yang udah "submit" ATAU BBMU yang udah "tersedia", DAN belum diambil fisik -
-    // 2 query terpisah (OR lintas kolom status yang beda arti per jenis lebih aman/jelas
-    // daripada satu filter .in() yang nyampur makna BBMB/BBMU).
-    const submitBbmb=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").eq("status","submit").eq("sudah_diambil",false).range(from,to));
-    const tersediaBbmu=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").eq("status","tersedia").eq("sudah_diambil",false).range(from,to));
-    const items=[...submitBbmb,...tersediaBbmu];
+    // BBMB yang sudah disiapkan Gudang ("submit") - baik yang belum maupun yang sudah diambil,
+    // biar Gudang bisa lihat dua-duanya (toggle filter di bawah), bukan cuma antrian aktif.
+    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").eq("status","submit").range(from,to));
     const permIds=[...new Set(items.map((it:any)=>it.permintaan_id))];
     if(permIds.length===0){setRows([]);setLoading(false);return;}
     const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").in("id",permIds).range(from,to));
@@ -67,48 +68,61 @@ export function TarikGudangTab({user}:{user:any}){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
-  const tandaiDiambil=async(itemId:number)=>{
-    setProcessingId(itemId);
-    await supabase.from("permintaan_item").update({sudah_diambil:true,updated_by:adminName,updated_at:new Date().toISOString()}).eq("id",itemId);
-    setProcessingId(null);
-    fetchData();
-  };
+  const filteredRows=rows.filter(r=>filterMode==="belum"?!r.sudah_diambil:r.sudah_diambil);
 
   return(
     <div style={{padding:16}} className="fi">
-      <SectionCard icon="📦" title="Tarik Komponen" subtitle="Antrian barang yang sudah disiapkan, menunggu diambil fisik">
+      <SectionCard icon="📦" title="Tarik Komponen" subtitle="Status pengambilan fisik BBMB - dikonfirmasi operator, bukan di sini">
+      <div style={{display:"flex",gap:6,marginBottom:14,background:"#f1f5f9",borderRadius:12,padding:4}}>
+        {([{k:"belum",l:"Belum Diambil"},{k:"sudah",l:"Sudah Diambil"}] as const).map(t=>(
+          <button key={t.k} onClick={()=>setFilterMode(t.k)}
+            style={{flex:1,padding:"9px 8px",border:"none",borderRadius:9,cursor:"pointer",
+              fontWeight:700,fontSize:12.5,fontFamily:"inherit",
+              background:filterMode===t.k?"#fff":"transparent",color:filterMode===t.k?"#0369a1":"#64748b",
+              boxShadow:filterMode===t.k?"0 1px 3px rgba(0,0,0,0.08)":"none"}}>
+            {t.l}
+          </button>
+        ))}
+      </div>
       {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
-      ):rows.length===0?(
-        <EmptyState title="Tidak ada barang menunggu"
-          description="Semua barang yang sudah disiapkan sudah diambil. Antrian baru akan muncul di sini."
-          tip="Barang muncul di sini setelah BBMB disubmit atau BBMU ditandai tersedia."/>
+      ):filteredRows.length===0?(
+        <EmptyState title={filterMode==="belum"?"Tidak ada yang menunggu":"Belum ada yang diambil"}
+          description={filterMode==="belum"?"Semua barang yang sudah disiapkan sudah dikonfirmasi diambil operator.":"Belum ada konfirmasi pengambilan dari operator."}
+          tip="Konfirmasi pengambilan dilakukan operator sendiri lewat app mereka, bukan dari sini."/>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {rows.map((r:any)=>(
+          {filteredRows.map((r:any)=>(
             <div key={r.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,padding:"12px 14px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}>
                 <div style={{minWidth:0}}>
                   <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                    <span style={{background:r.perm.jenis==="BBMB"?"#eff6ff":"#faf5ff",color:r.perm.jenis==="BBMB"?"#1d4ed8":"#7c3aed",
-                      borderRadius:5,padding:"1px 7px",fontSize:9.5,fontWeight:800}}>{r.perm.jenis}</span>
+                    <span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:5,padding:"1px 7px",fontSize:9.5,fontWeight:800}}>BBMB</span>
                     <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{r.perm.operator_nama}</span>
                   </div>
                   <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                     {DIVISI_LABEL[r.perm.divisi]||r.perm.divisi} · {r.perm.proyek||"-"} · {r.perm.panel_nama||"-"}
                   </div>
                 </div>
-                <div style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap",flexShrink:0}}>{fmtDateTime(r.perm.created_at)}</div>
+                <div style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap",flexShrink:0}}>Diminta: {fmtDateTime(r.perm.created_at)}</div>
               </div>
               <div style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:9,padding:"9px 10px"}}>
-                <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:"#334155"}}>{r.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{r.qty}</span></span>
-                <button onClick={()=>tandaiDiambil(r.id)} disabled={processingId===r.id}
-                  style={{flexShrink:0,padding:"8px 14px",borderRadius:9,border:"none",
-                    background:processingId===r.id?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:12,
-                    cursor:processingId===r.id?"default":"pointer",fontFamily:"inherit"}}>
-                  {processingId===r.id?"...":"✓ Sudah Diambil"}
-                </button>
+                <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:"#334155"}}>{r.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{r.qty}{r.satuan?` ${r.satuan}`:""}</span></span>
+                {r.sudah_diambil?(
+                  <span style={{flexShrink:0,background:"#f0fdf4",color:"#16a34a",borderRadius:20,padding:"4px 10px",fontSize:10.5,fontWeight:700,whiteSpace:"nowrap" as const,textAlign:"right" as const}}>
+                    ✓ Sudah Diambil
+                  </span>
+                ):(
+                  <span style={{flexShrink:0,background:"#fffbeb",color:"#b45309",borderRadius:20,padding:"4px 10px",fontSize:10.5,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                    Belum Diambil
+                  </span>
+                )}
               </div>
+              {r.sudah_diambil&&(
+                <div style={{marginTop:8,fontSize:10.5,color:"#16a34a",fontWeight:600}}>
+                  ✓ Diambil oleh {r.diambil_oleh||"-"} — {fmtDateTime(r.diambil_at)}
+                </div>
+              )}
             </div>
           ))}
         </div>

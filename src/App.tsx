@@ -83,27 +83,27 @@ export default function App(){
     :null;
   const [bottomTab,setBottomTab]=useState<"tugas"|"komponen"|"arsip"|"permintaan">("tugas");
 
-  // Badge notif di header (15 Agu 2026) = jumlah permintaan (BBMB+BBMU) MILIK operator sendiri
-  // yang STATUSNYA BARU DIUBAH Gudang (submit/reject/tersedia/dst, bukan lagi "pending") dan
-  // BELUM DILIHAT operator (kolom dilihat_operator, migration 20260815010000) - di-mark
-  // dibaca otomatis begitu operator buka tab Permintaan (lihat fetchRiwayat di PermintaanView.tsx).
-  // Gudang gak ikut sini - dia punya badge sendiri (jumlah pending) di GudangHeader.
+  // Badge notif di header (17 Agu 2026) = jumlah permintaan (BBMB+BBMU) SE-DIVISI (bukan cuma
+  // milik operator yang sedang login - Riwayat sekarang juga se-divisi, lihat PermintaanView.tsx)
+  // yang butuh perhatian: STATUSNYA BARU DIUBAH Gudang dan belum dilihat (dilihat_operator), ATAU
+  // (BBMB) sudah disiapkan tapi belum dikonfirmasi diambil fisik (sudah_diambil). Gudang gak ikut
+  // sini - dia punya badge sendiri (jumlah pending) di GudangHeader.
   const [notifCount,setNotifCount]=useState(0);
   useEffect(()=>{
     if(!user||user.divisi==="gudang")return;
-    const namaOperator=user.nama||user.name;
     let cancelled=false;
     const fetchNotifCount=async()=>{
       const{data:perms}=await supabase.from("permintaan").select("id,jenis,status,dilihat_operator")
-        .eq("operator_nama",namaOperator).eq("divisi",user.divisi)
+        .eq("divisi",user.divisi)
         .order("created_at",{ascending:false}).limit(100);
       if(!perms||perms.length===0){if(!cancelled)setNotifCount(0);return;}
       const bbmuUnread=perms.filter((p:any)=>p.jenis==="BBMU"&&p.status&&p.status!=="pending"&&!p.dilihat_operator).length;
       const bbmbIds=perms.filter((p:any)=>p.jenis==="BBMB").map((p:any)=>p.id);
       let bbmbUnread=0;
       if(bbmbIds.length>0){
-        const{data:items}=await supabase.from("permintaan_item").select("permintaan_id").neq("status","pending").eq("dilihat_operator",false).in("permintaan_id",bbmbIds);
-        bbmbUnread=new Set((items||[]).map((it:any)=>it.permintaan_id)).size;
+        const{data:items}=await supabase.from("permintaan_item").select("permintaan_id,status,dilihat_operator,sudah_diambil").neq("status","pending").in("permintaan_id",bbmbIds);
+        const needsAttention=(items||[]).filter((it:any)=>!it.dilihat_operator||(it.status==="submit"&&!it.sudah_diambil));
+        bbmbUnread=new Set(needsAttention.map((it:any)=>it.permintaan_id)).size;
       }
       if(!cancelled)setNotifCount(bbmuUnread+bbmbUnread);
     };
