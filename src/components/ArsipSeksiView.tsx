@@ -33,10 +33,26 @@ export function ArsipSeksiView({seksi}:{seksi:string}){
     return()=>{supabase.removeChannel(ch);};
   },[seksi]);
 
+  // BUG FIX (14 Agu 2026): assembling_luar kemarin cuma baca data.pasang_komponen_photos
+  // (galeri lama, panel-wide) - komponen yang fotonya di data.fotoPemasangan (galeri per-komponen,
+  // sumber utama sejak 8 Agu 2026) muncul "Belum ada foto" padahal fotonya ADA, cuma dibaca dari
+  // field yang salah (dikonfirmasi lewat data live: panel SDP AIR COMPRESSOR/WO 052/Groundplate,
+  // fotoPemasangan berisi 2 foto, pasang_komponen_photos kosong). Digabung (bukan sekadar
+  // ditukar) supaya row LAMA yang cuma punya foto di pasang_komponen_photos (sebelum galeri
+  // per-komponen ada) tetap kebaca juga - dedupe by url.
+  const mergeFotoUnik=(...arrs:(any[]|undefined)[]):any[]=>{
+    const seen=new Set<string>();
+    const out:any[]=[];
+    arrs.forEach(arr=>(arr||[]).forEach((f:any)=>{
+      if(f?.url&&!seen.has(f.url)){seen.add(f.url);out.push(f);}
+    }));
+    return out.sort((a,b)=>(a.uploaded_at||"").localeCompare(b.uploaded_at||""));
+  };
+
   const fotoListOf=(row:any):any[]=>{
-    if(row.seksi==="wiring_control")return row.data?.fotoPemasangan||[];
-    if(row.seksi==="assembling_luar")return row.data?.pasang_komponen_photos||[];
-    if(row.seksi==="pasang_komponen")return row.data?.fotoPemasangan||[];
+    if(row.seksi==="wiring_control")return mergeFotoUnik(row.data?.fotoPemasangan,row.data?.pasang_komponen_photos);
+    if(row.seksi==="assembling_luar")return mergeFotoUnik(row.data?.fotoPemasangan,row.data?.pasang_komponen_photos);
+    if(row.seksi==="pasang_komponen")return mergeFotoUnik(row.data?.fotoPemasangan,row.data?.pasang_komponen_photos);
     if(row.seksi==="qc"){
       let total:any[]=[];
       ["fisik","spesifikasi","baut","test"].forEach(k=>{total=total.concat(row.data?.[k]?.foto||[]);});
