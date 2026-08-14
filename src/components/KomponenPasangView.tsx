@@ -283,6 +283,61 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     }
     setSavingKey(null);
   };
+  // PERBAIKAN (14 Agu 2026): sebelumnya begitu komponen "sudah diarsip" (progress sekarang match
+  // sama yang terakhir diarsip), seluruh card-nya hilang dari accordion (lihat relevanBelumArsip
+  // di render) - termasuk kalau progress kecapai 100% lewat klik step PCT_STEPS yang SAMA SEKALI
+  // gak mewajibkan foto (beda dari tombol Simpan Progress yang sudah wajib >=1 foto). Komponen
+  // itu jadi terkunci selamanya tanpa dokumentasi. Fungsi ini APPEND-ONLY: foto baru ditambah ke
+  // live checklist DAN dipatch ke snapshot arsip (data.fotoPemasangan) biar ikut nongol di tab
+  // Arsip juga - TANPA menyentuh progress/status/foto lama sama sekali (gak ada hapus/ganti).
+  const simpanFotoArsipTambahan=async(panel:any,kode:string,key:string)=>{
+    const staged=stagedFoto[key]||[];
+    if(staged.length===0)return;
+    setSavingKey("foto_"+key);
+    try{
+      const fotoTerupload:any[]=[];
+      const gagal:typeof staged=[];
+      for(const s of staged){
+        try{
+          const blob=await compressImageNp(s.file);
+          const path=`${panel.id}/${kode}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+          const{error:upErr}=await supabase.storage.from(tugas.fotoBucket).upload(path,blob,{contentType:"image/jpeg"});
+          if(upErr)throw upErr;
+          const{data:urlData}=supabase.storage.from(tugas.fotoBucket).getPublicUrl(path);
+          fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+        }catch(fotoErr:any){
+          gagal.push(s);
+        }
+      }
+      if(fotoTerupload.length>0){
+        const cl=panel.checklist?.[kode]||{};
+        const newFotoLive=[...(cl.fotoPemasangan||[]),...fotoTerupload];
+        const newChecklist={...panel.checklist,[kode]:{...cl,fotoPemasangan:newFotoLive}};
+        await supabase.from("panels").update({checklist:newChecklist}).eq("id",panel.id);
+        setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
+
+        const{data:arsipRow}=await supabase.from("panel_seksi_archived").select("data").eq("panel_id",panel.id).eq("seksi",tugas.seksi).eq("kode",kode).single();
+        if(arsipRow){
+          const newFotoArsip=[...(arsipRow.data?.fotoPemasangan||[]),...fotoTerupload];
+          await supabase.from("panel_seksi_archived").update({data:{...arsipRow.data,fotoPemasangan:newFotoArsip}}).eq("panel_id",panel.id).eq("seksi",tugas.seksi).eq("kode",kode);
+        }
+      }
+      const berhasilSet=new Set(staged.filter(s=>!gagal.includes(s)));
+      staged.forEach(s=>{if(berhasilSet.has(s))URL.revokeObjectURL(s.previewUrl);});
+      setStagedFoto(prev=>{
+        const sisa=(prev[key]||[]).filter(s=>!berhasilSet.has(s));
+        const next={...prev};
+        if(sisa.length>0)next[key]=sisa;else delete next[key];
+        return next;
+      });
+      if(gagal.length>0){
+        alert(`${gagal.length} dari ${staged.length} foto GAGAL diupload (kemungkinan storage penuh atau koneksi bermasalah). Foto yang gagal TETAP ada di layar - coba tap Simpan lagi.`);
+      }
+    }catch(err:any){
+      alert("Terjadi kesalahan: "+err.message);
+    }
+    setSavingKey(null);
+  };
   const hapusFotoTersimpan=async(panel:any,kode:string|null,fotoUrl:string)=>{
     if(!window.confirm("Hapus foto ini?"))return;
     await hapusFotoDariStorage(tugas.fotoBucket,fotoUrl);
@@ -438,6 +493,15 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
             const arsipPctR=arsipMap[`${p.id}|${r.kode}`];
             return !(arsipPctR!==undefined&&arsipPctR===pctR);
           });
+          // PERBAIKAN (14 Agu 2026): komponen yang sudah diarsip TETAP dirender (bukan lenyap
+          // total) - versi ringkas tanpa PCT_STEPS/Simpan Progress, cuma buat nambah foto
+          // dokumentasi susulan kalau kemarin ke-100% tanpa foto sama sekali (lihat
+          // simpanFotoArsipTambahan di atas).
+          const relevanArsip=relevan.filter(r=>{
+            const pctR=getProgress(p,r.kode,r.isTahap);
+            const arsipPctR=arsipMap[`${p.id}|${r.kode}`];
+            return arsipPctR!==undefined&&arsipPctR===pctR;
+          });
           const expanded=expandedPanel.has(p.id);
           const fotoPanelArr=p.pasang_komponen_photos||[];
           const stagedPanelKey=`panelfoto_${p.id}`;
@@ -459,11 +523,6 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
               </div>
               {expanded&&(
                 <div style={{padding:"2px 15px 16px",borderTop:"1px solid #f1f5f9",display:"flex",flexDirection:"column" as const,gap:12,marginTop:12}}>
-                  {relevanBelumArsip.length===0&&relevan.length>0&&(
-                    <div style={{textAlign:"center" as const,padding:"16px 0",color:"#16a34a",fontSize:12,fontWeight:700}}>
-                      ✅ Semua komponen sudah diarsip
-                    </div>
-                  )}
                   {relevanBelumArsip.map(r=>{
                     const pct=getProgress(p,r.kode,r.isTahap);
                     const key=`${p.id}_${r.kode}`;
@@ -490,8 +549,20 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
                             // kelihatan kayak "udah kepilih" padahal belum ada kerjaan sama sekali.
                             const isNext=pct>0&&s===PCT_STEPS.find((x:number)=>x>pct);
                             const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
+                            // PERBAIKAN (14 Agu 2026): soft reminder, BUKAN hard block - klik
+                            // step 100% tanpa foto sama sekali sebelumnya bisa lolos diam-diam
+                            // (trigger DB auto-archive begitu progress 100%, gak peduli ada foto
+                            // atau belum). Cuma muncul pas NAIK ke 100% (bukan pas turun/undo),
+                            // dan cuma kalau memang belum ada foto tersimpan sama sekali.
+                            const handleStepClick=()=>{
+                              const target=reached?prevStep:s;
+                              if(s===100&&!reached&&fotoKodeArr.length===0){
+                                if(!window.confirm("Belum ada foto dokumentasi untuk komponen ini. Yakin tandai selesai?"))return;
+                              }
+                              updatePctLive(p,r.kode,r.isTahap,target);
+                            };
                             return(
-                              <button key={s} onClick={()=>updatePctLive(p,r.kode,r.isTahap,reached?prevStep:s)}
+                              <button key={s} onClick={handleStepClick}
                                 style={{flex:1,minWidth:36,padding:"8px 3px",borderRadius:8,border:"none",cursor:"pointer",
                                   background:reached?tugas.color:isNext?`${tugas.color}14`:"#f1f5f9",
                                   color:reached?"#fff":isNext?tugas.color:"#94a3b8",
@@ -555,6 +626,64 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
                       </div>
                     );
                   })}
+                  {relevanArsip.length>0&&(
+                    <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
+                      {relevanBelumArsip.length>0&&(
+                        <div style={{fontSize:9.5,fontWeight:800,color:"#94a3b8",letterSpacing:0.4}}>SUDAH DIARSIP</div>
+                      )}
+                      {relevanArsip.map(r=>{
+                        const key=`${p.id}_${r.kode}`;
+                        const fotoKodeArr=p.checklist?.[r.kode]?.fotoPemasangan||[];
+                        const stagedKodeFoto=stagedFoto[key]||[];
+                        const savingFoto=savingKey==="foto_"+key;
+                        return(
+                          <div key={r.kode} style={{border:"1.5px solid #eef0f3",borderRadius:12,padding:"12px 13px",background:"#f8faf9"}}>
+                            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+                              <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{r.nama}</span>
+                              <span style={{display:"flex",alignItems:"center",gap:4,fontSize:10.5,fontWeight:800,color:"#16a34a",background:"#dcfce7",borderRadius:20,padding:"3px 9px"}}>
+                                <i className="ti ti-circle-check-filled" style={{fontSize:12}}/> Sudah Diarsip
+                              </span>
+                            </div>
+                            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.3}}>
+                              <i className="ti ti-camera" style={{fontSize:11}}/> FOTO PEMASANGAN
+                            </div>
+                            {fotoKodeArr.length===0&&stagedKodeFoto.length===0?(
+                              <div style={{fontSize:11,color:"#cbd5e1",padding:"2px 0 8px",fontStyle:"italic" as const}}>Belum ada foto</div>
+                            ):(
+                              <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
+                                {fotoKodeArr.map((f:any,fi:number)=>(
+                                  <img key={`saved_${fi}`} onClick={()=>setFotoViewer({fotos:fotoKodeArr,startIndex:fi,label:`${r.nama}_${p.nama}`})}
+                                    src={f.url} loading="lazy" style={{width:52,height:52,borderRadius:8,objectFit:"cover" as const,border:"1px solid #eef0f3",cursor:"pointer"}}/>
+                                ))}
+                                {stagedKodeFoto.map((s,si)=>(
+                                  <div key={`staged_${si}`} style={{position:"relative" as const}}>
+                                    <img src={s.previewUrl} style={{width:52,height:52,borderRadius:8,objectFit:"cover" as const,border:"1.5px dashed #16a34a"}}/>
+                                    <button onClick={()=>batalkanFotoStaged(key,si)}
+                                      style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                      <i className="ti ti-x" style={{fontSize:10}}/>
+                                    </button>
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                            <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
+                              <MediaPickerSheet disabled={savingFoto}
+                                triggerStyle={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#16a34a",background:"#16a34a0f",border:"1px dashed #16a34a55",borderRadius:8,padding:"7px 11px",cursor:"pointer"}}
+                                onFiles={(files)=>pilihFotoStaged(key,files)}>
+                                + Tambah Foto
+                              </MediaPickerSheet>
+                              {stagedKodeFoto.length>0&&(
+                                <button onClick={()=>simpanFotoArsipTambahan(p,r.kode,key)} disabled={savingFoto}
+                                  style={{fontSize:11,fontWeight:700,color:"#fff",background:"#16a34a",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>
+                                  {savingFoto?"⏳ Menyimpan...":"💾 Simpan Foto"}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
                   {/* Galeri umum panel (lama, sebelum tab ini per-komponen) - TETAP dipertahankan
                       biar foto yang udah pernah ke-upload gak hilang dari tampilan, operator
                       masih bisa nambah foto umum ke sini kapan saja (8 Agu 2026). */}
