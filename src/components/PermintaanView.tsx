@@ -23,7 +23,7 @@ type Jenis="BBMB"|"BBMU";
 type ItemRow={value:string;namaKomponen:string;qty:number;satuan:string};
 
 const STATUS_LABEL:Record<Jenis,Record<string,string>>={
-  BBMB:{pending:"Menunggu",submit:"Disiapkan",reject:"Ditolak"},
+  BBMB:{pending:"Menunggu",submit:"✓ Disiapkan",reject:"✕ Ditolak"},
   BBMU:{pending:"Menunggu",tersedia:"Tersedia",belum_lengkap:"Belum Lengkap",belum_datang:"Belum Datang"},
 };
 const STATUS_COLOR:Record<Jenis,Record<string,string>>={
@@ -83,6 +83,9 @@ export function PermintaanView({user}:{user:any}){
     setCatatan("");
   },[selectedPanelId,jenisTab]);
 
+  // "Aktif" = masih pending (belum diproses Gudang) ATAU baru berubah status dan belum dilihat
+  // operator - dipakai buat ngurutin Riwayat Saya (yang butuh perhatian naik ke atas) DAN buat
+  // nentuin mana yang ditandai "sudah dibaca" begitu daftar ini ditampilkan.
   const fetchRiwayat=async()=>{
     setLoadingRiwayat(true);
     const{data:perms}=await supabase.from("permintaan").select("*")
@@ -93,9 +96,25 @@ export function PermintaanView({user}:{user:any}){
       const{data:itemRows}=await supabase.from("permintaan_item").select("*").in("permintaan_id",ids);
       const map:Record<number,any[]>={};
       (itemRows||[]).forEach((it:any)=>{(map[it.permintaan_id]=map[it.permintaan_id]||[]).push(it);});
-      setRiwayat(perms.map((p:any)=>({...p,items:map[p.id]||[]})));
+      const merged=perms.map((p:any)=>({...p,items:map[p.id]||[]}));
+      const isAktif=(p:any)=>(p.items||[]).some((it:any)=>it.status==="pending"||!it.dilihat_operator);
+      merged.sort((a:any,b:any)=>{
+        const diff=Number(isAktif(b))-Number(isAktif(a));
+        return diff!==0?diff:(b.created_at||"").localeCompare(a.created_at||"");
+      });
+      setRiwayat(merged);
+      const unreadIds=(itemRows||[]).filter((it:any)=>it.status!=="pending"&&!it.dilihat_operator).map((it:any)=>it.id);
+      if(unreadIds.length>0)supabase.from("permintaan_item").update({dilihat_operator:true}).in("id",unreadIds).then(()=>{});
     } else {
-      setRiwayat(perms??[]);
+      const merged=perms??[];
+      const isAktif=(p:any)=>p.status==="pending"||!p.dilihat_operator;
+      merged.sort((a:any,b:any)=>{
+        const diff=Number(isAktif(b))-Number(isAktif(a));
+        return diff!==0?diff:(b.created_at||"").localeCompare(a.created_at||"");
+      });
+      setRiwayat(merged);
+      const unreadIds=merged.filter((p:any)=>p.status&&p.status!=="pending"&&!p.dilihat_operator).map((p:any)=>p.id);
+      if(unreadIds.length>0)supabase.from("permintaan").update({dilihat_operator:true}).in("id",unreadIds).then(()=>{});
     }
     setLoadingRiwayat(false);
   };

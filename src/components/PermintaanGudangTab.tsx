@@ -92,7 +92,7 @@ function BBMBList({adminName}:{adminName:string}){
 
   const setItemStatus=async(itemId:number,status:"submit"|"reject",catatan?:string)=>{
     setSubmittingId(itemId);
-    await supabase.from("permintaan_item").update({status,catatan_reject:catatan||null,updated_by:adminName,updated_at:new Date().toISOString()}).eq("id",itemId);
+    await supabase.from("permintaan_item").update({status,catatan_reject:catatan||null,updated_by:adminName,updated_at:new Date().toISOString(),dilihat_operator:false}).eq("id",itemId);
     setRejectTarget(null);setRejectCatatan("");setSubmittingId(null);
     fetchData();
   };
@@ -215,7 +215,7 @@ function BBMUList({adminName}:{adminName:string}){
   },[]);
 
   const setStatus=async(permId:number,status:string)=>{
-    await supabase.from("permintaan").update({status}).eq("id",permId);
+    await supabase.from("permintaan").update({status,dilihat_operator:false}).eq("id",permId);
     fetchData();
   };
 
