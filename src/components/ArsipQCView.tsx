@@ -124,30 +124,32 @@ export function ArsipQCView(){
   return(
     <>
       <div style={{padding:16}} className="fi">
-        <div style={{marginBottom:12}}>
-          <div style={{fontWeight:800,fontSize:16,color:"#1e293b"}}>📁 Arsip QC</div>
-          <div style={{fontSize:11,color:"#64748b"}}>Cari & telusuri dokumentasi QC yang sudah diarsipkan</div>
-        </div>
-
         <div style={{position:"relative" as const,marginBottom:10}}>
           <i className="ti ti-search" style={{position:"absolute" as const,left:12,top:11,fontSize:15,color:"#94a3b8"}}/>
           <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="Cari WO, proyek, atau nama panel..."
             style={{width:"100%",height:40,padding:"0 12px 0 34px",border:"1.5px solid #e2e8f0",borderRadius:10,fontSize:13.5,outline:"none",background:"#fff",color:"#1e293b",boxSizing:"border-box" as const}}/>
         </div>
 
-        <div style={{display:"flex",gap:6,overflowX:"auto" as const,marginBottom:8,paddingBottom:2}}>
-          {[{key:"semua",label:"Semua",icon:"📁"},...QC_ITEMS].map((k:any)=>{
-            const active=activeKategori===k.key;
-            const color=k.key==="semua"?"#334155":KATEGORI_COLOR[k.key];
-            return(
-              <button key={k.key} onClick={()=>setActiveKategori(k.key)}
-                style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,
-                  border:active?`1.5px solid ${color}`:"1.5px solid #e2e8f0",
-                  background:active?color+"14":"#fff",color:active?color:"#64748b",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap" as const}}>
-                <span>{k.icon}</span>{k.label}
-              </button>
-            );
-          })}
+        {/* Fade-edge di kanan - isyarat visual masih bisa di-scroll ke samping (chip terakhir
+            sempat kepotong tanpa ini). pointer-events:none biar gak nge-block tap ke chip di
+            baliknya. */}
+        <div style={{position:"relative" as const,marginBottom:8}}>
+          <div style={{display:"flex",gap:6,overflowX:"auto" as const,paddingBottom:2}}>
+            {[{key:"semua",label:"Semua",icon:"📁"},...QC_ITEMS].map((k:any)=>{
+              const active=activeKategori===k.key;
+              const color=k.key==="semua"?"#334155":KATEGORI_COLOR[k.key];
+              return(
+                <button key={k.key} onClick={()=>setActiveKategori(k.key)}
+                  style={{flexShrink:0,display:"flex",alignItems:"center",gap:5,padding:"7px 12px",borderRadius:20,
+                    border:active?`1.5px solid ${color}`:"1.5px solid #e2e8f0",
+                    background:active?color+"14":"#fff",color:active?color:"#64748b",fontSize:12,fontWeight:700,cursor:"pointer",fontFamily:"inherit",whiteSpace:"nowrap" as const}}>
+                  <span>{k.icon}</span>{k.label}
+                </button>
+              );
+            })}
+          </div>
+          <div style={{position:"absolute" as const,top:0,right:0,bottom:2,width:28,pointerEvents:"none" as const,
+            background:"linear-gradient(to right, transparent, #f1f5f9)"}}/>
         </div>
 
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
@@ -170,18 +172,24 @@ export function ArsipQCView(){
               return(
                 <div key={card.id} onClick={()=>{setSelectedCard(card);setDetailIndex(0);}}
                   style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,overflow:"hidden",cursor:"pointer"}}>
-                  <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:1,background:"#f1f5f9"}}>
+                  <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gridTemplateRows:"repeat(2,1fr)",gap:2,background:"#f1f5f9"}}>
                     {Array.from({length:4}).map((_,i)=>{
                       const f=card.fotos[i];
+                      const sisaFoto=card.fotos.length-4;
                       return(
-                        <div key={i} style={{aspectRatio:"1",background:"#e2e8f0",overflow:"hidden"}}>
+                        <div key={i} style={{position:"relative" as const,aspectRatio:"1",background:"#e2e8f0",overflow:"hidden"}}>
                           {f&&<img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>}
+                          {i===3&&sisaFoto>0&&(
+                            <div style={{position:"absolute" as const,inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                              <span style={{color:"#fff",fontWeight:800,fontSize:16}}>+{sisaFoto}</span>
+                            </div>
+                          )}
                         </div>
                       );
                     })}
                   </div>
                   <div style={{padding:"10px 12px"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:6}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:12}}>
                       <span style={{background:color+"18",color,borderRadius:6,padding:"2px 8px",fontSize:10,fontWeight:700,flexShrink:0}}>{card.kategoriIcon} {card.kategoriLabel}</span>
                       <span style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap" as const,flexShrink:0}}>{card.fotos.length} foto</span>
                     </div>
