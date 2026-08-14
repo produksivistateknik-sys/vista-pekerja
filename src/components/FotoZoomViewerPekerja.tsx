@@ -21,10 +21,25 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
   const pinchStartZoom=useRef(1);
   const panStartTouchRef=useRef<{x:number,y:number,panX:number,panY:number}|null>(null);
 
+  // Swipe-down buat dismiss (mobile) - cuma aktif pas zoom===1 (gak konflik sama pan satu-jari
+  // yang dipakai buat geser foto pas lagi di-zoom). BUG FIX (17 Agu 2026): tombol close di
+  // header SEHARUSNYA selalu keliatan (header first-flex-child di container position:fixed),
+  // tapi dilaporkan gak kejangkau di beberapa device - ditambah jalur keluar redundan
+  // (swipe-down, tap area kosong di sekitar foto) + body scroll dikunci selama viewer kebuka,
+  // biar gak ada skenario device manapun yang bikin user kejebak gak bisa keluar.
+  const[dismissDragY,setDismissDragY]=useState(0);
+  const dismissStartRef=useRef<{y:number,active:boolean}|null>(null);
+
+  useEffect(()=>{
+    const prevOverflow=document.body.style.overflow;
+    document.body.style.overflow="hidden";
+    return()=>{document.body.style.overflow=prevOverflow;};
+  },[]);
+
   const foto=fotos[index];
   const isVideo=isVideoFoto(foto);
   const isGeneric=isGenericFoto(foto);
-  const resetView=()=>{setZoom(1);setPan({x:0,y:0});};
+  const resetView=()=>{setZoom(1);setPan({x:0,y:0});setDismissDragY(0);};
   const goPrev=()=>{if(index>0){setIndex(index-1);resetView();}};
   const goNext=()=>{if(index<fotos.length-1){setIndex(index+1);resetView();}};
 
@@ -75,6 +90,8 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
     } else if(e.touches.length===1&&zoom>1){
       const t=e.touches[0];
       panStartTouchRef.current={x:t.clientX,y:t.clientY,panX:pan.x,panY:pan.y};
+    } else if(e.touches.length===1&&zoom===1){
+      dismissStartRef.current={y:e.touches[0].clientY,active:true};
     }
   };
   const handleTouchMove=(e:any)=>{
@@ -89,9 +106,21 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
       const t=e.touches[0];
       const st=panStartTouchRef.current;
       setPan({x:st.panX+(t.clientX-st.x),y:st.panY+(t.clientY-st.y)});
+    } else if(e.touches.length===1&&dismissStartRef.current?.active){
+      const delta=e.touches[0].clientY-dismissStartRef.current.y;
+      if(delta>0)setDismissDragY(delta); // cuma respon geser ke BAWAH - ke atas dibiarkan diam (bukan gesture dismiss)
     }
   };
-  const handleTouchEnd=()=>{pinchStartDist.current=null;panStartTouchRef.current=null;};
+  const DISMISS_THRESHOLD=100;
+  const handleTouchEnd=()=>{
+    pinchStartDist.current=null;
+    panStartTouchRef.current=null;
+    if(dismissStartRef.current?.active){
+      if(dismissDragY>DISMISS_THRESHOLD)onClose();
+      else setDismissDragY(0);
+    }
+    dismissStartRef.current=null;
+  };
 
   const fmtTgl=(iso?:string)=>{
     if(!iso)return"";
@@ -101,10 +130,23 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
 
   return(
     <div onClick={onClose}
-      style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.92)",zIndex:9999,display:"flex",flexDirection:"column" as const}}>
+      style={{position:"fixed" as const,inset:0,background:"rgba(0,0,0,0.92)",zIndex:9999,display:"flex",flexDirection:"column" as const,
+        opacity:dismissDragY>0?Math.max(0.4,1-dismissDragY/400):1,transition:dismissStartRef.current?"none":"opacity .15s"}}>
       <style>{`@keyframes fotoZoomSpin{to{transform:rotate(360deg)}}`}</style>
+      {/* Tombol close SENGAJA position:fixed independen dari header (bukan cuma anggota flex di
+          dalamnya) + tap target 44x44 (standar minimum Apple/Google) + z-index di atas segalanya
+          di komponen ini - biar posisinya gak pernah bisa "ketutup"/ke-nonaktifkan oleh apapun di
+          konten foto (zoom/pan/overflow), dan gampang di-tap di layar kecil. Ditemani jalur keluar
+          lain yang lebih natural buat mobile: tap area kosong di sekitar foto, atau swipe-down. */}
+      <button onClick={(e:any)=>{e.stopPropagation();onClose();}}
+        style={{position:"fixed" as const,top:"max(14px, env(safe-area-inset-top))",right:"max(14px, env(safe-area-inset-right))",
+          width:44,height:44,borderRadius:99,background:"rgba(15,23,42,0.75)",color:"#fff",border:"1px solid rgba(255,255,255,0.35)",
+          cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:10000}}>
+        <i className="ti ti-x" style={{fontSize:20}}/>
+      </button>
+
       <div onClick={(e:any)=>e.stopPropagation()}
-        style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 18px",background:"linear-gradient(rgba(0,0,0,0.55),transparent)",flexShrink:0}}>
+        style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 70px 12px 18px",background:"linear-gradient(rgba(0,0,0,0.55),transparent)",flexShrink:0}}>
         <div style={{minWidth:0}}>
           <div style={{color:"#fff",fontSize:13,fontWeight:700,whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>
             {foto.name||label||"Foto"}{fotos.length>1?` · ${index+1}/${fotos.length}`:""}
@@ -115,20 +157,17 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
             </div>
           )}
         </div>
-        <div style={{display:"flex",gap:8,flexShrink:0}}>
-          <button onClick={()=>downloadFotoNp(foto.url,foto.name||label||"foto")}
-            style={{display:"flex",alignItems:"center",gap:6,background:"rgba(15,23,42,0.65)",color:"#fff",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>
-            <i className="ti ti-download" style={{fontSize:15}}/> Download
-          </button>
-          <button onClick={onClose}
-            style={{width:34,height:34,borderRadius:99,background:"rgba(15,23,42,0.65)",color:"#fff",border:"1px solid rgba(255,255,255,0.3)",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <i className="ti ti-x" style={{fontSize:17}}/>
-          </button>
-        </div>
+        <button onClick={()=>downloadFotoNp(foto.url,foto.name||label||"foto")}
+          style={{display:"flex",alignItems:"center",gap:6,background:"rgba(15,23,42,0.65)",color:"#fff",border:"1px solid rgba(255,255,255,0.3)",borderRadius:8,padding:"8px 14px",fontSize:12,fontWeight:700,cursor:"pointer",flexShrink:0}}>
+          <i className="ti ti-download" style={{fontSize:15}}/> Download
+        </button>
       </div>
 
-      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",position:"relative" as const,overflow:"hidden",minHeight:0}}
-        onClick={(e:any)=>e.stopPropagation()}>
+      {/* Tap di area kosong sekitar foto (bukan foto-nya sendiri) buat close - target===currentTarget
+          artinya klik kena wrapper ini langsung, bukan bubble dari <img>/tombol prev-next di dalamnya. */}
+      <div style={{flex:1,display:"flex",alignItems:"center",justifyContent:"center",position:"relative" as const,overflow:"hidden",minHeight:0,
+          transform:dismissDragY>0?`translateY(${dismissDragY}px)`:undefined}}
+        onClick={(e:any)=>{if(e.target===e.currentTarget)onClose();else e.stopPropagation();}}>
         {fotos.length>1&&index>0&&(
           <button onClick={goPrev}
             style={{position:"absolute" as const,left:14,top:"50%",transform:"translateY(-50%)",width:40,height:40,borderRadius:99,background:"rgba(255,255,255,0.15)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",zIndex:2}}>
@@ -153,6 +192,7 @@ export function FotoZoomViewerPekerja({fotos,startIndex,label,onClose}:{fotos:Fo
             onWheel={handleWheel}
             onMouseDown={handleMouseDown} onMouseMove={handleMouseMove} onMouseUp={handleMouseUp} onMouseLeave={handleMouseUp}
             onTouchStart={handleTouchStart} onTouchMove={handleTouchMove} onTouchEnd={handleTouchEnd}
+            onClick={(e:any)=>{if(e.target===e.currentTarget)onClose();}}
             style={{width:"100%",height:"100%",display:"flex",alignItems:"center",justifyContent:"center",touchAction:"none" as const,cursor:zoom>1?(draggingRef.current?"grabbing":"grab"):"default"}}>
             {imgStatus==="loading"&&(
               <div style={{position:"absolute" as const,display:"flex",flexDirection:"column" as const,alignItems:"center",gap:10,color:"#fff",pointerEvents:"none" as const}}>
