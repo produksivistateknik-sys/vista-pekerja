@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useKoneksiStatus } from "../../lib/koneksi";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -113,6 +114,76 @@ export function EmptyState({title,description,tip,variant="box-check"}:{
           border:"1.5px dashed #cbd5e1",borderRadius:12,padding:"10px 12px",background:"#f8fafc"}}>
           <span style={{fontSize:15,flexShrink:0}}>💡</span>
           <span style={{fontSize:11.5,color:"#64748b",lineHeight:1.5}}>{tip}</span>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ── SEARCHABLE SELECT (text input + suggestion list, client-side filter) ─────
+// Ganti native <select> buat daftar panjang (mis. 609 komponen BBMB) - operator
+// gak perlu scroll manual. Filter murni di JS dari `options` yang sudah di-fetch
+// sekali (bukan query server tiap ketikan). Gak pakai library luar (belum ada
+// combobox/autocomplete di project ini) - custom kecil, cukup buat kasus ini.
+export function SearchableSelect({options,value,onChange,placeholder,disabled,style={}}:{
+  options:{id:string;label:string}[];value:string;onChange:(id:string,label:string)=>void;
+  placeholder:string;disabled?:boolean;style?:any;
+}){
+  const[query,setQuery]=useState(()=>options.find(o=>o.id===value)?.label||"");
+  const[open,setOpen]=useState(false);
+  const[highlight,setHighlight]=useState(0);
+
+  // Sinkronkan teks yang ditampilkan kalau `value` berubah dari luar (mis. form direset).
+  useEffect(()=>{
+    setQuery(options.find(o=>o.id===value)?.label||"");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[value]);
+
+  const q=query.trim().toLowerCase();
+  const filtered=q?options.filter(o=>o.label.toLowerCase().includes(q)).slice(0,10):[];
+
+  const pick=(opt:{id:string;label:string})=>{
+    setQuery(opt.label);
+    setOpen(false);
+    onChange(opt.id,opt.label);
+  };
+
+  const onKeyDown=(e:any)=>{
+    if(!open||filtered.length===0)return;
+    if(e.key==="ArrowDown"){e.preventDefault();setHighlight(h=>Math.min(h+1,filtered.length-1));}
+    else if(e.key==="ArrowUp"){e.preventDefault();setHighlight(h=>Math.max(h-1,0));}
+    else if(e.key==="Enter"){e.preventDefault();pick(filtered[highlight]);}
+    else if(e.key==="Escape"){setOpen(false);}
+  };
+
+  return(
+    <div style={{position:"relative" as const}}>
+      <input type="text" value={query} disabled={disabled} placeholder={placeholder}
+        onChange={(e:any)=>{
+          setQuery(e.target.value);
+          setHighlight(0);
+          setOpen(true);
+          if(value)onChange("","");
+        }}
+        onFocus={()=>setOpen(true)}
+        onBlur={()=>setOpen(false)}
+        onKeyDown={onKeyDown}
+        style={{width:"100%",padding:"9px 10px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:13,
+          fontWeight:600,color:"#0f172a",background:disabled?"#f1f5f9":"#fff",fontFamily:"inherit",...style}}/>
+      {open&&q&&(
+        <div style={{position:"absolute" as const,top:"calc(100% + 4px)",left:0,right:0,zIndex:50,
+          background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:10,boxShadow:"0 8px 20px rgba(15,23,42,0.12)",
+          maxHeight:240,overflowY:"auto" as const}}>
+          {filtered.length===0?(
+            <div style={{padding:"10px 12px",fontSize:12,color:"#94a3b8"}}>Komponen tidak ditemukan</div>
+          ):filtered.map((o,i)=>(
+            <button key={o.id} type="button" onMouseDown={(e:any)=>e.preventDefault()} onClick={()=>pick(o)}
+              style={{display:"block",width:"100%",textAlign:"left" as const,padding:"9px 12px",border:"none",
+                borderBottom:"1px solid #f1f5f9",background:i===highlight?"#eff6ff":"#fff",color:"#334155",
+                fontSize:12.5,fontWeight:600,cursor:"pointer",fontFamily:"inherit"}}>
+              {o.label}
+            </button>
+          ))}
         </div>
       )}
     </div>

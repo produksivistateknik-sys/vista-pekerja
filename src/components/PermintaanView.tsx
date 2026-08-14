@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { Lbl, Card, SectionCard, EmptyState, CardToggle } from "./ui/Primitives";
+import { Lbl, Card, SectionCard, EmptyState, CardToggle, SearchableSelect } from "./ui/Primitives";
 import { DIVISI_CONFIG } from "../lib/panelTypes";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -135,9 +135,8 @@ export function PermintaanView({user}:{user:any}){
   const tambahBaris=()=>setItems(prev=>[...prev,emptyItem()]);
   const hapusBaris=(idx:number)=>setItems(prev=>prev.length<=1?prev:prev.filter((_,i)=>i!==idx));
 
-  const onPilihKomponen=(idx:number,value:string)=>{
-    const m=masterList.find((x:any)=>String(x.id)===value);
-    updateItem(idx,{value,namaKomponen:m?.nama||""});
+  const onPilihKomponen=(idx:number,id:string,label:string)=>{
+    updateItem(idx,{value:id,namaKomponen:label});
   };
 
   const submitPermintaan=async()=>{
@@ -231,10 +230,8 @@ export function PermintaanView({user}:{user:any}){
           <div style={{display:"flex",flexDirection:"column" as const,gap:12,marginBottom:10}}>
             {items.map((it,idx)=>(
               <div key={idx} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:14}}>
-                <select value={it.value} onChange={(e:any)=>onPilihKomponen(idx,e.target.value)} style={{...selStyle,padding:"9px 10px",fontSize:13}}>
-                  <option value="">Pilih komponen...</option>
-                  {masterList.map((m:any)=><option key={m.id} value={String(m.id)}>{m.nama}</option>)}
-                </select>
+                <SearchableSelect options={masterList.map((m:any)=>({id:String(m.id),label:m.nama}))} value={it.value}
+                  onChange={(id,label)=>onPilihKomponen(idx,id,label)} placeholder="Ketik nama komponen..."/>
                 <div style={{display:"flex",alignItems:"flex-end",gap:8,marginTop:10}}>
                   <div style={{flex:1}}>
                     <Lbl>Satuan</Lbl>
