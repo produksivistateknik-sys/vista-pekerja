@@ -1,12 +1,15 @@
-import type { ReactNode } from "react";
 import { KoneksiBadge } from "../ui/Primitives";
+
+export { SectionCard, EmptyState } from "../ui/Primitives";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // KOMPONEN UI REUSABLE - KHUSUS divisi Gudang (5 tab: Permintaan/Tarik/Database/
 // Progress/Riwayat). Dipisah dari GudangHome.tsx biar bisa dipakai ulang di tiap
-// tab tanpa copy-paste style manual. TIDAK dipakai/mempengaruhi divisi lain -
-// header global App.tsx & komponen shared (Card/Inp/Btn di ui/Primitives.tsx)
-// TIDAK disentuh sama sekali.
+// tab tanpa copy-paste style manual. GudangHeader/SegmentedControl tetap di sini
+// (Gudang-spesifik) - SectionCard/EmptyState (14 Agu 2026) dipindah ke
+// ui/Primitives.tsx karena sekarang dipakai juga di form Permintaan operator
+// (semua divisi), di-re-export di sini biar import lama (./gudang/GudangUI)
+// tetap jalan tanpa ubah tiap file tab Gudang satu-satu.
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── HEADER (Gudang-only, ganti header global App.tsx yang dilewati khusus buat divisi ini) ──
@@ -71,61 +74,6 @@ export function SegmentedControl<T extends string>({options,value,onChange}:{
           </button>
         );
       })}
-    </div>
-  );
-}
-
-// ── SECTION CARD (bungkus konten tiap tab) ────────────────────────────────────
-export function SectionCard({icon,title,subtitle,right,children}:{
-  icon:string;title:string;subtitle?:string;right?:ReactNode;children:ReactNode;
-}){
-  return(
-    <div style={{background:"#fff",borderRadius:20,border:"1px solid #f1f5f9",
-      boxShadow:"0 4px 16px rgba(15,23,42,0.06)",padding:16,marginBottom:14}}>
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,
-        marginBottom:subtitle?14:12}}>
-        <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0}}>
-          <div style={{width:36,height:36,borderRadius:11,background:"#f1f5f9",display:"flex",
-            alignItems:"center",justifyContent:"center",fontSize:16,flexShrink:0}}>{icon}</div>
-          <div style={{minWidth:0}}>
-            <div style={{fontWeight:800,fontSize:13.5,color:"#0f172a",textTransform:"uppercase" as const,
-              letterSpacing:.3}}>{title}</div>
-            {subtitle&&<div style={{fontSize:11.5,color:"#94a3b8",marginTop:1}}>{subtitle}</div>}
-          </div>
-        </div>
-        {right}
-      </div>
-      {children}
-    </div>
-  );
-}
-
-// ── EMPTY STATE (SVG flat: kotak terbuka + badge centang hijau, bukan foto/AI-image) ──
-function BoxIllustration(){
-  return(
-    <svg width="88" height="72" viewBox="0 0 88 72" fill="none">
-      <path d="M8 28L44 14L80 28V60C80 62.2 78.2 64 76 64H12C9.8 64 8 62.2 8 60V28Z"
-        stroke="#cbd5e1" strokeWidth="3" strokeLinejoin="round" fill="#f8fafc"/>
-      <path d="M8 28L44 42L80 28" stroke="#cbd5e1" strokeWidth="3" strokeLinejoin="round"/>
-      <path d="M44 42V64" stroke="#cbd5e1" strokeWidth="3"/>
-      <circle cx="70" cy="18" r="14" fill="#16a34a"/>
-      <path d="M64 18l4 4 8-8" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-    </svg>
-  );
-}
-export function EmptyState({title,description,tip}:{title:string;description:string;tip?:string}){
-  return(
-    <div style={{textAlign:"center" as const,padding:"32px 16px"}}>
-      <div style={{display:"flex",justifyContent:"center",marginBottom:14}}><BoxIllustration/></div>
-      <div style={{fontWeight:800,fontSize:15,color:"#334155",marginBottom:4}}>{title}</div>
-      <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5,maxWidth:280,margin:"0 auto"}}>{description}</div>
-      {tip&&(
-        <div style={{display:"flex",alignItems:"flex-start",gap:8,textAlign:"left" as const,marginTop:18,
-          border:"1.5px dashed #cbd5e1",borderRadius:12,padding:"10px 12px",background:"#f8fafc"}}>
-          <span style={{fontSize:15,flexShrink:0}}>💡</span>
-          <span style={{fontSize:11.5,color:"#64748b",lineHeight:1.5}}>{tip}</span>
-        </div>
-      )}
     </div>
   );
 }

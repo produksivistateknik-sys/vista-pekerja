@@ -83,6 +83,46 @@ export default function App(){
     :null;
   const [bottomTab,setBottomTab]=useState<"tugas"|"komponen"|"arsip"|"permintaan">("tugas");
 
+  // Badge notif di header (14 Agu 2026, redesign) = jumlah permintaan (BBMB+BBMU) MILIK operator
+  // sendiri yang masih pending diproses Gudang - bukan "unread" beneran (app ini gak punya konsep
+  // itu), tapi reuse data yang sudah ada biar bell-nya berarti, bukan cuma dekorasi. Gudang gak
+  // ikut sini - dia punya badge sendiri di GudangHeader (lihat GudangHome.tsx).
+  const [notifCount,setNotifCount]=useState(0);
+  useEffect(()=>{
+    if(!user||user.divisi==="gudang")return;
+    const namaOperator=user.nama||user.name;
+    let cancelled=false;
+    const fetchNotifCount=async()=>{
+      const{data:perms}=await supabase.from("permintaan").select("id,jenis,status")
+        .eq("operator_nama",namaOperator).eq("divisi",user.divisi)
+        .order("created_at",{ascending:false}).limit(100);
+      if(!perms||perms.length===0){if(!cancelled)setNotifCount(0);return;}
+      const bbmuPending=perms.filter((p:any)=>p.jenis==="BBMU"&&(p.status??"pending")==="pending").length;
+      const bbmbIds=perms.filter((p:any)=>p.jenis==="BBMB").map((p:any)=>p.id);
+      let bbmbPending=0;
+      if(bbmbIds.length>0){
+        const{data:items}=await supabase.from("permintaan_item").select("permintaan_id").eq("status","pending").in("permintaan_id",bbmbIds);
+        bbmbPending=new Set((items||[]).map((it:any)=>it.permintaan_id)).size;
+      }
+      if(!cancelled)setNotifCount(bbmuPending+bbmbPending);
+    };
+    fetchNotifCount();
+    const ch=supabase.channel("realtime-operator-notif-"+user.id)
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},fetchNotifCount)
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan"},fetchNotifCount)
+      .subscribe();
+    return()=>{cancelled=true;supabase.removeChannel(ch);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id,user?.divisi]);
+
+  const BOTTOM_TAB_SUBTITLE:Record<string,string>={
+    tugas:"Kelola tugas & progress harian",
+    permintaan:"Kelola permintaan komponen bantu & utama",
+    arsip:"Riwayat pekerjaan yang sudah diarsipkan",
+    komponen:"Progress pemasangan komponen",
+  };
+  const headerSubtitle=BOTTOM_TAB_SUBTITLE[bottomTab]||`Kelola aktivitas ${cfg?.label||""}`;
+
   // Banner ajakan aktifkan push notification pengingat Maintenance Rutin - subscribe di-key ke
   // `divisi` (bukan per-orang, device login pakai password bersama per sub-bagian). Cuma muncul
   // sekali per device (localStorage) kalau browser dukung & izin belum diputuskan.
@@ -143,18 +183,29 @@ export default function App(){
             udah lebih dulu dikecualikan (lihat "user.divisi!=='gudang'" di bawah). Header global
             ini TETAP dipakai apa adanya buat semua divisi lain - gak diubah sama sekali. */}
         {user.divisi!=="gudang"&&(
-        <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",padding:"6px 16px",
-          minHeight:52,paddingTop:"max(6px, env(safe-area-inset-top))",display:"flex",alignItems:"center",justifyContent:"space-between",
-          flexWrap:"wrap",rowGap:6,
-          position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 4px #00000008"}}>
-          <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
-            <span style={{fontSize:18}}>⚡</span>
-            <span style={{fontWeight:800,fontSize:14,color:"#1e293b"}}>PROSES PRODUKSI</span>
+        <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",padding:"10px 16px",
+          paddingTop:"max(10px, env(safe-area-inset-top))",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 4px #00000008"}}>
+          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
+            <div style={{minWidth:0}}>
+              <div style={{display:"flex",alignItems:"center",gap:8}}>
+                <span style={{fontSize:18}}>⚡</span>
+                <span style={{fontWeight:800,fontSize:15,color:"#1e293b",letterSpacing:-.2}}>PROSES PRODUKSI</span>
+              </div>
+              <div style={{fontSize:11.5,color:"#94a3b8",marginTop:2,marginLeft:26}}>{headerSubtitle}</div>
+            </div>
+            <button onClick={()=>setBottomTab("permintaan")} title="Notifikasi" style={{position:"relative",flexShrink:0,width:36,height:36,
+              border:"1px solid #e2e8f0",borderRadius:9,background:"#f8fafc",display:"flex",
+              alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:15,color:"#64748b"}}>
+              🔔
+              {notifCount>0&&<span style={{position:"absolute",top:5,right:6,width:8,height:8,
+                borderRadius:"50%",background:"#f97316",border:"1.5px solid #fff"}}/>}
+            </button>
           </div>
-          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",rowGap:6,justifyContent:"flex-end"}}>
+          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",rowGap:6,marginTop:10}}>
             <KoneksiBadge/>
             <span style={{background:cfg?.bg,color:cfg?.color,border:`1px solid ${cfg?.color}30`,
               borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</span>
+            <div style={{flex:1}}/>
             {isOperatorDivisi&&(
               <button onClick={toggleViewMode} title={viewMode==="desktop"?"Ganti ke tampilan Mobile":"Ganti ke tampilan Desktop"}
                 style={{width:40,height:40,flexShrink:0,border:"1px solid #e2e8f0",borderRadius:8,

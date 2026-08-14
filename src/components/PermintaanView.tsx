@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { Lbl, Card } from "./ui/Primitives";
+import { Lbl, Card, SectionCard, EmptyState, CardToggle } from "./ui/Primitives";
+import { DIVISI_CONFIG } from "../lib/panelTypes";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB PERMINTAAN BARANG (BBMB & BBMU) - sistem request/approve pengeluaran
@@ -12,7 +13,10 @@ import { Lbl, Card } from "./ui/Primitives";
 // catatan bebas + status), TIDAK LAGI pakai permintaan_item sama sekali -
 // permintaan_item sekarang eksklusif buat BBMB.
 // Tab ini SENGAJA muncul buat SEMUA divisi (gak dikondisikan kayak tab
-// Komponen/Arsip), jadi App.tsx render ini tanpa cek user.divisi.
+// Komponen/Arsip), jadi App.tsx render ini tanpa cek user.divisi. Redesign 14
+// Agu 2026: pakai SectionCard/EmptyState/CardToggle (reuse dari redesign
+// Gudang, sekarang di ui/Primitives.tsx) + aksen warna ikut DIVISI_CONFIG per
+// divisi (bukan hardcode teal lagi).
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Jenis="BBMB"|"BBMU";
@@ -36,6 +40,8 @@ export function PermintaanView({user}:{user:any}){
   const namaOperator=user?.nama||user?.name||"Operator";
   const divisi:string=user?.divisi||"";
   const subBagian:string|null=user?.sub_bagian||null;
+  const cfg=(DIVISI_CONFIG as any)[divisi];
+  const accent:string=cfg?.color||"#0d9488";
 
   const[jenisTab,setJenisTab]=useState<Jenis>("BBMB");
 
@@ -162,29 +168,23 @@ export function PermintaanView({user}:{user:any}){
 
   return(
     <div style={{padding:16}} className="fi">
-      <div style={{fontWeight:800,fontSize:17,color:"#1e293b",marginBottom:4}}>Permintaan Barang</div>
-      <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Halo {namaOperator}, ajukan permintaan komponen bantu atau utama</div>
-
-      <div style={{display:"flex",gap:6,marginBottom:16,background:"#f1f5f9",borderRadius:12,padding:4}}>
-        {(["BBMB","BBMU"] as Jenis[]).map(j=>(
-          <button key={j} onClick={()=>setJenisTab(j)}
-            style={{flex:1,padding:"10px 8px",border:"none",borderRadius:9,cursor:"pointer",
-              fontWeight:700,fontSize:13,fontFamily:"inherit",
-              background:jenisTab===j?"#fff":"transparent",color:jenisTab===j?"#0d9488":"#64748b",
-              boxShadow:jenisTab===j?"0 1px 3px rgba(0,0,0,0.08)":"none"}}>
-            {j==="BBMB"?"BBMB (Bantu)":"BBMU (Utama)"}
-          </button>
-        ))}
-      </div>
+      <SectionCard icon="📥" iconBg={cfg?.bg} title="Permintaan Barang" subtitle="Ajukan permintaan komponen bantu atau utama.">
+        <CardToggle options={[{key:"BBMB",label:"BBMB (Bantu)",icon:"🧰"},{key:"BBMU",label:"BBMU (Utama)",icon:"⚙️"}]}
+          value={jenisTab} onChange={setJenisTab} color={accent}/>
+      </SectionCard>
 
       <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:12,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"12px 16px"}}>
-        <div style={{width:40,height:40,borderRadius:10,background:"#0d9488",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:17,color:"#fff",fontWeight:800}}>
+        <div style={{width:40,height:40,borderRadius:10,background:accent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:17,color:"#fff",fontWeight:800}}>
           {namaOperator.charAt(0).toUpperCase()}
         </div>
-        <div>
+        <div style={{flex:1,minWidth:0}}>
           <Lbl>Operator · Divisi</Lbl>
-          <div style={{fontSize:14,fontWeight:800,color:"#0f172a"}}>{namaOperator} · {subBagian||divisi}</div>
+          <div style={{fontSize:14,fontWeight:800,color:"#0f172a"}}>{namaOperator} · {divisi}</div>
         </div>
+        <span style={{background:cfg?.bg,color:accent,border:`1px solid ${accent}30`,borderRadius:20,
+          padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const,flexShrink:0}}>
+          {cfg?.icon} {subBagian||cfg?.label||divisi}
+        </span>
       </div>
 
       <div style={{marginBottom:14}}>
@@ -243,7 +243,7 @@ export function PermintaanView({user}:{user:any}){
 
           <button onClick={submitPermintaan} disabled={submitting}
             style={{width:"100%",padding:"14px",borderRadius:10,border:"none",
-              background:submitting?"#94a3b8":"#0d9488",
+              background:submitting?"#94a3b8":accent,
               color:"#fff",fontSize:15,fontWeight:700,cursor:submitting?"default":"pointer",fontFamily:"inherit",marginBottom:20}}>
             {submitting?"Mengirim...":"Kirim Permintaan"}
           </button>
@@ -259,7 +259,7 @@ export function PermintaanView({user}:{user:any}){
 
           <button onClick={submitPermintaan} disabled={submitting}
             style={{width:"100%",padding:"14px",borderRadius:10,border:"none",
-              background:submitting?"#94a3b8":"#0d9488",
+              background:submitting?"#94a3b8":accent,
               color:"#fff",fontSize:15,fontWeight:700,cursor:submitting?"default":"pointer",fontFamily:"inherit",marginBottom:20}}>
             {submitting?"Mengirim...":"Kirim Permintaan"}
           </button>
@@ -272,7 +272,8 @@ export function PermintaanView({user}:{user:any}){
       {loadingRiwayat?(
         <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Memuat...</div>
       ):riwayat.length===0?(
-        <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Belum ada permintaan {jenisTab} yang dikirim</div>
+        <EmptyState variant="box-paper" title={`Belum ada permintaan ${jenisTab}`}
+          description="Permintaan yang kamu kirim akan muncul di sini."/>
       ):(
         <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
           {riwayat.map((r:any)=>(
