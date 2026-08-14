@@ -7,6 +7,7 @@ import { KoneksiBadge } from "./components/ui/Primitives";
 import { LandingPage } from "./components/LandingPage";
 import { Login } from "./components/Login";
 import { ArsipSeksiView } from "./components/ArsipSeksiView";
+import { ArsipQCView } from "./components/ArsipQCView";
 import { NameplateView } from "./components/NameplateView";
 import { QCChecklistTab } from "./components/QCChecklistTab";
 import { KomponenProgressView } from "./components/KomponenProgressView";
@@ -250,6 +251,7 @@ export default function App(){
         <div style={{flex:1,overflowY:"auto"}}>
           {user.divisi==="gudang"?<GudangHome user={user} onLogout={doLogout}/>
             :bottomTab==="permintaan"?<PermintaanView user={user}/>
+            :bottomTab==="arsip"&&arsipSeksi==="qc"?<ArsipQCView/>
             :bottomTab==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
             :bottomTab==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas}/>
             :user.divisi==="nameplate"?<NameplateView user={user}/>
