@@ -62,18 +62,25 @@ export default function App(){
   const isOperatorDivisi=user&&!["nameplate","qc","komponen","gudang"].includes(user.divisi);
 
   // Tab bawah "Arsip" - cuma muncul buat divisi/sub_bagian yang punya seksi arsip otomatis
-  // (Warehouse/QS/QC/Assembling Luar/Wiring Control). Assembling Luar dan Wiring Control DIPISAH
-  // jadi 2 seksi arsip independen (6 Agu 2026) - dua-duanya divisi terpisah, handle komponen
-  // sendiri (Assembling Luar: pasang_komponen_photos per-panel; Wiring Control: fotoPemasangan
-  // per-kode), hasil sendiri, gak saling nunggu buat diarsipkan (lihat panels_auto_archive_seksi()
-  // trigger). Sebelumnya dua-duanya baca seksi gabungan 'pasang_komponen' - itu bikin kode yang
-  // salah satu sisinya gak pernah dapet task jadi stuck selamanya nunggu sisi yang gak akan
-  // pernah diisi.
+  // (QS/QC/Assembling Luar/Wiring Control/Nameplate - "Warehouse" DIHAPUS 14 Agu 2026 bareng
+  // login komponen>Warehouse). Assembling Luar dan Wiring Control DIPISAH jadi 2 seksi arsip
+  // independen (6 Agu 2026) - dua-duanya divisi terpisah, handle komponen sendiri (Assembling
+  // Luar: pasang_komponen_photos per-panel; Wiring Control: fotoPemasangan per-kode), hasil
+  // sendiri, gak saling nunggu buat diarsipkan. Sebelumnya dua-duanya baca seksi gabungan
+  // 'pasang_komponen' - itu bikin kode yang salah satu sisinya gak pernah dapet task jadi stuck
+  // selamanya nunggu sisi yang gak akan pernah diisi.
+  // "nameplate" (17 Agu 2026) - trigger arsip-nya SENGAJA fungsi/trigger TERPISAH
+  // (panels_auto_archive_nameplate(), bukan nempel di panels_auto_archive_seksi() yang lama)
+  // biar nol risiko ke logic seksi lain yang sudah ada - lihat migration
+  // 20260817020000_panel_seksi_archived_nameplate.sql. ArsipSeksiView.tsx gak perlu diubah sama
+  // sekali - payload data-nya pakai key "photos" yang sama kayak QS, otomatis kebaca lewat
+  // fallback generik yang sudah ada.
   const arsipSeksi:string|null=!user?null
     :user.divisi==="qc"?"qc"
     :user.divisi==="komponen"&&user.sub_bagian==="QS"?"qs"
     :user.divisi==="assembling"&&user.sub_bagian==="Assembling Luar"?"assembling_luar"
     :user.divisi==="wiring_ctrl"?"wiring_control"
+    :user.divisi==="nameplate"?"nameplate"
     :null;
   // Tab "Komponen" (7 Agu 2026) - cuma Wiring Control dan Assembling Luar, GANTI section
   // "Kontribusi Pasang Komponen" yang dulu nempel di card OperatorView.
