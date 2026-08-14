@@ -112,51 +112,60 @@ export function ArsipQCView(){
             style={{width:"100%",height:40,padding:"0 12px 0 34px",border:"1.5px solid #e2e8f0",borderRadius:10,fontSize:13.5,outline:"none",background:"#fff",color:"#1e293b",boxSizing:"border-box" as const}}/>
         </div>
 
-        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-          <span style={{fontSize:11,color:"#94a3b8"}}>{filtered.length} arsip</span>
-          <span style={{fontSize:11,color:"#94a3b8",display:"flex",alignItems:"center",gap:4}}>
-            <i className="ti ti-sort-descending" style={{fontSize:13}}/>Terbaru
-          </span>
-        </div>
-
-        {loading?(
-          <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12}}>Memuat arsip...</div>
-        ):filtered.length===0?(
-          <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
-            {search?"Gak ada arsip yang cocok.":"Belum ada yang diarsipkan."}
+        {search.trim().length===0?(
+          <div style={{textAlign:"center",padding:"48px 20px",color:"#94a3b8"}}>
+            <i className="ti ti-search" style={{fontSize:28,opacity:.4}}/>
+            <div style={{fontSize:12.5,marginTop:10}}>Ketik nama WO, proyek, atau panel untuk mulai mencari</div>
           </div>
         ):(
-          <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
-            {filtered.map(card=>(
-              <div key={card.id} onClick={()=>{setSelectedCard(card);setDetailIndex(0);}}
-                style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,overflow:"hidden",cursor:"pointer"}}>
-                <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gridTemplateRows:"repeat(2,1fr)",gap:2,background:"#f1f5f9"}}>
-                  {Array.from({length:4}).map((_,i)=>{
-                    const f=card.fotos[i];
-                    const sisaFoto=card.fotos.length-4;
-                    return(
-                      <div key={i} style={{position:"relative" as const,aspectRatio:"1",background:"#e2e8f0",overflow:"hidden"}}>
-                        {f&&<img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>}
-                        {i===3&&sisaFoto>0&&(
-                          <div style={{position:"absolute" as const,inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                            <span style={{color:"#fff",fontWeight:800,fontSize:16}}>+{sisaFoto}</span>
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-                <div style={{padding:"10px 12px"}}>
-                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:6}}>
-                    <span style={{fontWeight:800,fontSize:13,color:"#0f172a"}}>{card.panelNama}</span>
-                    <span style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap" as const,flexShrink:0}}>{card.fotos.length} foto</span>
-                  </div>
-                  <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>WO {card.woNumber} · {card.proyek}</div>
-                  <div style={{fontSize:10,color:"#94a3b8",marginTop:4}}>{fmtTgl(card.waktuTerbaru)}</div>
-                </div>
+          <>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
+              <span style={{fontSize:11,color:"#94a3b8"}}>{filtered.length} arsip</span>
+              <span style={{fontSize:11,color:"#94a3b8",display:"flex",alignItems:"center",gap:4}}>
+                <i className="ti ti-sort-descending" style={{fontSize:13}}/>Terbaru
+              </span>
+            </div>
+
+            {loading?(
+              <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12}}>Memuat arsip...</div>
+            ):filtered.length===0?(
+              <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
+                Gak ada arsip yang cocok.
               </div>
-            ))}
-          </div>
+            ):(
+              <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
+                {filtered.map(card=>(
+                  <div key={card.id} onClick={()=>{setSelectedCard(card);setDetailIndex(0);}}
+                    style={{display:"flex",gap:10,alignItems:"center",background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:10,cursor:"pointer"}}>
+                    <div style={{width:72,height:72,flexShrink:0,display:"grid",gridTemplateColumns:"repeat(2,1fr)",gridTemplateRows:"repeat(2,1fr)",gap:2,borderRadius:8,overflow:"hidden",background:"#f1f5f9"}}>
+                      {Array.from({length:4}).map((_,i)=>{
+                        const f=card.fotos[i];
+                        const sisaFoto=card.fotos.length-4;
+                        return(
+                          <div key={i} style={{position:"relative" as const,background:"#e2e8f0",overflow:"hidden"}}>
+                            {f&&<img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>}
+                            {i===3&&sisaFoto>0&&(
+                              <div style={{position:"absolute" as const,inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                <span style={{color:"#fff",fontWeight:800,fontSize:11}}>+{sisaFoto}</span>
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontWeight:800,fontSize:13,color:"#0f172a",overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{card.panelNama}</div>
+                      <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const,marginTop:2}}>{card.proyek} · WO {card.woNumber}</div>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
+                        <span style={{fontSize:10,color:"#94a3b8"}}>{fmtTgl(card.waktuTerbaru)}</span>
+                        <span style={{fontSize:10,color:"#94a3b8",flexShrink:0}}>{card.fotos.length} foto</span>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
