@@ -29,6 +29,15 @@ export type KomponenPasangTugas={
 // sama dipakai trigger panels_auto_archive_seksi()) langsung berapapun persennya.
 // ─────────────────────────────────────────────────────────────────────────────
 export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTugas}){
+  // BUG FIX (14 Agu 2026): checklist[kode].fotoPemasangan itu 1 array yang dipakai BERSAMA
+  // Assembling Luar & Wiring Control buat komponen tahap (Box Control/Pintu) - tapi masing-masing
+  // nyimpen snapshot arsipnya sendiri (seksi=assembling_luar vs seksi=wiring_control), di WAKTU
+  // yang beda-beda. Kalau seksi A archive duluan lalu ada foto baru diupload, snapshot seksi B
+  // (kalau udah pernah archive lebih dulu juga) jadi basi permanen - dua Arsip tab nunjukin
+  // jumlah foto beda buat komponen fisik yang sama. siblingSeksi dipakai buat ikut nyegerin
+  // foto di row arsip seksi sebelah kalau ada, biar dua-duanya tetap sinkron (non-tahap kayak
+  // Groundplate gak punya sibling row sama sekali, lookup-nya otomatis no-op).
+  const siblingSeksi=tugas.seksi==="assembling_luar"?"wiring_control":"assembling_luar";
   const[panelsRaw,setPanelsRaw]=useState<any[]>([]);
   const[woMap,setWoMap]=useState<Record<number,any>>({});
   const[kodeNamaMap,setKodeNamaMap]=useState<Record<string,string>>({});
@@ -131,8 +140,17 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
 
   // PCT_STEPS klik - persist LANGSUNG ke checklist (live), TIDAK checkpoint/archive - sama
   // persis format Wiring Control yang sudah ada (updatePctManualPasangKomponenTahap dulu).
+  // BUG FIX (14 Agu 2026): komponen tahap (Box Control/Pintu) ditulis BERSAMA oleh Assembling
+  // Luar dan Wiring Control ke field checklist[kode].pasangKomponenTahap yang SAMA - sebelumnya
+  // fungsi ini pakai `panel` dari closure lokal (state React, bisa basi) tanpa refetch dulu,
+  // beda dari simpanProgress yang SENGAJA refetch fresh justru karena sadar risiko ini ("biar
+  // gak nimpa balik perubahan operator lain"). Kalau 2 operator (Assembling & Wiring) klik step
+  // di komponen yang sama nyaris bersamaan sebelum realtime sempat sinkron, kontribusi yang satu
+  // bisa ketimpa balik ke nilai lama. Refetch fresh dulu, sama kayak pola simpanProgress.
   const updatePctLive=async(panel:any,kode:string,isTahap:boolean,pct:number)=>{
-    const cl=panel.checklist?.[kode]||{qty:0,progress:{},progressByDate:{}};
+    const{data:freshRow}=await supabase.from("panels").select("checklist").eq("id",panel.id).single();
+    const freshChecklist=freshRow?.checklist||panel.checklist;
+    const cl=freshChecklist[kode]||{qty:0,progress:{},progressByDate:{}};
     let newCl:any;
     if(isTahap){
       const tahapState=cl.pasangKomponenTahap||{};
@@ -144,7 +162,7 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
       newCl={...cl,progress:{...(cl.progress||{}),"PASANG KOMPONEN":pct},
         progressByDate:{...(cl.progressByDate||{}),"PASANG KOMPONEN":{...((cl.progressByDate||{})["PASANG KOMPONEN"]||{}),[TODAY]:pct}}};
     }
-    const newChecklist={...panel.checklist,[kode]:newCl};
+    const newChecklist={...freshChecklist,[kode]:newCl};
     setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
     await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",panel.id));
   };
@@ -203,6 +221,13 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
         diarsipkan_pada:new Date().toISOString(),diarsipkan_oleh:user.nama,
       },{onConflict:"panel_id,seksi,kode"}));
       if(arsipErr)throw arsipErr;
+      // BUG FIX (14 Agu 2026): kalau seksi sebelah (lihat siblingSeksi di atas) udah pernah
+      // archive komponen yang SAMA duluan, sekalian segerin foto di row-nya juga - biar gak
+      // ketinggalan snapshot foto lama walau progress tahap dia sendiri gak berubah.
+      const{data:siblingRow}=await supabase.from("panel_seksi_archived").select("data").eq("panel_id",panel.id).eq("seksi",siblingSeksi).eq("kode",kode).maybeSingle();
+      if(siblingRow){
+        await withRetry(()=>supabase.from("panel_seksi_archived").update({data:{...siblingRow.data,fotoPemasangan:freshCl.fotoPemasangan||[]}}).eq("panel_id",panel.id).eq("seksi",siblingSeksi).eq("kode",kode));
+      }
       // BUG FIX (8 Agu 2026): update arsipMap OPTIMISTIC di sini (jangan nunggu round-trip
       // realtime) - biar begitu operator dismiss alert, kartu ini LANGSUNG hilang dari
       // accordion (lihat filter relevanBelumArsip di render), sesuai spek awal "Simpan ->
@@ -316,10 +341,17 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
         await supabase.from("panels").update({checklist:newChecklist}).eq("id",panel.id);
         setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
 
-        const{data:arsipRow}=await supabase.from("panel_seksi_archived").select("data").eq("panel_id",panel.id).eq("seksi",tugas.seksi).eq("kode",kode).single();
+        const{data:arsipRow}=await supabase.from("panel_seksi_archived").select("data").eq("panel_id",panel.id).eq("seksi",tugas.seksi).eq("kode",kode).maybeSingle();
         if(arsipRow){
           const newFotoArsip=[...(arsipRow.data?.fotoPemasangan||[]),...fotoTerupload];
           await supabase.from("panel_seksi_archived").update({data:{...arsipRow.data,fotoPemasangan:newFotoArsip}}).eq("panel_id",panel.id).eq("seksi",tugas.seksi).eq("kode",kode);
+        }
+        // BUG FIX (14 Agu 2026): sama kayak di simpanProgress - sekalian tambahin foto baru ini
+        // ke row arsip seksi sebelah juga kalau ada, biar gak divergen (lihat siblingSeksi).
+        const{data:siblingRow}=await supabase.from("panel_seksi_archived").select("data").eq("panel_id",panel.id).eq("seksi",siblingSeksi).eq("kode",kode).maybeSingle();
+        if(siblingRow){
+          const newFotoSibling=[...(siblingRow.data?.fotoPemasangan||[]),...fotoTerupload];
+          await supabase.from("panel_seksi_archived").update({data:{...siblingRow.data,fotoPemasangan:newFotoSibling}}).eq("panel_id",panel.id).eq("seksi",siblingSeksi).eq("kode",kode);
         }
       }
       const berhasilSet=new Set(staged.filter(s=>!gagal.includes(s)));
