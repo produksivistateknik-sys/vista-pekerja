@@ -178,7 +178,10 @@ export const DIVISI_CONFIG: Record<string,any> = {
   wiring_ctrl:{label:"Wiring Control",icon:"⚡", color:"#6366f1",bg:"#eef2ff",password:"wiring123",  proses:["WIRING CONTROL"],manualName:true},
   wiring_pwr: {label:"Wiring Power",  icon:"🔌", color:"#be185d",bg:"#fdf2f8",password:"wiringp123", proses:["WIRING POWER"],manualName:true},
   qc:         {label:"QC",            icon:"🔍", color:"#16a34a",bg:"#f0fdf4",password:"qc123",      proses:["QC TEST","PACKING"],manualName:true},
-  nameplate:  {label:"Nameplate",     icon:"🏷️", color:"#0891b2",bg:"#ecfeff",password:"nameplate123",proses:null},
+  // FIX (29 Agu 2026): nameplate ketinggalan dari migrasi QC/Wiring (lihat komentar di atas,
+  // 174-177) - masih lewat operator_users (username+password individual ter-hash) padahal
+  // field `password` di sini sudah lama disiapkan tapi gak kepakai. Sekarang disamakan.
+  nameplate:  {label:"Nameplate",     icon:"🏷️", color:"#0891b2",bg:"#ecfeff",password:"nameplate123",proses:null,manualName:true},
   komponen:   {label:"Komponen",       icon:"📦", color:"#0d9488",bg:"#f0fdfa",proses:null,manualName:true,
     // "Assembling" sengaja dihapus dari opsi login - sudah gantiin pakai Assembling Luar
     // (Pasang Komponen, divisi "assembling") buat kebutuhan itu. Data lama sub_bagian=Assembling

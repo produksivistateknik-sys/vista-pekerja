@@ -20,6 +20,9 @@ import { ReviewPotongView } from "./components/ReviewPotongView";
 import { ReviewPaintingView } from "./components/ReviewPaintingView";
 import { RiwayatKerjaView } from "./components/RiwayatKerjaView";
 import { KomponenTambahanView } from "./components/KomponenTambahanView";
+import { JadwalPengirimanView } from "./components/JadwalPengirimanView";
+import { ProsesAktifView } from "./components/ProsesAktifView";
+import { AkunView } from "./components/AkunView";
 // Sprint 5-7 (5 Agu 2026): seluruh komponen/const yang tadinya nempel di App.tsx dipindah
 // keluar ke src/lib/ dan src/components/ - struktur/nama fungsi/isi PERSIS SAMA, cuma
 // lokasinya pindah. App.tsx sekarang murni shell (routing halaman + header/nav).
@@ -191,6 +194,20 @@ export default function App(){
     ];
   })();
   const selectedTile=menuTiles.find(t=>t.key===selectedMenu);
+
+  // BOTTOM NAV (29 Agu 2026) - Beranda/Proses Aktif/Jadwal Pengiriman/Akun, TERPISAH dari grid
+  // menu di atas (selectedMenu). Pola in-page state switch (konsisten sama grid menu, bukan
+  // routing baru) - "beranda" nampilin apa yang SUDAH ada (gate shift/grid/halaman ke-buka),
+  // 3 tab lain nampilin halaman baru penuh yang GANTI area itu sepenuhnya. Ganti tab manapun
+  // SELAIN tetap di beranda otomatis nutup tile grid yang lagi kebuka (setSelectedMenu(null)) -
+  // biar pas balik ke Beranda selalu mulai dari grid root, bukan nyangkut di halaman lama.
+  // "Proses Aktif" cuma relevan buat divisi timer (isOperatorDivisi - reuse, set-nya PERSIS
+  // sama) - disembunyikan total buat qc/nameplate/komponen sesuai keputusan investigasi.
+  const [activeBottomTab,setActiveBottomTab]=useState<"beranda"|"proses"|"jadwal"|"akun">("beranda");
+  const gantiBottomTab=(tab:typeof activeBottomTab)=>{
+    setActiveBottomTab(tab);
+    setSelectedMenu(null);
+  };
 
   // Badge notif di header (17 Agu 2026) = jumlah permintaan (BBMB+BBMU) SE-DIVISI (bukan cuma
   // milik operator yang sedang login - Riwayat sekarang juga se-divisi, lihat PermintaanView.tsx)
@@ -379,6 +396,9 @@ export default function App(){
         )}
         <div style={{flex:1,overflowY:"auto"}}>
           {user.divisi==="gudang"?<GudangHome user={user} onLogout={doLogout}/>
+            :activeBottomTab==="proses"?<ProsesAktifView user={user}/>
+            :activeBottomTab==="jadwal"?<JadwalPengirimanView/>
+            :activeBottomTab==="akun"?<AkunView user={user} isTimerDivisi={!!isOperatorDivisi} proses={prosesRiwayat} onLogout={doLogout}/>
             :isOperatorDivisi&&!gateShiftSet?(
               <div style={{padding:20,maxWidth:420,margin:"0 auto"}} className="fi">
                 <div style={{background:"#fff",borderRadius:18,padding:20,boxShadow:"0 4px 14px #00000014"}}>
@@ -439,6 +459,31 @@ export default function App(){
               </>
             )}
         </div>
+        {/* Bottom nav (29 Agu 2026) - TERPISAH dari grid menu (selectedMenu), gudang dikecualikan
+            (punya bottom-nav 5-tab sendiri di GudangHome.tsx, sama pola pengecualian di seluruh
+            file ini). "Proses Aktif" cuma muncul buat divisi timer (isOperatorDivisi). */}
+        {user.divisi!=="gudang"&&(
+          <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1px solid #f1f5f9",
+            display:"flex",paddingBottom:"env(safe-area-inset-bottom)",zIndex:100,boxShadow:"0 -4px 14px #00000010"}}>
+            {[
+              {key:"beranda",label:"Beranda",icon:"home"},
+              ...(isOperatorDivisi?[{key:"proses",label:"Proses Aktif",icon:"activity"}]:[]),
+              {key:"jadwal",label:"Jadwal Pengiriman",icon:"truck"},
+              {key:"akun",label:"Akun",icon:"user"},
+            ].map(tab=>{
+              const isActive=activeBottomTab===tab.key;
+              return(
+                <button key={tab.key} onClick={()=>gantiBottomTab(tab.key as any)}
+                  style={{flex:1,border:"none",background:"none",cursor:"pointer",
+                  display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
+                  gap:3,padding:"10px 4px",color:isActive?(cfg?.color||"#1d4ed8"):"#94a3b8",fontFamily:"inherit"}}>
+                  <i className={`ti ti-${tab.icon}`} style={{fontSize:19}}/>
+                  <span style={{fontSize:9,fontWeight:700,letterSpacing:.2,textAlign:"center"}}>{tab.label}</span>
+                </button>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
