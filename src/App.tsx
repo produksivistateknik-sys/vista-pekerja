@@ -153,37 +153,41 @@ export default function App(){
   const bisaReviewPainting=user?.divisi==="painting";
   const prosesRiwayat:string[]=cfg?.subBagianProses?.[user?.sub_bagian]||cfg?.proses||[];
 
+  // Ikon tile grid pakai Tabler Icons (polish 29 Agu 2026, GANTI emoji) - konsisten sama font
+  // ikon yang SUDAH dipakai luas di komponen lain (QCChecklistTab/NameplateView/dll, className
+  // "ti ti-*"). CATATAN: field ini terpisah dari `cfg.icon`/`komponenPasangTugas.icon` (tetap
+  // emoji, JANGAN diubah - dipakai literal sbg teks di badge header & KomponenPasangView.tsx:431).
   type MenuTile={key:string,label:string,icon:string};
   const menuTiles:MenuTile[]=!user?[]:(()=>{
     if(user.divisi==="nameplate")return[
-      {key:"tugas",label:"Nameplate",icon:"🏷️"},
-      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"📦"}]:[]),
-      {key:"permintaan",label:"Permintaan",icon:"📝"},
+      {key:"tugas",label:"Nameplate",icon:"tag"},
+      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
+      {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
     ];
     if(user.divisi==="qc")return[
-      {key:"tugas",label:"QC",icon:"🔍"},
-      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"📦"}]:[]),
-      {key:"permintaan",label:"Permintaan",icon:"📝"},
+      {key:"tugas",label:"QC",icon:"search"},
+      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
+      {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
     ];
     if(user.divisi==="komponen"&&user.sub_bagian==="QS")return[
-      {key:"tugas",label:"QS",icon:"📋"},
-      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"📦"}]:[]),
-      {key:"permintaan",label:"Permintaan",icon:"📝"},
+      {key:"tugas",label:"QS",icon:"clipboard-list"},
+      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
+      {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
     ];
     // "komponen" non-QS (dulu TrackingKomponenView) - fitur dikonfirmasi tidak terpakai, tile
     // dihapus dari grid (29 Agu 2026). Cuma sisa Permintaan buat tipe login ini.
-    if(user.divisi==="komponen")return[{key:"permintaan",label:"Permintaan",icon:"📝"}];
+    if(user.divisi==="komponen")return[{key:"permintaan",label:"Permintaan",icon:"clipboard-text"}];
     // Operator biasa: mekanik/painting/assembling/wiring_ctrl/wiring_pwr - arsipSeksi &
     // komponenPasangTugas otomatis cuma keisi buat wiring_ctrl/assembling-Luar (lihat definisi di
     // atas), jadi 2 sub-grup itu otomatis dapet tile Komponen+Arsip tanpa perlu cabang terpisah.
     return[
-      {key:"tugas",label:"Tugas Saya",icon:"📋"},
-      ...(bisaReviewPotong||bisaReviewPainting?[{key:"review",label:"Review",icon:"🗂"}]:[]),
-      {key:"riwayat",label:"Riwayat",icon:"🕘"},
-      ...(bisaReviewPotong?[{key:"tambahan",label:"Tambahan",icon:"➕"}]:[]),
-      ...(komponenPasangTugas?[{key:"komponen",label:"Komponen",icon:komponenPasangTugas.icon}]:[]),
-      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"📦"}]:[]),
-      {key:"permintaan",label:"Permintaan",icon:"📝"},
+      {key:"tugas",label:"Tugas Saya",icon:"clipboard-list"},
+      ...(bisaReviewPotong||bisaReviewPainting?[{key:"review",label:"Review",icon:"folder-check"}]:[]),
+      {key:"riwayat",label:"Riwayat",icon:"history"},
+      ...(bisaReviewPotong?[{key:"tambahan",label:"Tambahan",icon:"plus"}]:[]),
+      ...(komponenPasangTugas?[{key:"komponen",label:"Komponen",icon:komponenPasangTugas.seksi==="wiring_control"?"plug":"tool"}]:[]),
+      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
+      {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
     ];
   })();
   const selectedTile=menuTiles.find(t=>t.key===selectedMenu);
@@ -286,6 +290,10 @@ export default function App(){
   return(
     <div style={{minHeight:"100vh",background:"#f1f5f9"}}>
       <style>{GCss}</style>
+      <style>{`
+        .menu-tile-np:active{transform:translateY(-2px);box-shadow:0 8px 20px #00000022!important;}
+        @media(hover:hover){.menu-tile-np:hover{transform:translateY(-2px);box-shadow:0 8px 20px #00000022!important;}}
+      `}</style>
       <div style={{display:"flex",flexDirection:"column",minHeight:"100vh"}}>
         {/* Divisi "gudang" punya header sendiri (lihat GudangHeader di GudangHome.tsx) - header
             global di bawah ini SENGAJA dilewati buat gudang, sama persis pola bottom-nav yang
@@ -294,24 +302,29 @@ export default function App(){
         {user.divisi!=="gudang"&&(
         <div style={{background:"#f1f5f9",padding:"10px 16px 8px",
           paddingTop:"max(10px, env(safe-area-inset-top))",position:"sticky",top:0,zIndex:100}}>
-          {/* Card profil - avatar inisial + nama + jabatan + jam real-time */}
-          <div style={{background:"#fff",borderRadius:18,padding:"14px 16px",boxShadow:"0 2px 10px #00000012",marginBottom:8,
+          {/* Card profil - warna dominan ikut divisi (polish 29 Agu 2026). Background SOLID
+              cfg.color (bukan cfg.bg yang tint pucat) - teks/avatar dibalik jadi putih supaya
+              kontras tetap aman di atas warna solid manapun (semua warna DIVISI_CONFIG cukup
+              gelap buat teks putih, dicek manual dari daftar hex-nya). */}
+          <div style={{background:cfg?.color||"#1d4ed8",backgroundImage:"linear-gradient(135deg, rgba(255,255,255,.10), rgba(0,0,0,.08))",
+            borderRadius:18,padding:"16px 18px",boxShadow:`0 4px 14px ${cfg?.color||"#1d4ed8"}40`,marginBottom:10,
             display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
             <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
-              <div style={{width:44,height:44,borderRadius:14,flexShrink:0,background:cfg?.bg||"#f1f5f9",color:cfg?.color||"#64748b",
-                display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800}}>{inisialOperator}</div>
+              <div style={{width:48,height:48,borderRadius:14,flexShrink:0,background:"#fff",color:cfg?.color||"#1d4ed8",
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:800}}>{inisialOperator}</div>
               <div style={{minWidth:0}}>
-                <div style={{fontWeight:800,fontSize:15,color:"#1e293b",letterSpacing:-.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{namaOperator}</div>
-                <div style={{fontSize:11.5,color:"#64748b",marginTop:1}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</div>
+                <div style={{fontWeight:800,fontSize:17,color:"#fff",letterSpacing:-.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{namaOperator}</div>
+                <div style={{fontSize:11.5,color:"#ffffffcc",marginTop:2}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</div>
               </div>
             </div>
             <div style={{textAlign:"right",flexShrink:0}}>
-              <div style={{fontWeight:800,fontSize:16,color:"#1e293b",fontFamily:"'DM Mono',monospace",letterSpacing:-.3}}>{jamText}</div>
-              <div style={{fontSize:10,color:"#94a3b8",marginTop:1,textTransform:"capitalize"}}>{tanggalText}</div>
+              <div style={{fontWeight:800,fontSize:16,color:"#fff",fontFamily:"'DM Mono',monospace",letterSpacing:-.3}}>{jamText}</div>
+              <div style={{fontSize:10,color:"#ffffffb3",marginTop:1,textTransform:"capitalize"}}>{tanggalText}</div>
             </div>
           </div>
           {/* Card ringkasan - subtitle tab aktif, badge divisi, notifikasi, aksi (view-toggle/refresh/logout) */}
-          <div style={{background:"#fff",borderRadius:16,padding:"8px 10px 8px 14px",boxShadow:"0 2px 10px #00000012",
+          <div style={{background:"#fff",borderRadius:18,padding:"8px 10px 8px 14px",boxShadow:"0 4px 14px #00000014",
+            border:`1px solid ${cfg?.color||"#1d4ed8"}20`,
             display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",rowGap:6}}>
             <div style={{fontSize:11.5,color:"#94a3b8",marginRight:2}}>{headerSubtitle}</div>
             <KoneksiBadge/>
@@ -368,7 +381,7 @@ export default function App(){
           {user.divisi==="gudang"?<GudangHome user={user} onLogout={doLogout}/>
             :isOperatorDivisi&&!gateShiftSet?(
               <div style={{padding:20,maxWidth:420,margin:"0 auto"}} className="fi">
-                <div style={{background:"#fff",borderRadius:18,padding:20,boxShadow:"0 2px 10px #00000012"}}>
+                <div style={{background:"#fff",borderRadius:18,padding:20,boxShadow:"0 4px 14px #00000014"}}>
                   <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:2}}>Setup sesi kerja</div>
                   <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Pilih shift kerja Anda hari ini</div>
                   <div style={{display:"flex",gap:10,marginBottom:16}}>
@@ -389,14 +402,16 @@ export default function App(){
               </div>
             )
             :!selectedMenu?(
-              <div style={{padding:16,display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>
+              <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14}}>
                 {menuTiles.map(t=>(
-                  <button key={t.key} onClick={()=>setSelectedMenu(t.key)} style={{
-                    background:"#fff",borderRadius:18,padding:"22px 14px",border:"none",
-                    boxShadow:"0 2px 10px #00000012",display:"flex",flexDirection:"column",
-                    alignItems:"center",gap:10,cursor:"pointer",fontFamily:"inherit"}}>
-                    <div style={{width:52,height:52,borderRadius:16,background:cfg?.bg||"#f1f5f9",
-                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>{t.icon}</div>
+                  <button key={t.key} onClick={()=>setSelectedMenu(t.key)} className="menu-tile-np" style={{
+                    background:"#fff",borderRadius:18,padding:"24px 14px",border:"none",
+                    boxShadow:"0 4px 14px #00000014",display:"flex",flexDirection:"column",
+                    alignItems:"center",gap:12,cursor:"pointer",fontFamily:"inherit",transition:"transform .12s, box-shadow .12s"}}>
+                    <div style={{width:52,height:52,borderRadius:14,background:cfg?.color||"#1d4ed8",
+                      display:"flex",alignItems:"center",justifyContent:"center"}}>
+                      <i className={`ti ti-${t.icon}`} style={{fontSize:24,color:"#fff"}}/>
+                    </div>
                     <span style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>{t.label}</span>
                   </button>
                 ))}
@@ -405,9 +420,9 @@ export default function App(){
               <>
                 <div style={{padding:"12px 16px 0"}}>
                   <button onClick={()=>setSelectedMenu(null)} style={{display:"flex",alignItems:"center",gap:6,
-                    background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"8px 14px",
-                    fontSize:12,fontWeight:700,color:"#475569",cursor:"pointer",boxShadow:"0 1px 4px #00000008",fontFamily:"inherit"}}>
-                    ← Kembali
+                    background:"#fff",border:`1px solid ${cfg?.color||"#1d4ed8"}30`,borderRadius:10,padding:"8px 14px",
+                    fontSize:12,fontWeight:700,color:cfg?.color||"#1d4ed8",cursor:"pointer",boxShadow:"0 2px 8px #0000000f",fontFamily:"inherit"}}>
+                    <i className="ti ti-arrow-left" style={{fontSize:14}}/> Kembali
                   </button>
                 </div>
                 {selectedMenu==="permintaan"?<PermintaanView user={user}/>
