@@ -23,6 +23,7 @@ import { KomponenTambahanView } from "./components/KomponenTambahanView";
 import { JadwalPengirimanView } from "./components/JadwalPengirimanView";
 import { ProsesAktifView } from "./components/ProsesAktifView";
 import { AkunView } from "./components/AkunView";
+import { ProyekLuarView } from "./components/ProyekLuarView";
 // Sprint 5-7 (5 Agu 2026): seluruh komponen/const yang tadinya nempel di App.tsx dipindah
 // keluar ke src/lib/ dan src/components/ - struktur/nama fungsi/isi PERSIS SAMA, cuma
 // lokasinya pindah. App.tsx sekarang murni shell (routing halaman + header/nav).
@@ -171,6 +172,7 @@ export default function App(){
       {key:"tugas",label:"QC",icon:"search"},
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
       {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
+      {key:"proyekluar",label:"Proyek Luar",icon:"building"},
     ];
     if(user.divisi==="komponen"&&user.sub_bagian==="QS")return[
       {key:"tugas",label:"QS",icon:"clipboard-list"},
@@ -191,6 +193,9 @@ export default function App(){
       ...(komponenPasangTugas?[{key:"komponen",label:"Komponen",icon:komponenPasangTugas.seksi==="wiring_control"?"plug":"tool"}]:[]),
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
       {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
+      // Proyek Luar (30 Agu 2026) - fitur laporan proyek eksternal, BERDIRI SENDIRI dari WO/
+      // panel manapun. Cuma qc/wiring_ctrl/wiring_pwr/assembling (mekanik/painting TIDAK).
+      ...(["wiring_ctrl","wiring_pwr","assembling"].includes(user.divisi)?[{key:"proyekluar",label:"Proyek Luar",icon:"building"}]:[]),
     ];
   })();
   const selectedTile=menuTiles.find(t=>t.key===selectedMenu);
@@ -442,6 +447,7 @@ export default function App(){
                   :selectedMenu==="riwayat"?<RiwayatKerjaView proses={prosesRiwayat} label={cfg?.label||user.divisi} icon={cfg?.icon||"🕘"} color={cfg?.color||"#d97706"}/>
                   :selectedMenu==="review"?(bisaReviewPainting?<ReviewPaintingView/>:<ReviewPotongView/>)
                   :selectedMenu==="tambahan"?<KomponenTambahanView user={user}/>
+                  :selectedMenu==="proyekluar"?<ProyekLuarView user={user}/>
                   :user.divisi==="nameplate"?<NameplateView user={user}/>
                   :user.divisi==="qc"?<QCChecklistTab user={user}/>
                   :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS}/>
