@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "./lib/supabase";
 import { isPushSupported, getPushPermissionState, subscribeToPush } from "./lib/pushNotif";
+import { TODAY, addDays } from "./lib/dateHelpers";
 import { DIVISI_CONFIG } from "./lib/panelTypes";
 import { GCss } from "./lib/globalCss";
 import { KoneksiBadge } from "./components/ui/Primitives";
@@ -12,10 +13,13 @@ import { NameplateView } from "./components/NameplateView";
 import { QCChecklistTab } from "./components/QCChecklistTab";
 import { KomponenProgressView } from "./components/KomponenProgressView";
 import { KomponenPasangView, type KomponenPasangTugas } from "./components/KomponenPasangView";
-import { TrackingKomponenView } from "./components/TrackingKomponenView";
 import { PermintaanView } from "./components/PermintaanView";
 import { GudangHome } from "./components/GudangHome";
-import { OperatorHome } from "./components/OperatorHome";
+import { OperatorView } from "./components/OperatorView";
+import { ReviewPotongView } from "./components/ReviewPotongView";
+import { ReviewPaintingView } from "./components/ReviewPaintingView";
+import { RiwayatKerjaView } from "./components/RiwayatKerjaView";
+import { KomponenTambahanView } from "./components/KomponenTambahanView";
 // Sprint 5-7 (5 Agu 2026): seluruh komponen/const yang tadinya nempel di App.tsx dipindah
 // keluar ke src/lib/ dan src/components/ - struktur/nama fungsi/isi PERSIS SAMA, cuma
 // lokasinya pindah. App.tsx sekarang murni shell (routing halaman + header/nav).
@@ -49,6 +53,13 @@ export default function App(){
   });
 
   const cfg=user?DIVISI_CONFIG[user.divisi]:null;
+  // Jam real-time di header profil (restyle 29 Agu 2026) - update tiap detik, dipasang di top
+  // level (bukan di dalam blok "if(!user)" dkk di bawah) karena hooks React gak boleh kondisional.
+  const [jamSekarang,setJamSekarang]=useState(()=>new Date());
+  useEffect(()=>{
+    const t=setInterval(()=>setJamSekarang(new Date()),1000);
+    return()=>clearInterval(t);
+  },[]);
   const [viewMode,setViewMode]=useState<"desktop"|"mobile">(()=>{
     try{return (localStorage.getItem("vista_pekerja_viewmode") as any)||"desktop";}catch{return "desktop";}
   });
@@ -61,6 +72,47 @@ export default function App(){
   // nameplate/qc/komponen (gak butuh/gak boleh toggle desktop-mobile, UI-nya sendiri sudah
   // punya bottom-nav 5-tab terpisah - lihat GudangHome.tsx).
   const isOperatorDivisi=user&&!["nameplate","qc","komponen","gudang"].includes(user.divisi);
+
+  // Gate pilih shift SETELAH login SEBELUM grid (restyle 29 Agu 2026) - cuma buat divisi operator
+  // biasa (isOperatorDivisi), nameplate/qc/komponen/gudang gak butuh konsep shift sama sekali.
+  // SENGAJA baca/tulis localStorage pakai KEY & FORMAT YANG PERSIS SAMA dengan state internal
+  // OperatorView.tsx (wsKey/hariKerjaAwal/shift/shiftSet, lihat OperatorView.tsx:34-138) - BUKAN
+  // reimplementasi, cuma baca kontrak localStorage yang sama dari luar. Begitu gate ini nulis
+  // shiftSet:true ke key itu, useState initializer OperatorView.tsx otomatis baca shiftSet:true
+  // duluan pas dia mount, jadi gate INTERNAL-nya sendiri (baris 1498-1532 di sana) otomatis
+  // ke-skip tanpa OperatorView.tsx perlu diubah SAMA SEKALI - zero risk ke logic shift-lewat-
+  // tengah-malam yang sudah teruji di file itu. "Ganti Shift" pas lagi di dalam Tugas Saya TETAP
+  // pakai tombol internal OperatorView.tsx yang sudah ada (gak disentuh) - badge Shift di header
+  // di bawah cuma affordance tambahan buat reset ulang gate ini dari luar.
+  const wsKey=user?`vista_pekerja_ws_${user.divisi}_${user.sub_bagian||""}_${user.id||user.username||user.nama||""}`:"";
+  const hariKerjaAwal=(()=>{
+    if(!wsKey)return TODAY;
+    try{
+      const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
+      const jamNow=new Date().getHours();
+      const kemarin=addDays(TODAY,-1);
+      if(jamNow<7&&saved.shift==="2"&&saved.tanggal===kemarin)return kemarin;
+    }catch{}
+    return TODAY;
+  })();
+  const [gateShift,setGateShift]=useState(()=>{
+    if(!wsKey)return "1";
+    try{
+      const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
+      return saved.tanggal===hariKerjaAwal&&saved.shift?saved.shift:"1";
+    }catch{return "1";}
+  });
+  const [gateShiftSet,setGateShiftSet]=useState(()=>{
+    if(!wsKey)return false;
+    try{
+      const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
+      return saved.tanggal===hariKerjaAwal?!!saved.shiftSet:false;
+    }catch{return false;}
+  });
+  const mulaiKerja=()=>{
+    setGateShiftSet(true);
+    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:hariKerjaAwal,shift:gateShift,shiftSet:true}));}catch{}
+  };
 
   // Tab bawah "Arsip" - cuma muncul buat divisi/sub_bagian yang punya seksi arsip otomatis
   // (QS/QC/Assembling Luar/Wiring Control/Nameplate - "Warehouse" DIHAPUS 14 Agu 2026 bareng
@@ -89,7 +141,52 @@ export default function App(){
     :user.divisi==="wiring_ctrl"?TUGAS_KOMPONEN_WIRING
     :user.divisi==="assembling"&&user.sub_bagian==="Assembling Luar"?TUGAS_KOMPONEN_ASSEMBLING
     :null;
-  const [bottomTab,setBottomTab]=useState<"tugas"|"komponen"|"arsip"|"permintaan">("tugas");
+
+  // GRID MENU (restyle 29 Agu 2026, GANTI bottom-nav tab lama) - null = tampilkan grid, string =
+  // halaman yang lagi dibuka (tombol "Kembali" reset ke null). Dipisah dari OperatorHome.tsx
+  // (yang sebelumnya jadi tab-switcher SENDIRI di dalam tab "Tugas Saya") - sekarang App.tsx jadi
+  // SATU-SATUNYA router, tiap sub-tab lama (Review/Riwayat/Tambahan) jadi tile grid tersendiri,
+  // konsisten sama pola nameplate/qc/komponen yang sudah lebih dulu di-routing langsung dari sini.
+  // OperatorHome.tsx TIDAK dihapus (masih ada filenya), cuma berhenti dipakai.
+  const [selectedMenu,setSelectedMenu]=useState<string|null>(null);
+  const bisaReviewPotong=user?.divisi==="mekanik"&&user?.sub_bagian==="Potong";
+  const bisaReviewPainting=user?.divisi==="painting";
+  const prosesRiwayat:string[]=cfg?.subBagianProses?.[user?.sub_bagian]||cfg?.proses||[];
+
+  type MenuTile={key:string,label:string,icon:string};
+  const menuTiles:MenuTile[]=!user?[]:(()=>{
+    if(user.divisi==="nameplate")return[
+      {key:"tugas",label:"Nameplate",icon:"🏷️"},
+      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"📦"}]:[]),
+      {key:"permintaan",label:"Permintaan",icon:"📝"},
+    ];
+    if(user.divisi==="qc")return[
+      {key:"tugas",label:"QC",icon:"🔍"},
+      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"📦"}]:[]),
+      {key:"permintaan",label:"Permintaan",icon:"📝"},
+    ];
+    if(user.divisi==="komponen"&&user.sub_bagian==="QS")return[
+      {key:"tugas",label:"QS",icon:"📋"},
+      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"📦"}]:[]),
+      {key:"permintaan",label:"Permintaan",icon:"📝"},
+    ];
+    // "komponen" non-QS (dulu TrackingKomponenView) - fitur dikonfirmasi tidak terpakai, tile
+    // dihapus dari grid (29 Agu 2026). Cuma sisa Permintaan buat tipe login ini.
+    if(user.divisi==="komponen")return[{key:"permintaan",label:"Permintaan",icon:"📝"}];
+    // Operator biasa: mekanik/painting/assembling/wiring_ctrl/wiring_pwr - arsipSeksi &
+    // komponenPasangTugas otomatis cuma keisi buat wiring_ctrl/assembling-Luar (lihat definisi di
+    // atas), jadi 2 sub-grup itu otomatis dapet tile Komponen+Arsip tanpa perlu cabang terpisah.
+    return[
+      {key:"tugas",label:"Tugas Saya",icon:"📋"},
+      ...(bisaReviewPotong||bisaReviewPainting?[{key:"review",label:"Review",icon:"🗂"}]:[]),
+      {key:"riwayat",label:"Riwayat",icon:"🕘"},
+      ...(bisaReviewPotong?[{key:"tambahan",label:"Tambahan",icon:"➕"}]:[]),
+      ...(komponenPasangTugas?[{key:"komponen",label:"Komponen",icon:komponenPasangTugas.icon}]:[]),
+      ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"📦"}]:[]),
+      {key:"permintaan",label:"Permintaan",icon:"📝"},
+    ];
+  })();
+  const selectedTile=menuTiles.find(t=>t.key===selectedMenu);
 
   // Badge notif di header (17 Agu 2026) = jumlah permintaan (BBMB+BBMU) SE-DIVISI (bukan cuma
   // milik operator yang sedang login - Riwayat sekarang juga se-divisi, lihat PermintaanView.tsx)
@@ -124,13 +221,7 @@ export default function App(){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id,user?.divisi]);
 
-  const BOTTOM_TAB_SUBTITLE:Record<string,string>={
-    tugas:"Kelola tugas & progress harian",
-    permintaan:"Kelola permintaan komponen bantu & utama",
-    arsip:"Riwayat pekerjaan yang sudah diarsipkan",
-    komponen:"Progress pemasangan komponen",
-  };
-  const headerSubtitle=BOTTOM_TAB_SUBTITLE[bottomTab]||`Kelola aktivitas ${cfg?.label||""}`;
+  const headerSubtitle=selectedTile?`${selectedTile.icon} ${selectedTile.label}`:"Pilih menu di bawah untuk mulai";
 
   // Banner ajakan aktifkan push notification pengingat Maintenance Rutin - subscribe di-key ke
   // `divisi` (bukan per-orang, device login pakai password bersama per sub-bagian). Cuma muncul
@@ -183,6 +274,15 @@ export default function App(){
 
   const doLogout=()=>{if(window.confirm("Keluar dari aplikasi?")){setUser(null);try{localStorage.removeItem("vista_pekerja_session");}catch{}setPage("landing");}};
 
+  // Restyle header profil (29 Agu 2026) - operator_users TIDAK punya kolom foto (dicek skema),
+  // jadi avatar pakai inisial nama, bukan placeholder foto. Warna avatar ikut cfg.color/bg per
+  // divisi (bukan hijau/warna baru) - konsisten sama sistem badge warna-per-divisi yang sudah
+  // dipakai di seluruh app (DIVISI_CONFIG), biar header gak jadi "pulau" visual sendiri.
+  const namaOperator=user.nama||user.name||"Operator";
+  const inisialOperator=namaOperator.trim().split(/\s+/).slice(0,2).map((w:string)=>w[0]).join("").toUpperCase()||"OP";
+  const jamText=jamSekarang.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
+  const tanggalText=jamSekarang.toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long"});
+
   return(
     <div style={{minHeight:"100vh",background:"#f1f5f9"}}>
       <style>{GCss}</style>
@@ -192,46 +292,62 @@ export default function App(){
             udah lebih dulu dikecualikan (lihat "user.divisi!=='gudang'" di bawah). Header global
             ini TETAP dipakai apa adanya buat semua divisi lain - gak diubah sama sekali. */}
         {user.divisi!=="gudang"&&(
-        <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",padding:"10px 16px",
-          paddingTop:"max(10px, env(safe-area-inset-top))",position:"sticky",top:0,zIndex:100,boxShadow:"0 1px 4px #00000008"}}>
-          <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
-            <div style={{minWidth:0}}>
-              <div style={{display:"flex",alignItems:"center",gap:8}}>
-                <span style={{fontSize:18}}>⚡</span>
-                <span style={{fontWeight:800,fontSize:15,color:"#1e293b",letterSpacing:-.2}}>PROSES PRODUKSI</span>
+        <div style={{background:"#f1f5f9",padding:"10px 16px 8px",
+          paddingTop:"max(10px, env(safe-area-inset-top))",position:"sticky",top:0,zIndex:100}}>
+          {/* Card profil - avatar inisial + nama + jabatan + jam real-time */}
+          <div style={{background:"#fff",borderRadius:18,padding:"14px 16px",boxShadow:"0 2px 10px #00000012",marginBottom:8,
+            display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
+              <div style={{width:44,height:44,borderRadius:14,flexShrink:0,background:cfg?.bg||"#f1f5f9",color:cfg?.color||"#64748b",
+                display:"flex",alignItems:"center",justifyContent:"center",fontSize:16,fontWeight:800}}>{inisialOperator}</div>
+              <div style={{minWidth:0}}>
+                <div style={{fontWeight:800,fontSize:15,color:"#1e293b",letterSpacing:-.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{namaOperator}</div>
+                <div style={{fontSize:11.5,color:"#64748b",marginTop:1}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</div>
               </div>
-              <div style={{fontSize:11.5,color:"#94a3b8",marginTop:2,marginLeft:26}}>{headerSubtitle}</div>
             </div>
-            <button onClick={()=>setBottomTab("permintaan")} title="Notifikasi" style={{position:"relative",flexShrink:0,width:36,height:36,
-              border:"1px solid #e2e8f0",borderRadius:9,background:"#f8fafc",display:"flex",
+            <div style={{textAlign:"right",flexShrink:0}}>
+              <div style={{fontWeight:800,fontSize:16,color:"#1e293b",fontFamily:"'DM Mono',monospace",letterSpacing:-.3}}>{jamText}</div>
+              <div style={{fontSize:10,color:"#94a3b8",marginTop:1,textTransform:"capitalize"}}>{tanggalText}</div>
+            </div>
+          </div>
+          {/* Card ringkasan - subtitle tab aktif, badge divisi, notifikasi, aksi (view-toggle/refresh/logout) */}
+          <div style={{background:"#fff",borderRadius:16,padding:"8px 10px 8px 14px",boxShadow:"0 2px 10px #00000012",
+            display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",rowGap:6}}>
+            <div style={{fontSize:11.5,color:"#94a3b8",marginRight:2}}>{headerSubtitle}</div>
+            <KoneksiBadge/>
+            <span style={{background:cfg?.bg,color:cfg?.color,border:`1px solid ${cfg?.color}30`,
+              borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</span>
+            {isOperatorDivisi&&gateShiftSet&&(
+              <span style={{background:"#fff7ed",color:"#c2410c",border:"1px solid #fed7aa",
+                borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
+                🕐 Shift {gateShift}
+              </span>
+            )}
+            <div style={{flex:1}}/>
+            <button onClick={()=>setSelectedMenu("permintaan")} title="Notifikasi" style={{position:"relative",flexShrink:0,width:36,height:36,
+              border:"1px solid #e2e8f0",borderRadius:10,background:"#f8fafc",display:"flex",
               alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:15,color:"#64748b"}}>
               🔔
               {notifCount>0&&<span style={{position:"absolute",top:5,right:6,width:8,height:8,
                 borderRadius:"50%",background:"#f97316",border:"1.5px solid #fff"}}/>}
             </button>
-          </div>
-          <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",rowGap:6,marginTop:10}}>
-            <KoneksiBadge/>
-            <span style={{background:cfg?.bg,color:cfg?.color,border:`1px solid ${cfg?.color}30`,
-              borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</span>
-            <div style={{flex:1}}/>
             {isOperatorDivisi&&(
               <button onClick={toggleViewMode} title={viewMode==="desktop"?"Ganti ke tampilan Mobile":"Ganti ke tampilan Desktop"}
-                style={{width:40,height:40,flexShrink:0,border:"1px solid #e2e8f0",borderRadius:8,
+                style={{width:36,height:36,flexShrink:0,border:"1px solid #e2e8f0",borderRadius:10,
                   background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",
                   cursor:"pointer",fontSize:15,color:"#64748b"}}>
                 {viewMode==="desktop"?"📱":"🖥️"}
               </button>
             )}
             <button onClick={()=>window.location.reload()} title="Refresh"
-              style={{width:40,height:40,flexShrink:0,border:"1px solid #e2e8f0",borderRadius:8,
+              style={{width:36,height:36,flexShrink:0,border:"1px solid #e2e8f0",borderRadius:10,
                 background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",
                 cursor:"pointer",fontSize:15,color:"#64748b"}}>
               🔄
             </button>
             <button onClick={doLogout}
               style={{display:"flex",alignItems:"center",gap:6,background:"#fef2f2",border:"1.5px solid #fecaca",color:"#dc2626",flexShrink:0,whiteSpace:"nowrap",
-                borderRadius:8,padding:"10px 14px",minHeight:40,cursor:"pointer",fontSize:12,fontWeight:700}}>
+                borderRadius:10,padding:"8px 12px",minHeight:36,cursor:"pointer",fontSize:12,fontWeight:700}}>
               <i className="ti ti-logout" style={{fontSize:15}}/> Keluar
             </button>
           </div>
@@ -250,49 +366,64 @@ export default function App(){
         )}
         <div style={{flex:1,overflowY:"auto"}}>
           {user.divisi==="gudang"?<GudangHome user={user} onLogout={doLogout}/>
-            :bottomTab==="permintaan"?<PermintaanView user={user}/>
-            :bottomTab==="arsip"&&arsipSeksi==="qc"?<ArsipQCView/>
-            :bottomTab==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
-            :bottomTab==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas}/>
-            :user.divisi==="nameplate"?<NameplateView user={user}/>
-            :user.divisi==="qc"?<QCChecklistTab user={user}/>
-            :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS}/>
-            :user.divisi==="komponen"?<TrackingKomponenView user={user}/>
-            :<OperatorHome user={user} viewMode={viewMode}/>}
+            :isOperatorDivisi&&!gateShiftSet?(
+              <div style={{padding:20,maxWidth:420,margin:"0 auto"}} className="fi">
+                <div style={{background:"#fff",borderRadius:18,padding:20,boxShadow:"0 2px 10px #00000012"}}>
+                  <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:2}}>Setup sesi kerja</div>
+                  <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Pilih shift kerja Anda hari ini</div>
+                  <div style={{display:"flex",gap:10,marginBottom:16}}>
+                    {["1","2"].map(s=>(
+                      <button key={s} onClick={()=>setGateShift(s)}
+                        style={{flex:1,padding:"14px",borderRadius:12,border:`2px solid ${gateShift===s?(cfg?.color||"#1d4ed8"):"#e2e8f0"}`,
+                          background:gateShift===s?(cfg?.color||"#1d4ed8")+"18":"#f8fafc",color:gateShift===s?(cfg?.color||"#1d4ed8"):"#64748b",
+                          cursor:"pointer",fontWeight:800,fontSize:16,transition:"all .15s",fontFamily:"inherit"}}>
+                        Shift {s}
+                      </button>
+                    ))}
+                  </div>
+                  <button onClick={mulaiKerja} style={{width:"100%",padding:13,fontSize:15,fontWeight:700,color:"#fff",
+                    background:cfg?.color||"#1d4ed8",border:"none",borderRadius:10,cursor:"pointer",fontFamily:"inherit"}}>
+                    Mulai Kerja →
+                  </button>
+                </div>
+              </div>
+            )
+            :!selectedMenu?(
+              <div style={{padding:16,display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:12}}>
+                {menuTiles.map(t=>(
+                  <button key={t.key} onClick={()=>setSelectedMenu(t.key)} style={{
+                    background:"#fff",borderRadius:18,padding:"22px 14px",border:"none",
+                    boxShadow:"0 2px 10px #00000012",display:"flex",flexDirection:"column",
+                    alignItems:"center",gap:10,cursor:"pointer",fontFamily:"inherit"}}>
+                    <div style={{width:52,height:52,borderRadius:16,background:cfg?.bg||"#f1f5f9",
+                      display:"flex",alignItems:"center",justifyContent:"center",fontSize:24}}>{t.icon}</div>
+                    <span style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>{t.label}</span>
+                  </button>
+                ))}
+              </div>
+            ):(
+              <>
+                <div style={{padding:"12px 16px 0"}}>
+                  <button onClick={()=>setSelectedMenu(null)} style={{display:"flex",alignItems:"center",gap:6,
+                    background:"#fff",border:"1px solid #e2e8f0",borderRadius:10,padding:"8px 14px",
+                    fontSize:12,fontWeight:700,color:"#475569",cursor:"pointer",boxShadow:"0 1px 4px #00000008",fontFamily:"inherit"}}>
+                    ← Kembali
+                  </button>
+                </div>
+                {selectedMenu==="permintaan"?<PermintaanView user={user}/>
+                  :selectedMenu==="arsip"&&arsipSeksi==="qc"?<ArsipQCView/>
+                  :selectedMenu==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
+                  :selectedMenu==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas}/>
+                  :selectedMenu==="riwayat"?<RiwayatKerjaView proses={prosesRiwayat} label={cfg?.label||user.divisi} icon={cfg?.icon||"🕘"} color={cfg?.color||"#d97706"}/>
+                  :selectedMenu==="review"?(bisaReviewPainting?<ReviewPaintingView/>:<ReviewPotongView/>)
+                  :selectedMenu==="tambahan"?<KomponenTambahanView user={user}/>
+                  :user.divisi==="nameplate"?<NameplateView user={user}/>
+                  :user.divisi==="qc"?<QCChecklistTab user={user}/>
+                  :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS}/>
+                  :<OperatorView user={user} viewMode={viewMode}/>}
+              </>
+            )}
         </div>
-        {user.divisi!=="gudang"&&(
-        <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1.5px solid #e2e8f0",
-          display:"flex",minHeight:52,paddingBottom:"env(safe-area-inset-bottom)",zIndex:100,boxShadow:"0 -2px 10px #00000010"}}>
-          <button onClick={()=>setBottomTab("tugas")} style={{flex:1,border:"none",background:"none",cursor:"pointer",
-            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-            gap:2,color:bottomTab==="tugas"?cfg?.color:"#94a3b8"}}>
-            <span style={{fontSize:18}}>📋</span>
-            <span style={{fontSize:9,fontWeight:700,letterSpacing:.3}}>Tugas Saya</span>
-          </button>
-          <button onClick={()=>setBottomTab("permintaan")} style={{flex:1,border:"none",background:"none",cursor:"pointer",
-            display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-            gap:2,color:bottomTab==="permintaan"?cfg?.color:"#94a3b8"}}>
-            <span style={{fontSize:18}}>📝</span>
-            <span style={{fontSize:9,fontWeight:700,letterSpacing:.3}}>Permintaan</span>
-          </button>
-          {komponenPasangTugas&&(
-            <button onClick={()=>setBottomTab("komponen")} style={{flex:1,border:"none",background:"none",cursor:"pointer",
-              display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-              gap:2,color:bottomTab==="komponen"?cfg?.color:"#94a3b8"}}>
-              <span style={{fontSize:18}}>{komponenPasangTugas.icon}</span>
-              <span style={{fontSize:9,fontWeight:700,letterSpacing:.3}}>Komponen</span>
-            </button>
-          )}
-          {arsipSeksi&&(
-            <button onClick={()=>setBottomTab("arsip")} style={{flex:1,border:"none",background:"none",cursor:"pointer",
-              display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-              gap:2,color:bottomTab==="arsip"?cfg?.color:"#94a3b8"}}>
-              <span style={{fontSize:18}}>📦</span>
-              <span style={{fontSize:9,fontWeight:700,letterSpacing:.3}}>Arsip</span>
-            </button>
-          )}
-        </div>
-        )}
       </div>
     </div>
   );
