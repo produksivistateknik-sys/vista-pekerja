@@ -88,10 +88,15 @@ export function RiwayatKerjaView({proses,label,icon,color}:{proses:string[],labe
     Object.entries(selectedPanel.checklist||{}).forEach(([kode,cl]:any)=>{
       const perProses:any[]=[];
       proses.forEach(p=>{
-        if(p==="BUSBAR"){
-          const pct=cl?.progress?.BUSBAR||0;
+        // BUSBAR & WIRING CONTROL/POWER persen-based (progress/progressByDate/history), BUKAN
+        // qty-based kayak proses lain (RAKIT/POTONG/dst pakai qtyProses) - lihat isWiringProses()
+        // di OperatorView.tsx. Dulu WIRING kepental ke branch qty-based di bawah yang selalu baca
+        // qtyProses[p] (gak pernah ke-isi buat WIRING), jadi "Riwayat Wiring Power/Control" SELALU
+        // kosong walau progress-nya sungguh 100% (audit inkonsistensi Riwayat vs Cari Riwayat Komponen).
+        if(p==="BUSBAR"||p==="WIRING CONTROL"||p==="WIRING POWER"){
+          const pct=cl?.progress?.[p]||0;
           if(pct<=0)return;
-          const byDate=cl?.progressByDate?.BUSBAR||{};
+          const byDate=cl?.progressByDate?.[p]||{};
           const dates=Object.keys(byDate).sort().map(tgl=>({tanggal:tgl,label:`${byDate[tgl]}%`}));
           perProses.push({proses:p,isPercent:true,pct,dates});
         } else {
