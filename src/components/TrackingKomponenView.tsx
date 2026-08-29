@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { Lbl } from "./ui/Primitives";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { hapusFotoDariStorage, compressImageNp } from "../lib/fotoHelpers";
+import { uploadToR2 } from "../lib/r2Client";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TRACKING KOMPONEN VIEW - dipisah dari App.tsx (Sprint 7)
@@ -130,16 +131,17 @@ export function TrackingKomponenView({user}:any){
       // sini gak allowVideo/allowAnyFile (selalu image), jadi aman dikompres tanpa gating tipe.
       const blob=await compressImageNp(file);
       const safeName=`${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-      const path=`${tr.id}/${safeName}`;
-      const{error:upErr}=await supabase.storage.from("tracking-komponen").upload(path,blob,{contentType:"image/jpeg"});
-      if(upErr){
+      const objectKey=`tracking-komponen/${tr.id}/${safeName}`;
+      let publicUrl:string;
+      try{
+        publicUrl=await uploadToR2(blob,objectKey,"image/jpeg");
+      }catch(upErr:any){
         alert("Gagal upload foto "+file.name+": "+upErr.message);
         continue;
       }
-      const{data:urlData}=supabase.storage.from("tracking-komponen").getPublicUrl(path);
       await supabase.from("fcs_tracking_komponen_foto").insert({
         tracking_id:tr.id,
-        file_url:urlData.publicUrl,
+        file_url:publicUrl,
       });
     }
     setCatatan("");

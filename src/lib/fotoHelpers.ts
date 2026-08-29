@@ -1,19 +1,26 @@
 import { supabase } from "./supabase";
+import { deleteFromR2, extractR2Key } from "./r2Client";
 
 // Helper foto (kompres sebelum upload, download) - dipisah dari App.tsx (Sprint 6)
 // ─────────────────────────────────────────────────────────────────────────────
 
-// Hapus file dari Supabase Storage berdasarkan public URL-nya - dipakai bareng di semua tempat
-// yang punya tombol hapus foto (QC/Nameplate/Warehouse/QS/Pasang Komponen/Tracking Komponen).
-// Kalau URL gak sesuai pola public URL Supabase yang diharapkan, diam-diam skip (caller tetap
-// lanjut hapus referensi di DB) - jangan sampai proses hapus foto gagal total gara-gara ini.
+// Hapus file dari storage berdasarkan public URL-nya - dipakai bareng di semua tempat yang
+// punya tombol hapus foto (QC/Nameplate/Warehouse/QS/Pasang Komponen/Tracking Komponen).
+// MIGRASI R2 (Agu 2026): selama migrasi belum tuntas, foto LAMA masih nunjuk ke URL Supabase
+// Storage dan foto BARU nunjuk ke URL R2 - berdampingan di kolom yang sama. Fungsi ini deteksi
+// otomatis dari pola URL-nya (bukan dari flag terpisah) jadi caller (6 lokasi di atas) TIDAK
+// perlu tahu/berubah sama sekali. Kalau URL gak cocok pola manapun, diam-diam skip (caller
+// tetap lanjut hapus referensi di DB) - jangan sampai proses hapus foto gagal total gara-gara ini.
 export const hapusFotoDariStorage=async(bucket:string,url:string):Promise<void>=>{
   const marker=`/storage/v1/object/public/${bucket}/`;
   const idx=url.indexOf(marker);
-  if(idx<0)return;
-  const path=decodeURIComponent(url.slice(idx+marker.length));
-  if(!path)return;
-  await supabase.storage.from(bucket).remove([path]);
+  if(idx>=0){
+    const path=decodeURIComponent(url.slice(idx+marker.length));
+    if(path)await supabase.storage.from(bucket).remove([path]);
+    return;
+  }
+  const r2Key=extractR2Key(url);
+  if(r2Key)await deleteFromR2(r2Key);
 };
 
 // Kompres foto sebelum upload (canvas resize max-width 1600px + JPEG q0.8) - foto asli dari

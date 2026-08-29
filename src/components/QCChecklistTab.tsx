@@ -4,6 +4,7 @@ import { QC_ITEMS } from "../lib/panelTypes";
 import { getUrgensiPanel } from "../lib/progressHelpers";
 import { fetchAllPanels } from "../lib/panelHelpers";
 import { hapusFotoDariStorage, compressImageNp } from "../lib/fotoHelpers";
+import { uploadToR2 } from "../lib/r2Client";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { isVideoFoto, isGenericFoto } from "../lib/mediaThumb";
@@ -73,13 +74,16 @@ export function QCChecklistTab({user}:any){
       // image - compressImageNp gak bisa proses video/file lain (decode-nya lewat <img>).
       const isImg=file.type.startsWith("image/");
       const uploadBlob:Blob=isImg?await compressImageNp(file):file;
-      const fileName=isImg?`${panelId}_${itemKey}_${Date.now()}.jpg`:`${panelId}_${itemKey}_${Date.now()}_${file.name}`;
-      const{error:upErr}=await supabase.storage.from("qc-photos").upload(fileName,uploadBlob,isImg?{contentType:"image/jpeg"}:undefined);
-      if(upErr){alert("Gagal upload: "+upErr.message);setUploadingId(null);return;}
-      const{data:urlData}=supabase.storage.from("qc-photos").getPublicUrl(fileName);
+      const contentType=isImg?"image/jpeg":(file.type||"application/octet-stream");
+      const ext=isImg?"jpg":(file.name.split(".").pop()||"bin");
+      const key=`qc/${panelId}/${itemKey}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
+      let publicUrl:string;
+      try{
+        publicUrl=await uploadToR2(uploadBlob,key,contentType);
+      }catch(upErr:any){alert("Gagal upload: "+upErr.message);setUploadingId(null);return;}
       const panel=panelsList.find((p:any)=>p.id===panelId);
       const prevData=panel?.qc_checklist?.[itemKey]||{status:"to_do",catatan:""};
-      const newFoto=[...(prevData.foto||[]),{url:urlData.publicUrl,name:file.name,mime:file.type,uploaded_by:user.nama,uploaded_at:new Date().toISOString()}];
+      const newFoto=[...(prevData.foto||[]),{url:publicUrl,name:file.name,mime:file.type,uploaded_by:user.nama,uploaded_at:new Date().toISOString()}];
       const newChecklist={...(panel?.qc_checklist||{}),[itemKey]:{...prevData,foto:newFoto}};
       await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
       setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));

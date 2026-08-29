@@ -4,6 +4,7 @@ import { TODAY } from "../lib/dateHelpers";
 import { withRetry } from "../lib/koneksi";
 import { fetchAllPanels } from "../lib/panelHelpers";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
+import { uploadToR2 } from "../lib/r2Client";
 import { getUrgensiPanel, fmtTanggalDeadlineNp, STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
@@ -90,11 +91,12 @@ export function NameplateView({user}:any){
         setUploadProgress({current:i+1,total:staged.length});
         const s=staged[i];
         const blob=await compressImageNp(s.file);
-        const path=`${p.id}/${t.field}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-        const{error:upErr}=await supabase.storage.from("nameplate-photos").upload(path,blob,{contentType:"image/jpeg"});
-        if(upErr){alert(`Gagal upload salah satu foto: ${upErr.message}`);continue;}
-        const{data:urlData}=supabase.storage.from("nameplate-photos").getPublicUrl(path);
-        fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+        const objectKey=`nameplate/${p.id}/${t.field}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+        let publicUrl:string;
+        try{
+          publicUrl=await uploadToR2(blob,objectKey,"image/jpeg");
+        }catch(upErr:any){alert(`Gagal upload salah satu foto: ${upErr.message}`);continue;}
+        fotoTerupload.push({url:publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
       }
       setUploadProgress(null);
       const newFoto=[...existingFoto,...fotoTerupload];

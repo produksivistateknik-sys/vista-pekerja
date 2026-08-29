@@ -6,6 +6,7 @@ import { withRetry } from "../lib/koneksi";
 import { fetchAllPanels, isKomponenRelevant, hitungProgressBusbarGabungan, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA, PASANG_KOMPONEN_URUTAN_TAHAP } from "../lib/panelHelpers";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
+import { uploadToR2 } from "../lib/r2Client";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 
@@ -265,14 +266,14 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
       // batal. Foto yang gagal DIKUMPULKAN (bukan cuma di-skip) biar tetap nangkring di
       // stagedFoto - dulu di sini staged dihapus tanpa syarat abis loop, jadi foto yang gagal
       // upload (storage penuh/network) ikut hilang dari layar seolah berhasil tersimpan.
+      const folderFoto=tugas.fotoBucket.replace(/-photos$/,"");
+      const objectPathPrefix=key.startsWith("panelfoto_")?`${pathPrefix}/panelfoto`:pathPrefix;
       for(const s of staged){
         try{
           const blob=await compressImageNp(s.file);
-          const path=`${pathPrefix}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-          const{error:upErr}=await supabase.storage.from(tugas.fotoBucket).upload(path,blob,{contentType:"image/jpeg"});
-          if(upErr)throw upErr;
-          const{data:urlData}=supabase.storage.from(tugas.fotoBucket).getPublicUrl(path);
-          fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+          const objectKey=`${folderFoto}/${objectPathPrefix}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+          const publicUrl=await uploadToR2(blob,objectKey,"image/jpeg");
+          fotoTerupload.push({url:publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
         }catch(fotoErr:any){
           gagal.push(s);
         }
@@ -322,14 +323,13 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     try{
       const fotoTerupload:any[]=[];
       const gagal:typeof staged=[];
+      const folderFoto=tugas.fotoBucket.replace(/-photos$/,"");
       for(const s of staged){
         try{
           const blob=await compressImageNp(s.file);
-          const path=`${panel.id}/${kode}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-          const{error:upErr}=await supabase.storage.from(tugas.fotoBucket).upload(path,blob,{contentType:"image/jpeg"});
-          if(upErr)throw upErr;
-          const{data:urlData}=supabase.storage.from(tugas.fotoBucket).getPublicUrl(path);
-          fotoTerupload.push({url:urlData.publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+          const objectKey=`${folderFoto}/${panel.id}/${kode}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+          const publicUrl=await uploadToR2(blob,objectKey,"image/jpeg");
+          fotoTerupload.push({url:publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
         }catch(fotoErr:any){
           gagal.push(s);
         }
