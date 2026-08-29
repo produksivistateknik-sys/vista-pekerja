@@ -319,67 +319,56 @@ export default function App(){
         {user.divisi!=="gudang"&&(
         <div style={{background:"#f1f5f9",padding:"10px 16px 8px",
           paddingTop:"max(10px, env(safe-area-inset-top))",position:"sticky",top:0,zIndex:100}}>
-          {/* Card profil - warna dominan ikut divisi (polish 29 Agu 2026). Background SOLID
-              cfg.color (bukan cfg.bg yang tint pucat) - teks/avatar dibalik jadi putih supaya
-              kontras tetap aman di atas warna solid manapun (semua warna DIVISI_CONFIG cukup
-              gelap buat teks putih, dicek manual dari daftar hex-nya). */}
+          {/* Header digabung jadi 1 card (30 Agu 2026, sebelumnya 2 card terpisah: profil warna +
+              ringkasan putih). Notifikasi & Keluar DIPINDAH ke AkunView (lihat prop notifCount/
+              onLogout di situ) - dihapus dari sini biar gak dobel & header gak sesak. View-toggle
+              & refresh TETAP di sini. Badge/tombol ganti dari abu/tint-divisi ke putih-transparan
+              (background:#ffffff2x, color putih) - kontras aman di atas cfg.color manapun
+              (semua warna DIVISI_CONFIG cukup gelap, dicek manual pas restyle sebelumnya). */}
           <div style={{background:cfg?.color||"#1d4ed8",backgroundImage:"linear-gradient(135deg, rgba(255,255,255,.10), rgba(0,0,0,.08))",
-            borderRadius:18,padding:"16px 18px",boxShadow:`0 4px 14px ${cfg?.color||"#1d4ed8"}40`,marginBottom:10,
-            display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-            <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
-              <div style={{width:48,height:48,borderRadius:14,flexShrink:0,background:"#fff",color:cfg?.color||"#1d4ed8",
-                display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:800}}>{inisialOperator}</div>
-              <div style={{minWidth:0}}>
-                <div style={{fontWeight:800,fontSize:17,color:"#fff",letterSpacing:-.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{namaOperator}</div>
-                <div style={{fontSize:11.5,color:"#ffffffcc",marginTop:2}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</div>
+            borderRadius:18,padding:"16px 18px",boxShadow:`0 4px 14px ${cfg?.color||"#1d4ed8"}40`,marginBottom:10}}>
+            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
+                <div style={{width:48,height:48,borderRadius:14,flexShrink:0,background:"#fff",color:cfg?.color||"#1d4ed8",
+                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:800}}>{inisialOperator}</div>
+                <div style={{minWidth:0}}>
+                  <div style={{fontWeight:800,fontSize:17,color:"#fff",letterSpacing:-.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{namaOperator}</div>
+                  <div style={{fontSize:11.5,color:"#ffffffcc",marginTop:2}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</div>
+                </div>
+              </div>
+              <div style={{textAlign:"right",flexShrink:0}}>
+                <div style={{fontWeight:800,fontSize:16,color:"#fff",fontFamily:"'DM Mono',monospace",letterSpacing:-.3}}>{jamText}</div>
+                <div style={{fontSize:10,color:"#ffffffb3",marginTop:1,textTransform:"capitalize"}}>{tanggalText}</div>
               </div>
             </div>
-            <div style={{textAlign:"right",flexShrink:0}}>
-              <div style={{fontWeight:800,fontSize:16,color:"#fff",fontFamily:"'DM Mono',monospace",letterSpacing:-.3}}>{jamText}</div>
-              <div style={{fontSize:10,color:"#ffffffb3",marginTop:1,textTransform:"capitalize"}}>{tanggalText}</div>
-            </div>
-          </div>
-          {/* Card ringkasan - subtitle tab aktif, badge divisi, notifikasi, aksi (view-toggle/refresh/logout) */}
-          <div style={{background:"#fff",borderRadius:18,padding:"8px 10px 8px 14px",boxShadow:"0 4px 14px #00000014",
-            border:`1px solid ${cfg?.color||"#1d4ed8"}20`,
-            display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",rowGap:6}}>
-            <div style={{fontSize:11.5,color:"#94a3b8",marginRight:2}}>{headerSubtitle}</div>
-            <KoneksiBadge/>
-            <span style={{background:cfg?.bg,color:cfg?.color,border:`1px solid ${cfg?.color}30`,
-              borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</span>
-            {isOperatorDivisi&&gateShiftSet&&(
-              <span style={{background:"#fff7ed",color:"#c2410c",border:"1px solid #fed7aa",
-                borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
-                🕐 Shift {gateShift}
-              </span>
-            )}
-            <div style={{flex:1}}/>
-            <button onClick={()=>setSelectedMenu("permintaan")} title="Notifikasi" style={{position:"relative",flexShrink:0,width:36,height:36,
-              border:"1px solid #e2e8f0",borderRadius:10,background:"#f8fafc",display:"flex",
-              alignItems:"center",justifyContent:"center",cursor:"pointer",fontSize:15,color:"#64748b"}}>
-              🔔
-              {notifCount>0&&<span style={{position:"absolute",top:5,right:6,width:8,height:8,
-                borderRadius:"50%",background:"#f97316",border:"1.5px solid #fff"}}/>}
-            </button>
-            {isOperatorDivisi&&(
-              <button onClick={toggleViewMode} title={viewMode==="desktop"?"Ganti ke tampilan Mobile":"Ganti ke tampilan Desktop"}
-                style={{width:36,height:36,flexShrink:0,border:"1px solid #e2e8f0",borderRadius:10,
-                  background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",
-                  cursor:"pointer",fontSize:15,color:"#64748b"}}>
-                {viewMode==="desktop"?"📱":"🖥️"}
+            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",rowGap:6,
+              marginTop:14,paddingTop:12,borderTop:"1px solid #ffffff25"}}>
+              <div style={{fontSize:11.5,color:"#ffffffb3",marginRight:2}}>{headerSubtitle}</div>
+              <KoneksiBadge/>
+              <span style={{background:"#ffffff25",color:"#fff",border:"1px solid #ffffff40",
+                borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</span>
+              {isOperatorDivisi&&gateShiftSet&&(
+                <span style={{background:"#ffffff25",color:"#fff",border:"1px solid #ffffff40",
+                  borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
+                  🕐 Shift {gateShift}
+                </span>
+              )}
+              <div style={{flex:1}}/>
+              {isOperatorDivisi&&(
+                <button onClick={toggleViewMode} title={viewMode==="desktop"?"Ganti ke tampilan Mobile":"Ganti ke tampilan Desktop"}
+                  style={{width:36,height:36,flexShrink:0,border:"1px solid #ffffff40",borderRadius:10,
+                    background:"#ffffff20",display:"flex",alignItems:"center",justifyContent:"center",
+                    cursor:"pointer",fontSize:15,color:"#fff"}}>
+                  {viewMode==="desktop"?"📱":"🖥️"}
+                </button>
+              )}
+              <button onClick={()=>window.location.reload()} title="Refresh"
+                style={{width:36,height:36,flexShrink:0,border:"1px solid #ffffff40",borderRadius:10,
+                  background:"#ffffff20",display:"flex",alignItems:"center",justifyContent:"center",
+                  cursor:"pointer",fontSize:15,color:"#fff"}}>
+                🔄
               </button>
-            )}
-            <button onClick={()=>window.location.reload()} title="Refresh"
-              style={{width:36,height:36,flexShrink:0,border:"1px solid #e2e8f0",borderRadius:10,
-                background:"#f8fafc",display:"flex",alignItems:"center",justifyContent:"center",
-                cursor:"pointer",fontSize:15,color:"#64748b"}}>
-              🔄
-            </button>
-            <button onClick={doLogout}
-              style={{display:"flex",alignItems:"center",gap:6,background:"#fef2f2",border:"1.5px solid #fecaca",color:"#dc2626",flexShrink:0,whiteSpace:"nowrap",
-                borderRadius:10,padding:"8px 12px",minHeight:36,cursor:"pointer",fontSize:12,fontWeight:700}}>
-              <i className="ti ti-logout" style={{fontSize:15}}/> Keluar
-            </button>
+            </div>
           </div>
         </div>
         )}
@@ -398,7 +387,8 @@ export default function App(){
           {user.divisi==="gudang"?<GudangHome user={user} onLogout={doLogout}/>
             :activeBottomTab==="proses"?<ProsesAktifView user={user}/>
             :activeBottomTab==="jadwal"?<JadwalPengirimanView/>
-            :activeBottomTab==="akun"?<AkunView user={user} isTimerDivisi={!!isOperatorDivisi} proses={prosesRiwayat} onLogout={doLogout}/>
+            :activeBottomTab==="akun"?<AkunView user={user} isTimerDivisi={!!isOperatorDivisi} proses={prosesRiwayat} onLogout={doLogout}
+              notifCount={notifCount} onBukaPermintaan={()=>{setActiveBottomTab("beranda");setSelectedMenu("permintaan");}}/>
             :isOperatorDivisi&&!gateShiftSet?(
               <div style={{padding:20,maxWidth:420,margin:"0 auto"}} className="fi">
                 <div style={{background:"#fff",borderRadius:18,padding:20,boxShadow:"0 4px 14px #00000014"}}>

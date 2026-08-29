@@ -22,8 +22,14 @@ import { fmtShort } from "../lib/dateHelpers";
 // yang login), dan gak boleh list panjang. Sekarang jadi CARI (proyek->panel,
 // pola sama persis RiwayatKerjaView.tsx) baru nampilin hasil - kosong sampai
 // operator benar-benar pilih panel, bukan dump semua data dari awal.
+//
+// REVISI (30 Agu 2026): section "Notifikasi" ditambah - PINDAHAN dari ikon lonceng di header
+// App.tsx (dihapus dari sana bareng tombol Keluar, biar header gak sesak - lihat App.tsx).
+// Ikon lonceng lama itu SEBENARNYA cuma tombol pintasan+badge count (bukan daftar notifikasi
+// beneran, gak pernah ada daftarnya) - fungsi yang dipindah ya persis itu: tampilkan count +
+// tombol ke halaman Permintaan, notifCount/onBukaPermintaan dikirim dari App.tsx.
 // ─────────────────────────────────────────────────────────────────────────────
-export function AkunView({user,isTimerDivisi,proses,onLogout}:{user:any,isTimerDivisi:boolean,proses:string[],onLogout:()=>void}){
+export function AkunView({user,isTimerDivisi,proses,notifCount,onBukaPermintaan,onLogout}:{user:any,isTimerDivisi:boolean,proses:string[],notifCount:number,onBukaPermintaan:()=>void,onLogout:()=>void}){
   const cfg=(DIVISI_CONFIG as any)[user.divisi];
   const namaOperator=user.nama||user.name||"Operator";
 
@@ -142,6 +148,24 @@ export function AkunView({user,isTimerDivisi,proses,onLogout}:{user:any,isTimerD
         ):(
           <div style={{fontSize:12,color:"#94a3b8"}}>Memuat...</div>
         )}
+      </SectionCard>
+
+      <SectionCard icon="🔔" title="Notifikasi" iconBg={cfg?.bg}>
+        <div onClick={onBukaPermintaan} style={{display:"flex",alignItems:"center",gap:10,cursor:"pointer",
+          padding:"10px 12px",borderRadius:12,background:notifCount>0?"#fff7ed":"#f8fafc",
+          border:`1px solid ${notifCount>0?"#fed7aa":"#e2e8f0"}`}}>
+          <div style={{width:34,height:34,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+            background:notifCount>0?"#f97316":"#e2e8f0",color:notifCount>0?"#fff":"#94a3b8",fontWeight:800,fontSize:13}}>
+            {notifCount}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>
+              {notifCount>0?`${notifCount} permintaan butuh perhatian`:"Tidak ada notifikasi baru"}
+            </div>
+            <div style={{fontSize:10.5,color:"#94a3b8"}}>Ketuk untuk buka Permintaan</div>
+          </div>
+          <i className="ti ti-chevron-right" style={{fontSize:16,color:"#94a3b8"}}/>
+        </div>
       </SectionCard>
 
       {isTimerDivisi&&(
