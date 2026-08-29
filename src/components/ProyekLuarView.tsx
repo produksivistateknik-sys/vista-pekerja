@@ -31,7 +31,9 @@ export function ProyekLuarView({user}:{user:any}){
 
   const fetchLaporan=async()=>{
     setLoading(true);
-    const{data}=await supabase.from("proyek_luar" as any).select("*").eq("pekerja_id",user.id).order("created_at",{ascending:false});
+    // .limit() defensif (audit egress Agu 2026) - proyek_luar punya kolom foto JSONB, histori
+    // laporan operator bisa terus bertambah - cukup tampilkan yang terbaru.
+    const{data}=await supabase.from("proyek_luar" as any).select("*").eq("pekerja_id",user.id).order("created_at",{ascending:false}).limit(100);
     setLaporanList(data||[]);
     setLoading(false);
   };

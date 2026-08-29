@@ -414,7 +414,10 @@ export function OperatorView({user,viewMode}:any){
     refreshTimerData();
 
     const renharChannel=supabase.channel("realtime-renhar-pekerja")
-      .on("postgres_changes",{event:"*",schema:"public",table:"renhar"},(payload:any)=>{
+      // filter:"divisi=eq...." (audit egress Agu 2026) - dulu event renhar SEMUA divisi/tanggal
+      // dikirim ke tiap operator lalu dibuang di client (if row.divisi!==user.divisi return) -
+      // filter server-side ini motong payload realtime sebelum sampai ke device, bukan setelahnya.
+      .on("postgres_changes",{event:"*",schema:"public",table:"renhar",filter:"divisi=eq."+user.divisi},(payload:any)=>{
         // Merge tertarget - JANGAN loadData() penuh di sini. loadData() bikin loadingData=true
         // yang ganti SELURUH layar jadi spinner - dan karena tulisan operator sendiri (Mulai/
         // Pilih Operator) ke tabel renhar ini JUGA nge-trigger event ini (echo ke diri sendiri),

@@ -105,7 +105,9 @@ export function AkunView({user,isTimerDivisi,proses,notifCount,onBukaPermintaan,
     let cancelled=false;
     (async()=>{
       setLoadingCari(true);
-      const{data:timers}=await supabase.from("fcs_timer_kerja").select("*").eq("panel_id",selectedPanelId).in("proses",proses).order("mulai",{ascending:false});
+      // .limit() defensif (audit egress Agu 2026) - fcs_timer_kerja bisa punya banyak sesi per
+      // panel/proses seiring waktu, hasil pencarian ini cuma butuh yang terbaru buat ditampilkan.
+      const{data:timers}=await supabase.from("fcs_timer_kerja").select("*").eq("panel_id",selectedPanelId).in("proses",proses).order("mulai",{ascending:false}).limit(200);
       const rows=timers||[];
       const pekerjaIds=[...new Set(rows.map((r:any)=>r.pekerja_id))];
       let namaMap:Record<number,string>={};
