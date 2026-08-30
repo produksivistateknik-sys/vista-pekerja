@@ -1,3 +1,4 @@
+import "./iteratorPolyfill";
 import { createWorker } from "tesseract.js";
 import * as pdfjsLib from "pdfjs-dist";
 // @ts-ignore - Vite ?url import, ambil URL file worker pdf.js buat di-bundle terpisah
