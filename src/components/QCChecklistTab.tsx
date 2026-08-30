@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { QC_ITEMS } from "../lib/panelTypes";
 import { getUrgensiPanel } from "../lib/progressHelpers";
@@ -21,9 +21,11 @@ export function QCChecklistTab({user}:any){
   const[uploadingId,setUploadingId]=useState<string|null>(null);
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
 
+  // Narrow select (audit egress Agu 2026) - view ini cuma pakai qc_checklist/packing_done,
+  // gak butuh checklist proses / kolom JSON histori divisi lain.
   const fetchData=async()=>{
     setLoading(true);
-    const panels=await fetchAllPanels();
+    const panels=await fetchAllPanels("id,wo_id,nama,qc_checklist,packing_done,packing_done_by");
     const woIds=[...new Set((panels??[]).map((p:any)=>p.wo_id).filter(Boolean))];
     const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target,is_archived").in("id",woIds):{data:[]};
     const woMap:Record<number,any>={};
@@ -35,13 +37,19 @@ export function QCChecklistTab({user}:any){
     setLoading(false);
   };
 
+  // Debounce trigger refetch (audit egress Agu 2026) - lihat komentar sama di NameplateView.tsx.
+  const refetchTimer=useRef<any>(null);
+  const debouncedFetch=()=>{
+    if(refetchTimer.current)clearTimeout(refetchTimer.current);
+    refetchTimer.current=setTimeout(()=>{fetchData();},500);
+  };
   useEffect(()=>{
     fetchData();
     const ch=supabase.channel("realtime-panels-qc")
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},()=>{fetchData();})
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"panels"},()=>{fetchData();})
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},debouncedFetch)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"panels"},debouncedFetch)
       .subscribe();
-    return()=>{supabase.removeChannel(ch);};
+    return()=>{supabase.removeChannel(ch);if(refetchTimer.current)clearTimeout(refetchTimer.current);};
   },[]);
 
   const updateGlobalStatus=async(panelId:number,status:string)=>{

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
@@ -89,7 +89,10 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
   const fetchData=async()=>{
     setLoading(true);
     const[panels,{data:bomRows},{data:relevanRows}]=await Promise.all([
-      fetchAllPanels(),
+      // Narrow select (audit egress Agu 2026) - checklist WAJIB full (ini core data view ini),
+      // tapi ~12 kolom JSON histori divisi lain (qc_checklist, nameplate/yellowmark/qs/
+      // warehouse/busbar dll) gak kepakai sama sekali di sini.
+      fetchAllPanels("id,wo_id,nama,tipe,checklist,pasang_komponen_photos"),
       supabase.from("bom_master").select("kode_komponen,nama_komponen"),
       supabase.from("bom_proses_relevan").select("*"),
     ]);
@@ -112,12 +115,17 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     setLoading(false);
   };
 
+  // Debounce trigger refetch (audit egress Agu 2026) - lihat komentar sama di NameplateView.tsx.
+  const refetchTimer=useRef<any>(null);
   useEffect(()=>{
     fetchData();
     const ch=supabase.channel(`realtime-komponen-pasang-${tugas.seksi}`)
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},()=>fetchData())
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},()=>{
+        if(refetchTimer.current)clearTimeout(refetchTimer.current);
+        refetchTimer.current=setTimeout(()=>{fetchData();},500);
+      })
       .subscribe();
-    return()=>{supabase.removeChannel(ch);};
+    return()=>{supabase.removeChannel(ch);if(refetchTimer.current)clearTimeout(refetchTimer.current);};
   },[tugas.seksi]);
 
   // Komponen relevan buat seksi ini di 1 panel: qty>0, relevan ke proses "PASANG KOMPONEN", dan

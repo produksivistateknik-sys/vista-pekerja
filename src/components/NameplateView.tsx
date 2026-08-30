@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry } from "../lib/koneksi";
@@ -121,9 +121,11 @@ export function NameplateView({user}:any){
     setSavingKey(null);
   };
 
+  // Narrow select (audit egress Agu 2026) - panels punya ~13 kolom JSON lain (qc_checklist,
+  // checklist proses, warehouse/qs/busbar dll) yang gak kepakai sama sekali di sini.
   const fetchData=async()=>{
     setLoading(true);
-    const panels=await fetchAllPanels();
+    const panels=await fetchAllPanels("id,wo_id,nama,nameplate_progress,nameplate_photos,nameplate_history,nameplate_updated_by,nameplate_updated_at,yellowmark_progress,yellowmark_photos,yellowmark_history,yellowmark_updated_by,yellowmark_updated_at");
     const woIds=[...new Set((panels??[]).map((p:any)=>p.wo_id).filter(Boolean))];
     const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target,is_archived").in("id",woIds):{data:[]};
     const woMap:Record<number,any>={};
@@ -135,13 +137,21 @@ export function NameplateView({user}:any){
     setLoading(false);
   };
 
+  // Debounce trigger refetch (audit egress Agu 2026) - channel ini gak ada filter (panel
+  // manapun di divisi manapun bisa nge-trigger), jadi kalau banyak operator lain lagi ngetik
+  // qty bersamaan di panel lain, gabungkan jadi 1 fetchData() per jeda 500ms, bukan 1 per event.
+  const refetchTimer=useRef<any>(null);
+  const debouncedFetch=()=>{
+    if(refetchTimer.current)clearTimeout(refetchTimer.current);
+    refetchTimer.current=setTimeout(()=>{fetchData();},500);
+  };
   useEffect(()=>{
     fetchData();
     const ch=supabase.channel("realtime-panels-nameplate")
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},()=>{fetchData();})
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"panels"},()=>{fetchData();})
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},debouncedFetch)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"panels"},debouncedFetch)
       .subscribe();
-    return()=>{supabase.removeChannel(ch);};
+    return()=>{supabase.removeChannel(ch);if(refetchTimer.current)clearTimeout(refetchTimer.current);};
   },[]);
 
   const[lockLoading,setLockLoading]=useState(false);

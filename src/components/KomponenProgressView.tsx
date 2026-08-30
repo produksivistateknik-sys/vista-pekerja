@@ -114,9 +114,11 @@ export function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,
   // jadi tanpa ini klik yang belum disimpan bisa ke-timpa balik pas ada panel lain yang berubah).
   const dirtyProgressRef=useRef<Set<number>>(new Set());
 
+  // Narrow select dinamis sesuai kolom `tugas` ini aja (audit egress Agu 2026) - component
+  // generic dipakai QS & Warehouse, masing-masing cuma butuh set kolomnya sendiri.
   const fetchData=async()=>{
     setLoading(true);
-    const panels=await fetchAllPanels();
+    const panels=await fetchAllPanels(`id,wo_id,nama,${tugas.progressField},${tugas.fotoField},${tugas.historyField},${tugas.updatedByField},${tugas.updatedAtField}`);
     const woIds=[...new Set((panels??[]).map((p:any)=>p.wo_id).filter(Boolean))];
     const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target,is_archived").in("id",woIds):{data:[]};
     const woMap:Record<number,any>={};
@@ -137,13 +139,19 @@ export function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,
     setLoading(false);
   };
 
+  // Debounce trigger refetch (audit egress Agu 2026) - lihat komentar sama di NameplateView.tsx.
+  const refetchTimer=useRef<any>(null);
+  const debouncedFetch=()=>{
+    if(refetchTimer.current)clearTimeout(refetchTimer.current);
+    refetchTimer.current=setTimeout(()=>{fetchData();},500);
+  };
   useEffect(()=>{
     fetchData();
     const ch=supabase.channel(`realtime-panels-${tugas.field}`)
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},()=>{fetchData();})
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"panels"},()=>{fetchData();})
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},debouncedFetch)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"panels"},debouncedFetch)
       .subscribe();
-    return()=>{supabase.removeChannel(ch);};
+    return()=>{supabase.removeChannel(ch);if(refetchTimer.current)clearTimeout(refetchTimer.current);};
   },[tugas.field]);
 
   const[lockLoading,setLockLoading]=useState(false);
