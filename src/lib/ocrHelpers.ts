@@ -68,10 +68,47 @@ export async function ocrDocument(file:File,onProgress?:(pct:number)=>void):Prom
         });
       });
     }
-    return allLines;
+    return extractHasilFat(allLines);
   }finally{
     await worker.terminate();
   }
+}
+
+// Ekstrak cuma bagian "Hasil FAT" (bullet list temuan) dari seluruh teks hasil OCR (30 Agu
+// 2026, feedback: "aku mau baca hasil fat saja, bukan semua checklist box") - dulu SEMUA
+// baris kepakai jadi poin checklist, termasuk header dokumen (Customer/Proyek/Peserta dll)
+// dan blok tanda tangan approval di bawah, bukan cuma poin temuan yang sungguhan relevan.
+//
+// Strategi: cari heading "Hasil FAT", potong sampai sebelum baris "Yang Menyetujui/
+// Mengetahui/Menyerahkan" (blok approval). Di rentang itu, cuma baris yang mulai dengan
+// simbol bullet (Tesseract baca ➤ sebagai »/> tergantung dokumen) yang jadi poin baru -
+// baris LAIN di rentang itu (tanpa bullet) berarti sambungan baris yang kepotong (line-wrap
+// PDF, misal "...SDP MENTAH SOSIS" + "& BAKSO." harusnya 1 poin) digabung ke poin sebelumnya.
+// Kalau heading/bullet gak ketemu sama sekali (OCR gagal baca simbolnya), fallback balikin
+// apa adanya biar checklist gak kosong total - operator masih bisa bersihkan manual.
+function extractHasilFat(lines:OcrLine[]):OcrLine[]{
+  const lower=(s:string)=>s.toLowerCase();
+  const headingIdx=lines.findIndex(l=>lower(l.teks).includes("hasil")&&lower(l.teks).includes("fat"));
+  const endMarkerIdx=lines.findIndex((l,i)=>(headingIdx<0||i>headingIdx)&&
+    (lower(l.teks).includes("menyetujui")||lower(l.teks).includes("mengetahui")||lower(l.teks).includes("menyerahkan")));
+  const startIdx=headingIdx>=0?headingIdx+1:0;
+  const endIdx=endMarkerIdx>=0?endMarkerIdx:lines.length;
+  const slice=lines.slice(startIdx,endIdx);
+
+  const BULLET_RE=/^[»>•●◆♦]/;
+  const merged:OcrLine[]=[];
+  slice.forEach(l=>{
+    const teks=l.teks.trim();
+    if(BULLET_RE.test(teks)){
+      merged.push({teks:teks.replace(BULLET_RE,"").trim(),confidence:l.confidence});
+    } else if(merged.length>0){
+      const last=merged[merged.length-1];
+      last.teks=(last.teks+" "+teks).trim();
+      last.confidence=Math.min(last.confidence,l.confidence);
+    }
+    // baris tanpa bullet SEBELUM poin pertama ketemu = noise header, dibuang.
+  });
+  return merged.length>0?merged:slice;
 }
 
 export const detectFileType=(file:File):"pdf"|"image"|null=>{
