@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { supabase } from "./lib/supabase";
 import { isPushSupported, getPushPermissionState, subscribeToPush } from "./lib/pushNotif";
 import { TODAY, addDays } from "./lib/dateHelpers";
@@ -22,6 +22,10 @@ import { RiwayatKerjaView } from "./components/RiwayatKerjaView";
 import { KomponenTambahanView } from "./components/KomponenTambahanView";
 import { JadwalPengirimanView } from "./components/JadwalPengirimanView";
 import { ProsesAktifView } from "./components/ProsesAktifView";
+// Lazy (30 Agu 2026) - MomFatView bawa tesseract.js+pdfjs-dist (~460KB), cuma dipakai QC.
+// Kalau di-static-import kayak komponen lain, SEMUA divisi (mekanik/painting/dll yang gak
+// pernah pakai fitur ini) ikut download library OCR ini di setiap page load - sia-sia.
+const MomFatView = lazy(() => import("./components/MomFatView").then(m => ({ default: m.MomFatView })));
 import { AkunView } from "./components/AkunView";
 import { ProyekLuarView } from "./components/ProyekLuarView";
 // Sprint 5-7 (5 Agu 2026): seluruh komponen/const yang tadinya nempel di App.tsx dipindah
@@ -173,6 +177,8 @@ export default function App(){
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
       {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
       {key:"proyekluar",label:"Proyek Luar",icon:"building"},
+      // MOM FAT (30 Agu 2026) - OCR checklist dokumen FAT, cuma QC (lihat MomFatView.tsx).
+      {key:"momfat",label:"MOM FAT",icon:"file-text"},
     ];
     if(user.divisi==="komponen"&&user.sub_bagian==="QS")return[
       {key:"tugas",label:"QS",icon:"clipboard-list"},
@@ -448,6 +454,7 @@ export default function App(){
                   :selectedMenu==="review"?(bisaReviewPainting?<ReviewPaintingView/>:<ReviewPotongView/>)
                   :selectedMenu==="tambahan"?<KomponenTambahanView user={user}/>
                   :selectedMenu==="proyekluar"?<ProyekLuarView user={user}/>
+                  :selectedMenu==="momfat"?<Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat...</div>}><MomFatView user={user}/></Suspense>
                   :user.divisi==="nameplate"?<NameplateView user={user}/>
                   :user.divisi==="qc"?<QCChecklistTab user={user}/>
                   :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS}/>
