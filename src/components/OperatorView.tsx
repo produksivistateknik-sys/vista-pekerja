@@ -445,10 +445,14 @@ export function OperatorView({user,viewMode}:any){
     refreshTimerData();
 
     const renharChannel=supabase.channel("realtime-renhar-pekerja")
-      // filter:"divisi=eq...." (audit egress Agu 2026) - dulu event renhar SEMUA divisi/tanggal
-      // dikirim ke tiap operator lalu dibuang di client (if row.divisi!==user.divisi return) -
-      // filter server-side ini motong payload realtime sebelum sampai ke device, bukan setelahnya.
-      .on("postgres_changes",{event:"*",schema:"public",table:"renhar",filter:"divisi=eq."+user.divisi},(payload:any)=>{
+      // REVERT filter:"divisi=eq...." (30 Agu 2026) - sempat ditambah buat motong payload
+      // realtime server-side, tapi terbukti lewat tes langsung ke DB: event DELETE renhar TIDAK
+      // PERNAH sampai ke client sama sekali begitu filter ini aktif (renhar gak di-set REPLICA
+      // IDENTITY FULL, jadi payload "old" pas DELETE cuma bawa {id}, gak ada `divisi` buat
+      // dicocokkan filter-nya - Supabase diam-diam buang event yang gak lolos filter). Efeknya:
+      // operator gak pernah lihat task ke-hapus lewat realtime lagi. Dibatalkan - Realtime Egress
+      // cuma 0.3% dari total tagihan, gak sebanding sama risiko silent-drop ini.
+      .on("postgres_changes",{event:"*",schema:"public",table:"renhar"},(payload:any)=>{
         // Merge tertarget - JANGAN loadData() penuh di sini. loadData() bikin loadingData=true
         // yang ganti SELURUH layar jadi spinner - dan karena tulisan operator sendiri (Mulai/
         // Pilih Operator) ke tabel renhar ini JUGA nge-trigger event ini (echo ke diri sendiri),
