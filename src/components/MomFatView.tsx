@@ -68,6 +68,10 @@ export function MomFatView({user}:{user:any}){
     const fileType=detectFileType(uploadFile);
     if(!fileType)return;
     setUploading(true);
+
+    // Upload dokumen + insert record - dipisah dari try/catch OCR di bawah (BUG FIX 30 Agu
+    // 2026) - dulu 1 blok try/catch yang sama, jadi kalau UPLOAD-nya yang gagal (bukan OCR),
+    // pesan errornya tetap keliru bilang "Gagal proses OCR" - bikin diagnosis salah arah.
     let momFatId:number|null=null;
     try{
       setOcrStage("upload");
@@ -79,9 +83,17 @@ export function MomFatView({user}:{user:any}){
         judul:judul.trim(),file_url:fileUrl,file_type:fileType,status:"processing",
         pekerja_id:user.id,operator_nama:user.nama||user.name||"Operator",
       }).select().single();
-      if(error||!row){alert("Gagal simpan record: "+(error?.message||"unknown error"));setUploading(false);return;}
+      if(error||!row)throw new Error(error?.message||"unknown error");
       momFatId=(row as any).id;
+    }catch(err:any){
+      alert("Gagal upload dokumen: "+(err?.message||"unknown error")+"\n\nCoba lagi - dokumen belum tersimpan sama sekali.");
+      setUploading(false);setOcrStage("");
+      return;
+    }
 
+    // OCR - kegagalan di sini TIDAK menghilangkan dokumen (sudah tersimpan di atas), cuma
+    // checklist-nya kosong. Operator bisa isi manual lewat tombol "+ Tambah Poin".
+    try{
       setOcrStage("ocr");
       const lines=await ocrDocument(uploadFile,setOcrProgress);
 
@@ -91,16 +103,14 @@ export function MomFatView({user}:{user:any}){
         await supabase.from("mom_fat_poin" as any).insert(rows);
       }
       await supabase.from("mom_fat" as any).update({status:"ready",updated_at:new Date().toISOString()}).eq("id",momFatId);
-
-      setUploadFile(null);setJudul("");setOcrProgress(0);setOcrStage("");
-      setMode("list");
-      fetchList();
     }catch(err:any){
-      if(momFatId)await supabase.from("mom_fat" as any).update({status:"error"}).eq("id",momFatId);
-      alert("Gagal proses OCR: "+(err?.message||"unknown error")+"\n\nDokumen tetap tersimpan, coba lagi atau isi checklist manual.");
-      setMode("list");
-      fetchList();
+      await supabase.from("mom_fat" as any).update({status:"error"}).eq("id",momFatId);
+      alert("Dokumen tersimpan, tapi gagal proses OCR: "+(err?.message||"unknown error")+"\n\nCoba lagi, atau isi checklist manual lewat tombol \"+ Tambah Poin\" di halaman detail dokumen.");
     }
+
+    setUploadFile(null);setJudul("");setOcrProgress(0);setOcrStage("");
+    setMode("list");
+    fetchList();
     setUploading(false);
   };
 

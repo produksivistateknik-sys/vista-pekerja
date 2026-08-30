@@ -38,10 +38,19 @@ async function renderPdfToCanvases(file:File):Promise<HTMLCanvasElement[]>{
   return canvases;
 }
 
+// BUG FIX (30 Agu 2026): "Gagal proses OCR: Failed to fetch" - Tesseract.js TANPA
+// workerPath/corePath/langPath eksplisit diam-diam fetch ~8MB dari CDN pihak ketiga
+// (cdn.jsdelivr.net) SETIAP KALI OCR jalan - worker script, core WASM, + traineddata
+// ind/eng. Kalau koneksi WiFi/HP putus-nyambung di tengah salah satu dari 4 request
+// besar itu, fetch() lempar persis "Failed to fetch". Sekarang semua di-self-host di
+// public/tesseract & public/tessdata (origin sendiri, sama kayak semua aset lain di app
+// ini) - gak ada lagi dependency ke CDN eksternal manapun.
+const TESS_OPTIONS={workerPath:"/tesseract/worker.min.js",corePath:"/tesseract",langPath:"/tessdata"};
+
 // Baca dokumen (PDF multi-halaman atau 1 foto), balikin daftar baris teks + confidence
 // per baris. Baris kosong/terlalu pendek (<3 karakter, biasanya noise) otomatis dibuang.
 export async function ocrDocument(file:File,onProgress?:(pct:number)=>void):Promise<OcrLine[]>{
-  const worker=await createWorker("ind+eng");
+  const worker=await createWorker("ind+eng",undefined,TESS_OPTIONS);
   try{
     const images:(HTMLCanvasElement|File)[]=file.type==="application/pdf"
       ?await renderPdfToCanvases(file)
