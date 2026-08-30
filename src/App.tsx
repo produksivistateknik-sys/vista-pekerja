@@ -5,6 +5,7 @@ import { TODAY, addDays } from "./lib/dateHelpers";
 import { DIVISI_CONFIG } from "./lib/panelTypes";
 import { GCss } from "./lib/globalCss";
 import { KoneksiBadge } from "./components/ui/Primitives";
+import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { LandingPage } from "./components/LandingPage";
 import { Login } from "./components/Login";
 import { ArsipSeksiView } from "./components/ArsipSeksiView";
@@ -454,7 +455,7 @@ export default function App(){
                   :selectedMenu==="review"?(bisaReviewPainting?<ReviewPaintingView/>:<ReviewPotongView/>)
                   :selectedMenu==="tambahan"?<KomponenTambahanView user={user}/>
                   :selectedMenu==="proyekluar"?<ProyekLuarView user={user}/>
-                  :selectedMenu==="momfat"?<Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat...</div>}><MomFatView user={user}/></Suspense>
+                  :selectedMenu==="momfat"?<ErrorBoundary label="MOM FAT"><Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat...</div>}><MomFatView user={user}/></Suspense></ErrorBoundary>
                   :user.divisi==="nameplate"?<NameplateView user={user}/>
                   :user.divisi==="qc"?<QCChecklistTab user={user}/>
                   :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS}/>
