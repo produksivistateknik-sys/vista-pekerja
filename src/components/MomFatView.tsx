@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { uploadToR2 } from "../lib/r2Client";
+import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { ocrDocument, detectFileType, OCR_CONFIDENCE_THRESHOLD } from "../lib/ocrHelpers";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
+import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { SectionCard, EmptyState } from "./ui/Primitives";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -17,7 +19,7 @@ import { SectionCard, EmptyState } from "./ui/Primitives";
 // dikasih badge "cek manual" (lihat OCR_CONFIDENCE_THRESHOLD).
 // ─────────────────────────────────────────────────────────────────────────────
 type MomFat={id:number,judul:string,file_url:string,file_type:string,status:string,operator_nama:string,created_at:string};
-type Poin={id:number,mom_fat_id:number,urutan:number,teks:string,selesai:boolean,ocr_confidence:number|null,dicentang_oleh:string|null};
+type Poin={id:number,mom_fat_id:number,urutan:number,teks:string,selesai:boolean,ocr_confidence:number|null,dicentang_oleh:string|null,foto:FotoViewerPekerja[]};
 
 export function MomFatView({user}:{user:any}){
   const[mode,setMode]=useState<"list"|"upload"|"detail">("list");
@@ -120,6 +122,8 @@ export function MomFatView({user}:{user:any}){
   const[editingId,setEditingId]=useState<number|null>(null);
   const[editText,setEditText]=useState("");
   const[tambahText,setTambahText]=useState("");
+  const[uploadingPoinId,setUploadingPoinId]=useState<number|null>(null);
+  const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
 
   const bukaDetail=(m:MomFat)=>{setActiveMomFat(m);setMode("detail");};
 
@@ -165,6 +169,33 @@ export function MomFatView({user}:{user:any}){
     await supabase.from("mom_fat_poin" as any).delete().eq("id",p.id);
   };
 
+  const uploadFotoPoin=async(p:Poin,files:FileList)=>{
+    setUploadingPoinId(p.id);
+    try{
+      const fotoBaru:FotoViewerPekerja[]=[];
+      for(const file of Array.from(files)){
+        const blob=await compressImageNp(file);
+        const key=`mom-fat/${p.mom_fat_id}/${p.id}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
+        const publicUrl=await uploadToR2(blob,key,"image/jpeg");
+        fotoBaru.push({url:publicUrl,uploaded_by:user.nama||user.name||"Operator",uploaded_at:new Date().toISOString()});
+      }
+      const newFoto=[...(p.foto||[]),...fotoBaru];
+      setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,foto:newFoto}:x));
+      await supabase.from("mom_fat_poin" as any).update({foto:newFoto}).eq("id",p.id);
+    }catch(err:any){
+      alert("Gagal upload foto: "+(err?.message||"unknown error"));
+    }
+    setUploadingPoinId(null);
+  };
+
+  const hapusFotoPoin=async(p:Poin,fotoUrl:string)=>{
+    if(!window.confirm("Hapus foto ini?"))return;
+    const newFoto=(p.foto||[]).filter(f=>f.url!==fotoUrl);
+    setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,foto:newFoto}:x));
+    await hapusFotoDariStorage("mom-fat-photos",fotoUrl);
+    await supabase.from("mom_fat_poin" as any).update({foto:newFoto}).eq("id",p.id);
+  };
+
   const tambahPoin=async()=>{
     if(!tambahText.trim()||!activeMomFat)return;
     const urutanBaru=poinList.length>0?Math.max(...poinList.map(p=>p.urutan))+1:1;
@@ -206,6 +237,31 @@ export function MomFatView({user}:{user:any}){
                       {kurangYakin&&<span style={{fontSize:9.5,fontWeight:800,color:"#d97706",background:"#fffbeb",borderRadius:20,padding:"1px 8px"}}>⚠️ Cek manual (hasil OCR kurang yakin)</span>}
                       {p.dicentang_oleh&&<span style={{fontSize:10,color:"#94a3b8"}}>✓ {p.dicentang_oleh}</span>}
                     </div>
+                    <div style={{marginTop:6}}>
+                      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
+                        {(p.foto||[]).length>0&&<span style={{fontSize:9.5,fontWeight:600,color:"#64748b"}}>Foto {p.foto.length}</span>}
+                        <MediaPickerSheet
+                          triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:10.5,fontWeight:600,marginLeft:"auto"}}
+                          onFiles={(files)=>uploadFotoPoin(p,files)}>
+                          <i className={uploadingPoinId===p.id?"ti ti-loader-2":"ti ti-camera-plus"} style={{fontSize:12}}/>
+                          Tambah Foto
+                        </MediaPickerSheet>
+                      </div>
+                      {(p.foto||[]).length>0&&(
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:5}}>
+                          {p.foto.map((f,fi)=>(
+                            <div key={fi} style={{position:"relative",aspectRatio:"1",borderRadius:7,overflow:"hidden",cursor:"pointer",background:"#f1f5f9"}}
+                              onClick={()=>setFotoViewer({fotos:p.foto,startIndex:fi,label:p.teks})}>
+                              <img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                              <button onClick={(e)=>{e.stopPropagation();hapusFotoPoin(p,f.url);}}
+                                style={{position:"absolute",top:2,right:2,width:15,height:15,borderRadius:99,background:"rgba(15,23,42,0.6)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                <i className="ti ti-x" style={{fontSize:8}}/>
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <button onClick={()=>hapusPoin(p)} style={{background:"none",border:"none",color:"#cbd5e1",cursor:"pointer",padding:2,flexShrink:0}} title="Hapus poin">
                     <i className="ti ti-x" style={{fontSize:14}}/>
@@ -221,6 +277,7 @@ export function MomFatView({user}:{user:any}){
             <button onClick={tambahPoin} style={{padding:"10px 16px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>+ Tambah</button>
           </div>
         </SectionCard>
+        {fotoViewer&&<FotoZoomViewerPekerja fotos={fotoViewer.fotos} startIndex={fotoViewer.startIndex} label={fotoViewer.label} onClose={()=>setFotoViewer(null)}/>}
       </div>
     );
   }
