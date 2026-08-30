@@ -405,6 +405,37 @@ export function OperatorView({user,viewMode}:any){
     setTimerDurasiSelesai(mapDurasiSelesai);
   };
 
+  // Versi TARGETED refreshTimerData - cuma re-query 1 kombinasi panel+kode+proses+pekerja
+  // (bukan seluruh tabel) (audit egress Agu 2026). Dipakai di handler realtime fcs_timer_kerja:
+  // channel-nya gak ada filter (timer siapapun di divisi manapun bisa relevan buat auto-assign/
+  // status di layar operator lain), tapi SEBELUM ini tiap event apapun di tabel itu (mulai/stop
+  // timer siapapun, dimana pun) bikin SEMUA operator yang OperatorView-nya kebuka nge-refetch
+  // ULANG SELURUH tabel fcs_timer_kerja (ribuan baris). Sekarang cuma re-query kombinasi kolom
+  // yang berubah - hasilnya sama persis (query sama, cuma di-scope ke 1 key) tapi jauh lebih kecil.
+  const refreshTimerKey=async(panelId:number,kode:string,proses:string,pekerjaId:number,tahap?:string|null)=>{
+    if(!panelId||!kode||!proses||!pekerjaId)return;
+    const key=timerKey(panelId,kode,proses,pekerjaId,tahap);
+    let q=supabase.from("fcs_timer_kerja").select("*")
+      .eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses",proses).eq("pekerja_id",pekerjaId)
+      .or(`selesai.is.null,tanggal.eq.${viewDate}`);
+    q=tahap?q.eq("tahap",tahap):q.is("tahap",null);
+    const{data}=await q;
+    const rows=data||[];
+    let aktif:any=null,pernahMulai=false,selesaiHariIni=false,durasiSelesai=0;
+    rows.forEach((t:any)=>{
+      if(!t.selesai&&t.tanggal===viewDate)aktif=t;
+      pernahMulai=true;
+      if(t.tanggal===viewDate&&t.selesai){
+        selesaiHariIni=true;
+        durasiSelesai+=Number(t.durasi_menit||0);
+      }
+    });
+    setTimerAktif(prev=>{const n={...prev};if(aktif)n[key]=aktif;else delete n[key];return n;});
+    if(pernahMulai)setTimerPernahMulai(prev=>({...prev,[key]:true}));
+    setTimerSelesaiHariIni(prev=>{const n={...prev};if(selesaiHariIni)n[key]=true;else delete n[key];return n;});
+    setTimerDurasiSelesai(prev=>{const n={...prev};if(durasiSelesai>0)n[key]=durasiSelesai;else delete n[key];return n;});
+  };
+
   // Load data dari Supabase
   useEffect(()=>{
     setPernahDikunci(false);
@@ -447,7 +478,12 @@ export function OperatorView({user,viewMode}:any){
 
   useEffect(()=>{
     const timerChannel=supabase.channel("realtime-timer-kerja-pekerja")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},()=>{refreshTimerData();})
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja"},(payload:any)=>{
+        // refreshTimerKey (bukan refreshTimerData penuh) - lihat komentar di definisinya.
+        const row=payload.new||payload.old;
+        if(row?.panel_id)refreshTimerKey(row.panel_id,row.kode_komponen,row.proses,row.pekerja_id,row.tahap);
+        else refreshTimerData(); // fallback: DELETE tanpa REPLICA IDENTITY FULL cuma bawa id, gak cukup buat targeted query
+      })
       .subscribe();
     // Kalau HP di-background (pindah app lain / kunci layar) lama, socket realtime bisa diam2
     // putus - event fcs_timer_kerja yang kejadian pas offline itu kelewat, timerAktif bisa
