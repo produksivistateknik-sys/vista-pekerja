@@ -30,6 +30,7 @@ export function PdfViewerPekerja({url,title,subtitle,onClose}:{url:string,title:
   const containerRef=useRef<HTMLDivElement|null>(null);
   const pdfDocRef=useRef<any>(null);
   const renderTaskRef=useRef<any>(null);
+  const firstPaintDoneRef=useRef(false);
   const[numPages,setNumPages]=useState(0);
   const[pageIndex,setPageIndex]=useState(0);
   const[loading,setLoading]=useState(true);
@@ -45,12 +46,12 @@ export function PdfViewerPekerja({url,title,subtitle,onClose}:{url:string,title:
 
   useEffect(()=>{
     let cancelled=false;
+    firstPaintDoneRef.current=false;
     setLoading(true);setError(null);setPageIndex(0);setNumPages(0);
     pdfjsLib.getDocument({url}).promise.then((pdf:any)=>{
       if(cancelled)return;
       pdfDocRef.current=pdf;
       setNumPages(pdf.numPages);
-      setLoading(false);
     }).catch(()=>{
       if(cancelled)return;
       setError("Gagal memuat PDF. Coba lagi atau buka di tab baru.");
@@ -66,6 +67,10 @@ export function PdfViewerPekerja({url,title,subtitle,onClose}:{url:string,title:
     return()=>{window.removeEventListener("resize",onResize);window.removeEventListener("orientationchange",onResize);};
   },[]);
 
+  // Render 2 tahap (31 Agu 2026, fix "loading lama") - sama pola kayak
+  // vista-teknik/src/components/PdfViewer.tsx: render CEPAT resolusi rendah dulu (langsung
+  // tampil, nutup spinner), baru upgrade ke kualitas penuh di background. Ukuran CSS canvas
+  // TETAP sama di kedua tahap biar gak "lompat" pas upgrade.
   useEffect(()=>{
     if(!pdfDocRef.current||!canvasRef.current||numPages===0)return;
     let cancelled=false;
@@ -73,24 +78,33 @@ export function PdfViewerPekerja({url,title,subtitle,onClose}:{url:string,title:
       try{
         const page=await pdfDocRef.current.getPage(pageIndex+1);
         if(cancelled)return;
-        const containerWidth=containerRef.current?.clientWidth||360;
-        const baseViewport=page.getViewport({scale:1});
-        const fitScale=Math.min((containerWidth-24)/baseViewport.width,2.5);
-        const dpr=window.devicePixelRatio||1;
-        const viewport=page.getViewport({scale:fitScale*dpr});
         const canvas=canvasRef.current;
         if(!canvas)return;
-        canvas.width=viewport.width;
-        canvas.height=viewport.height;
-        canvas.style.width=(viewport.width/dpr)+"px";
-        canvas.style.height=(viewport.height/dpr)+"px";
         const ctx=canvas.getContext("2d");
         if(!ctx)return;
-        if(renderTaskRef.current)renderTaskRef.current.cancel();
-        const task=page.render({canvasContext:ctx,canvas,viewport});
-        renderTaskRef.current=task;
-        await task.promise;
-      }catch{/* render dibatalkan (ganti halaman cepat) - abaikan */}
+        const containerWidth=containerRef.current?.clientWidth||360;
+        const baseViewport=page.getViewport({scale:1});
+        const cssScale=Math.min((containerWidth-24)/baseViewport.width,2);
+        canvas.style.width=(baseViewport.width*cssScale)+"px";
+        canvas.style.height=(baseViewport.height*cssScale)+"px";
+
+        const paint=async(backingScale:number)=>{
+          const viewport=page.getViewport({scale:backingScale});
+          canvas.width=viewport.width;
+          canvas.height=viewport.height;
+          if(renderTaskRef.current)renderTaskRef.current.cancel();
+          const task=page.render({canvasContext:ctx,canvas,viewport});
+          renderTaskRef.current=task;
+          await task.promise;
+        };
+
+        await paint(Math.min(cssScale,1));
+        if(cancelled)return;
+        if(!firstPaintDoneRef.current){firstPaintDoneRef.current=true;setLoading(false);}
+
+        const dpr=Math.min(window.devicePixelRatio||1,2);
+        await paint(cssScale*dpr);
+      }catch{/* render dibatalkan (ganti halaman/ukuran cepat) - abaikan */}
     })();
     return()=>{cancelled=true;};
   },[pageIndex,numPages,resizeTick]);
