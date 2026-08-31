@@ -461,7 +461,7 @@ export default function App(){
                   :selectedMenu==="tambahan"?<KomponenTambahanView user={user}/>
                   :selectedMenu==="proyekluar"?<ProyekLuarView user={user}/>
                   :selectedMenu==="momfat"?<ErrorBoundary label="MOM FAT"><Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat...</div>}><MomFatView user={user}/></Suspense></ErrorBoundary>
-                  :selectedMenu==="wodigital"?<WoDigitalView/>
+                  :selectedMenu==="wodigital"?<WoDigitalView user={user}/>
                   :user.divisi==="nameplate"?<NameplateView user={user}/>
                   :user.divisi==="qc"?<QCChecklistTab user={user}/>
                   :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS}/>
