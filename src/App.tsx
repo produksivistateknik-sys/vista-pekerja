@@ -29,6 +29,7 @@ import { ProsesAktifView } from "./components/ProsesAktifView";
 const MomFatView = lazy(() => import("./components/MomFatView").then(m => ({ default: m.MomFatView })));
 import { AkunView } from "./components/AkunView";
 import { ProyekLuarView } from "./components/ProyekLuarView";
+import { WoDigitalView } from "./components/WoDigitalView";
 // Sprint 5-7 (5 Agu 2026): seluruh komponen/const yang tadinya nempel di App.tsx dipindah
 // keluar ke src/lib/ dan src/components/ - struktur/nama fungsi/isi PERSIS SAMA, cuma
 // lokasinya pindah. App.tsx sekarang murni shell (routing halaman + header/nav).
@@ -172,6 +173,7 @@ export default function App(){
       {key:"tugas",label:"Nameplate",icon:"tag"},
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
       {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
+      {key:"wodigital",label:"WO Digital",icon:"file-type-pdf"},
     ];
     if(user.divisi==="qc")return[
       {key:"tugas",label:"QC",icon:"search"},
@@ -180,11 +182,13 @@ export default function App(){
       {key:"proyekluar",label:"Proyek Luar",icon:"building"},
       // MOM FAT (30 Agu 2026) - OCR checklist dokumen FAT, cuma QC (lihat MomFatView.tsx).
       {key:"momfat",label:"MOM FAT",icon:"file-text"},
+      {key:"wodigital",label:"WO Digital",icon:"file-type-pdf"},
     ];
     if(user.divisi==="komponen"&&user.sub_bagian==="QS")return[
       {key:"tugas",label:"QS",icon:"clipboard-list"},
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
       {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
+      {key:"wodigital",label:"WO Digital",icon:"file-type-pdf"},
     ];
     // "komponen" non-QS (dulu TrackingKomponenView) - fitur dikonfirmasi tidak terpakai, tile
     // dihapus dari grid (29 Agu 2026). Cuma sisa Permintaan buat tipe login ini.
@@ -203,6 +207,7 @@ export default function App(){
       // Proyek Luar (30 Agu 2026) - fitur laporan proyek eksternal, BERDIRI SENDIRI dari WO/
       // panel manapun. Cuma qc/wiring_ctrl/wiring_pwr/assembling (mekanik/painting TIDAK).
       ...(["wiring_ctrl","wiring_pwr","assembling"].includes(user.divisi)?[{key:"proyekluar",label:"Proyek Luar",icon:"building"}]:[]),
+      {key:"wodigital",label:"WO Digital",icon:"file-type-pdf"},
     ];
   })();
   const selectedTile=menuTiles.find(t=>t.key===selectedMenu);
@@ -456,6 +461,7 @@ export default function App(){
                   :selectedMenu==="tambahan"?<KomponenTambahanView user={user}/>
                   :selectedMenu==="proyekluar"?<ProyekLuarView user={user}/>
                   :selectedMenu==="momfat"?<ErrorBoundary label="MOM FAT"><Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat...</div>}><MomFatView user={user}/></Suspense></ErrorBoundary>
+                  :selectedMenu==="wodigital"?<WoDigitalView/>
                   :user.divisi==="nameplate"?<NameplateView user={user}/>
                   :user.divisi==="qc"?<QCChecklistTab user={user}/>
                   :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS}/>
