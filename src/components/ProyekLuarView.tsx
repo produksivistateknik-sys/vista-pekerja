@@ -27,6 +27,7 @@ export function ProyekLuarView({user}:{user:any}){
   const[loading,setLoading]=useState(true);
   const[laporanList,setLaporanList]=useState<any[]>([]);
   const[expandedId,setExpandedId]=useState<number|null>(null);
+  const[search,setSearch]=useState("");
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
 
   const fetchLaporan=async()=>{
@@ -127,6 +128,10 @@ export function ProyekLuarView({user}:{user:any}){
     await supabase.from("proyek_luar" as any).update({status:statusBaru,updated_at:new Date().toISOString()}).eq("id",laporan.id);
     fetchLaporan();
   };
+  const toggleArsip=async(laporan:any)=>{
+    await supabase.from("proyek_luar" as any).update({is_archived:!laporan.is_archived,updated_at:new Date().toISOString()}).eq("id",laporan.id);
+    fetchLaporan();
+  };
 
   const statusStyle:any={
     berlangsung:{bg:"#fffbeb",color:"#d97706",label:"Berlangsung"},
@@ -205,13 +210,21 @@ export function ProyekLuarView({user}:{user:any}){
             </button>
           </div>
         </SectionCard>
-      ):(
-        <SectionCard icon="📋" title="Laporan Saya" subtitle={loading?"Memuat...":`${laporanList.length} laporan`}>
+      ):(()=>{
+        const q=search.trim().toLowerCase();
+        const filteredLaporan=laporanList.filter(l=>{
+          if(!q)return!l.is_archived;
+          return(l.nama_lokasi||"").toLowerCase().includes(q)||(l.operator_nama||"").toLowerCase().includes(q);
+        });
+        return(
+        <SectionCard icon="📋" title="Laporan Saya" subtitle={loading?"Memuat...":`${filteredLaporan.length} laporan`}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari nama lokasi / operator..."
+            style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
           {loading?(
             <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
-          ):laporanList.length===0?(
-            <EmptyState title="Belum ada laporan" description={'Buat laporan proyek luar pertama Anda lewat tab "Buat Laporan".'} variant="box-paper"/>
-          ):laporanList.map(l=>{
+          ):filteredLaporan.length===0?(
+            <EmptyState title="Belum ada laporan" description={q?"Tidak ada laporan yang cocok.":'Buat laporan proyek luar pertama Anda lewat tab "Buat Laporan".'} variant="box-paper"/>
+          ):filteredLaporan.map(l=>{
             const isExp=expandedId===l.id;
             const st=statusStyle[l.status]||statusStyle.berlangsung;
             const fotoList:any[]=l.foto||[];
@@ -224,6 +237,7 @@ export function ProyekLuarView({user}:{user:any}){
                     <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>📅 {l.tanggal} · {fotoList.length} foto</div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
+                    {l.is_archived&&<span style={{background:"#f1f5f9",color:"#64748b",borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>Arsip</span>}
                     <span style={{background:st.bg,color:st.color,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>{st.label}</span>
                     <span style={{fontSize:12,color:"#94a3b8"}}>{isExp?"▼":"▶"}</span>
                   </div>
@@ -248,17 +262,23 @@ export function ProyekLuarView({user}:{user:any}){
                         }} triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:11.5,fontWeight:700}}>
                         <i className="ti ti-camera-plus" style={{fontSize:13}}/> Tambah Foto
                       </MediaPickerSheet>
-                      {l.status==="berlangsung"?(
-                        <button onClick={()=>ubahStatus(l,"selesai")} style={{fontSize:11,fontWeight:700,color:"#16a34a",background:"#f0fdf4",
-                          border:"1px solid #bbf7d0",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>
-                          Tandai Selesai
+                      <div style={{display:"flex",gap:8}}>
+                        {l.status==="berlangsung"?(
+                          <button onClick={()=>ubahStatus(l,"selesai")} style={{fontSize:11,fontWeight:700,color:"#16a34a",background:"#f0fdf4",
+                            border:"1px solid #bbf7d0",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>
+                            Tandai Selesai
+                          </button>
+                        ):(
+                          <button onClick={()=>ubahStatus(l,"berlangsung")} style={{fontSize:11,fontWeight:700,color:"#d97706",background:"#fffbeb",
+                            border:"1px solid #fde68a",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>
+                            Buka Lagi
+                          </button>
+                        )}
+                        <button onClick={()=>toggleArsip(l)} style={{fontSize:11,fontWeight:700,color:"#64748b",background:"#f8fafc",
+                          border:"1px solid #e2e8f0",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>
+                          {l.is_archived?"Batalkan Arsip":"Arsipkan"}
                         </button>
-                      ):(
-                        <button onClick={()=>ubahStatus(l,"berlangsung")} style={{fontSize:11,fontWeight:700,color:"#d97706",background:"#fffbeb",
-                          border:"1px solid #fde68a",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>
-                          Buka Lagi
-                        </button>
-                      )}
+                      </div>
                     </div>
                     {stagedFotoTambahan.length>0&&(
                       <div style={{display:"flex",gap:8,alignItems:"center"}}>
@@ -275,7 +295,8 @@ export function ProyekLuarView({user}:{user:any}){
             );
           })}
         </SectionCard>
-      )}
+        );
+      })()}
 
       {fotoViewer&&<FotoZoomViewerPekerja fotos={fotoViewer.fotos} startIndex={fotoViewer.startIndex} label={fotoViewer.label} onClose={()=>setFotoViewer(null)}/>}
     </div>

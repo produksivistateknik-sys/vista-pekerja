@@ -18,7 +18,7 @@ import { SectionCard, EmptyState } from "./ui/Primitives";
 // Tesseract LEMAH baca tulisan tangan (keterbatasan OCR non-AI) - baris confidence rendah
 // dikasih badge "cek manual" (lihat OCR_CONFIDENCE_THRESHOLD).
 // ─────────────────────────────────────────────────────────────────────────────
-type MomFat={id:number,judul:string,file_url:string,file_type:string,status:string,operator_nama:string,created_at:string};
+type MomFat={id:number,judul:string,file_url:string,file_type:string,status:string,operator_nama:string,created_at:string,is_archived:boolean};
 type Poin={id:number,mom_fat_id:number,urutan:number,teks:string,selesai:boolean,ocr_confidence:number|null,dicentang_oleh:string|null,foto:FotoViewerPekerja[]};
 
 export function MomFatView({user}:{user:any}){
@@ -26,6 +26,7 @@ export function MomFatView({user}:{user:any}){
   const[loading,setLoading]=useState(true);
   const[list,setList]=useState<MomFat[]>([]);
   const[progressMap,setProgressMap]=useState<Record<number,{done:number,total:number}>>({});
+  const[search,setSearch]=useState("");
 
   const fetchList=async()=>{
     setLoading(true);
@@ -144,6 +145,14 @@ export function MomFatView({user}:{user:any}){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[mode,activeMomFat?.id]);
 
+  const toggleArsip=async()=>{
+    if(!activeMomFat)return;
+    const arsipBaru=!activeMomFat.is_archived;
+    await supabase.from("mom_fat" as any).update({is_archived:arsipBaru}).eq("id",activeMomFat.id);
+    setActiveMomFat({...activeMomFat,is_archived:arsipBaru});
+    fetchList();
+  };
+
   const toggleCentang=async(p:Poin)=>{
     const selesaiBaru=!p.selesai;
     setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,selesai:selesaiBaru}:x));
@@ -212,9 +221,14 @@ export function MomFatView({user}:{user:any}){
     const done=poinList.filter(p=>p.selesai).length;
     return(
       <div style={{padding:16}}>
-        <button onClick={()=>{setMode("list");setActiveMomFat(null);}} style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:"#2563eb",fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12,padding:0}}>
-          <i className="ti ti-arrow-left"/> Kembali
-        </button>
+        <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
+          <button onClick={()=>{setMode("list");setActiveMomFat(null);}} style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:"#2563eb",fontWeight:700,fontSize:13,cursor:"pointer",padding:0}}>
+            <i className="ti ti-arrow-left"/> Kembali
+          </button>
+          <button onClick={toggleArsip} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"#64748b",fontWeight:600,fontSize:12,cursor:"pointer",padding:0}}>
+            <i className={"ti "+(activeMomFat.is_archived?"ti-archive-off":"ti-archive")}/> {activeMomFat.is_archived?"Batalkan Arsip":"Arsipkan"}
+          </button>
+        </div>
         <SectionCard icon="📋" title={activeMomFat.judul} subtitle={`${done}/${total} poin selesai · oleh ${activeMomFat.operator_nama}`}>
           <a href={activeMomFat.file_url} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,color:"#2563eb",marginBottom:14,textDecoration:"none"}}>
             <i className="ti ti-file-description"/> Lihat dokumen asli
@@ -326,13 +340,21 @@ export function MomFatView({user}:{user:any}){
             </button>
           </div>
         </SectionCard>
-      ):(
-        <SectionCard icon="📋" title="Dokumen MOM FAT" subtitle={loading?"Memuat...":`${list.length} dokumen`}>
+      ):(()=>{
+        const q=search.trim().toLowerCase();
+        const filteredList=list.filter(m=>{
+          if(!q)return!m.is_archived;
+          return(m.judul||"").toLowerCase().includes(q)||(m.operator_nama||"").toLowerCase().includes(q);
+        });
+        return(
+        <SectionCard icon="📋" title="Dokumen MOM FAT" subtitle={loading?"Memuat...":`${filteredList.length} dokumen`}>
+          <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari judul dokumen / operator..."
+            style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
           {loading?(
             <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
-          ):list.length===0?(
-            <EmptyState title="Belum ada dokumen" description={'Upload dokumen MOM FAT pertama lewat tab "Upload Dokumen".'} variant="box-paper"/>
-          ):list.map(m=>{
+          ):filteredList.length===0?(
+            <EmptyState title="Belum ada dokumen" description={q?"Tidak ada dokumen yang cocok.":'Upload dokumen MOM FAT pertama lewat tab "Upload Dokumen".'} variant="box-paper"/>
+          ):filteredList.map(m=>{
             const st=statusLabel[m.status]||statusLabel.processing;
             const prog=progressMap[m.id]||{done:0,total:0};
             return(
@@ -342,7 +364,10 @@ export function MomFatView({user}:{user:any}){
                     <div style={{fontWeight:700,fontSize:13,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.judul}</div>
                     <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>👤 {m.operator_nama} · {m.status==="ready"?`${prog.done}/${prog.total} poin`:""}</div>
                   </div>
-                  <span style={{background:st.bg,color:st.color,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700,flexShrink:0}}>{st.label}</span>
+                  <div style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
+                    {m.is_archived&&<span style={{background:"#f1f5f9",color:"#64748b",borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>Arsip</span>}
+                    <span style={{background:st.bg,color:st.color,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>{st.label}</span>
+                  </div>
                 </div>
                 {m.status==="ready"&&prog.total>0&&(
                   <div style={{height:6,background:"#e2e8f0",borderRadius:99,marginTop:8,overflow:"hidden"}}>
@@ -353,7 +378,8 @@ export function MomFatView({user}:{user:any}){
             );
           })}
         </SectionCard>
-      )}
+        );
+      })()}
     </div>
   );
 }
