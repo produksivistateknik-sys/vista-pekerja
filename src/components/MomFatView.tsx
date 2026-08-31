@@ -22,7 +22,7 @@ type MomFat={id:number,judul:string,file_url:string,file_type:string,status:stri
 type Poin={id:number,mom_fat_id:number,urutan:number,teks:string,selesai:boolean,ocr_confidence:number|null,dicentang_oleh:string|null,foto:FotoViewerPekerja[]};
 
 export function MomFatView({user}:{user:any}){
-  const[mode,setMode]=useState<"list"|"upload"|"detail">("list");
+  const[mode,setMode]=useState<"list"|"upload"|"detail"|"arsip">("list");
   const[loading,setLoading]=useState(true);
   const[list,setList]=useState<MomFat[]>([]);
   const[progressMap,setProgressMap]=useState<Record<number,{done:number,total:number}>>({});
@@ -307,6 +307,10 @@ export function MomFatView({user}:{user:any}){
           fontSize:12.5,fontWeight:700,background:mode==="upload"?"#1d4ed8":"#e2e8f0",color:mode==="upload"?"#fff":"#64748b"}}>
           ➕ Upload Dokumen
         </button>
+        <button onClick={()=>setMode("arsip")} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
+          fontSize:12.5,fontWeight:700,background:mode==="arsip"?"#1d4ed8":"#e2e8f0",color:mode==="arsip"?"#fff":"#64748b"}}>
+          🗄️ Arsip
+        </button>
       </div>
 
       {mode==="upload"?(
@@ -341,19 +345,21 @@ export function MomFatView({user}:{user:any}){
           </div>
         </SectionCard>
       ):(()=>{
+        const isArsip=mode==="arsip";
         const q=search.trim().toLowerCase();
         const filteredList=list.filter(m=>{
-          if(!q)return!m.is_archived;
-          return(m.judul||"").toLowerCase().includes(q)||(m.operator_nama||"").toLowerCase().includes(q);
+          const matchQ=!q||(m.judul||"").toLowerCase().includes(q)||(m.operator_nama||"").toLowerCase().includes(q);
+          if(!matchQ)return false;
+          return isArsip?m.is_archived:(q?true:!m.is_archived);
         });
         return(
-        <SectionCard icon="📋" title="Dokumen MOM FAT" subtitle={loading?"Memuat...":`${filteredList.length} dokumen`}>
+        <SectionCard icon={isArsip?"🗄️":"📋"} title={isArsip?"Arsip Dokumen":"Dokumen MOM FAT"} subtitle={loading?"Memuat...":`${filteredList.length} dokumen`}>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari judul dokumen / operator..."
             style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
           {loading?(
             <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
           ):filteredList.length===0?(
-            <EmptyState title="Belum ada dokumen" description={q?"Tidak ada dokumen yang cocok.":'Upload dokumen MOM FAT pertama lewat tab "Upload Dokumen".'} variant="box-paper"/>
+            <EmptyState title={isArsip?"Belum ada dokumen diarsip":"Belum ada dokumen"} description={isArsip?"Dokumen yang diarsipkan dari halaman detail akan muncul di sini.":(q?"Tidak ada dokumen yang cocok.":'Upload dokumen MOM FAT pertama lewat tab "Upload Dokumen".')} variant="box-paper"/>
           ):filteredList.map(m=>{
             const st=statusLabel[m.status]||statusLabel.processing;
             const prog=progressMap[m.id]||{done:0,total:0};

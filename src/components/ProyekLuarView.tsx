@@ -23,7 +23,7 @@ import { SectionCard, EmptyState } from "./ui/Primitives";
 type StagedFoto={file:File,previewUrl:string};
 
 export function ProyekLuarView({user}:{user:any}){
-  const[mode,setMode]=useState<"list"|"form">("list");
+  const[mode,setMode]=useState<"list"|"form"|"arsip">("list");
   const[loading,setLoading]=useState(true);
   const[laporanList,setLaporanList]=useState<any[]>([]);
   const[expandedId,setExpandedId]=useState<number|null>(null);
@@ -149,6 +149,10 @@ export function ProyekLuarView({user}:{user:any}){
           fontSize:12.5,fontWeight:700,background:mode==="form"?"#1d4ed8":"#e2e8f0",color:mode==="form"?"#fff":"#64748b"}}>
           ➕ Buat Laporan
         </button>
+        <button onClick={()=>setMode("arsip")} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
+          fontSize:12.5,fontWeight:700,background:mode==="arsip"?"#1d4ed8":"#e2e8f0",color:mode==="arsip"?"#fff":"#64748b"}}>
+          🗄️ Arsip
+        </button>
       </div>
 
       {mode==="form"?(
@@ -211,19 +215,21 @@ export function ProyekLuarView({user}:{user:any}){
           </div>
         </SectionCard>
       ):(()=>{
+        const isArsip=mode==="arsip";
         const q=search.trim().toLowerCase();
         const filteredLaporan=laporanList.filter(l=>{
-          if(!q)return!l.is_archived;
-          return(l.nama_lokasi||"").toLowerCase().includes(q)||(l.operator_nama||"").toLowerCase().includes(q);
+          const matchQ=!q||(l.nama_lokasi||"").toLowerCase().includes(q)||(l.operator_nama||"").toLowerCase().includes(q);
+          if(!matchQ)return false;
+          return isArsip?l.is_archived:(q?true:!l.is_archived);
         });
         return(
-        <SectionCard icon="📋" title="Laporan Saya" subtitle={loading?"Memuat...":`${filteredLaporan.length} laporan`}>
+        <SectionCard icon={isArsip?"🗄️":"📋"} title={isArsip?"Arsip Laporan":"Laporan Saya"} subtitle={loading?"Memuat...":`${filteredLaporan.length} laporan`}>
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari nama lokasi / operator..."
             style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
           {loading?(
             <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
           ):filteredLaporan.length===0?(
-            <EmptyState title="Belum ada laporan" description={q?"Tidak ada laporan yang cocok.":'Buat laporan proyek luar pertama Anda lewat tab "Buat Laporan".'} variant="box-paper"/>
+            <EmptyState title={isArsip?"Belum ada laporan diarsip":"Belum ada laporan"} description={isArsip?"Laporan yang diarsipkan akan muncul di sini.":(q?"Tidak ada laporan yang cocok.":'Buat laporan proyek luar pertama Anda lewat tab "Buat Laporan".')} variant="box-paper"/>
           ):filteredLaporan.map(l=>{
             const isExp=expandedId===l.id;
             const st=statusStyle[l.status]||statusStyle.berlangsung;
