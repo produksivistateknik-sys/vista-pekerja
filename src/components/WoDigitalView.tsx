@@ -1,6 +1,8 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, Badge } from "./ui/Primitives";
+
+const PdfViewerPekerja=lazy(()=>import("./PdfViewerPekerja").then(m=>({default:m.PdfViewerPekerja})));
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WO DIGITAL (31 Agu 2026) - versi digital gambar teknik (construction drawing, sudah
@@ -20,6 +22,7 @@ export function WoDigitalView(){
   const[revList,setRevList]=useState<any[]>([]);
   const[search,setSearch]=useState("");
   const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
+  const[viewerTarget,setViewerTarget]=useState<{url:string,title:string,subtitle?:string}|null>(null);
 
   const fetchAll=async()=>{
     setLoading(true);
@@ -105,10 +108,10 @@ export function WoDigitalView(){
                     )}
                   </div>
                   {rev?(
-                    <a href={rev.file_url} target="_blank" rel="noreferrer"
-                      style={{width:40,height:40,borderRadius:10,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <i className="ti ti-download" style={{fontSize:18,color:"#1d4ed8"}}/>
-                    </a>
+                    <button onClick={()=>setViewerTarget({url:rev.file_url,title:w.proyek||`WO ${w.wo}`,subtitle:`WO ${w.wo}`})}
+                      style={{width:40,height:40,borderRadius:10,background:"#eff6ff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                      <i className="ti ti-eye" style={{fontSize:18,color:"#1d4ed8"}}/>
+                    </button>
                   ):(
                     <span style={{fontSize:10.5,color:"#cbd5e1",flexShrink:0,fontStyle:"italic"}}>Belum ada</span>
                   )}
@@ -118,6 +121,11 @@ export function WoDigitalView(){
           </div>
         )}
       </SectionCard>
+      {viewerTarget&&(
+        <Suspense fallback={null}>
+          <PdfViewerPekerja url={viewerTarget.url} title={viewerTarget.title} subtitle={viewerTarget.subtitle} onClose={()=>setViewerTarget(null)}/>
+        </Suspense>
+      )}
     </div>
   );
 }
