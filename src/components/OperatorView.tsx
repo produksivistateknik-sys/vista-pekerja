@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVISI_CONFIG, QC_ITEMS } from "../lib/panelTypes";
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
 import { withRetry } from "../lib/koneksi";
+import { mergePanelChecklist } from "../lib/checklistHelpers";
 import {
   timerKey, BUSBAR_TAHAP_LABEL,
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
@@ -712,7 +713,7 @@ export function OperatorView({user,viewMode}:any){
     if(qtyWriteTimers.current[debounceKey])clearTimeout(qtyWriteTimers.current[debounceKey]);
     qtyWriteTimers.current[debounceKey]=setTimeout(async()=>{
       delete qtyWriteTimers.current[debounceKey];
-      await supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId);
+      await mergePanelChecklist(panelId,{[kode]:newChecklist[kode]});
       // FIX akar masalah "operator kosong" (audit investigasi-operator-kosong.md) - path INI
       // (ketik qty manual) persist LANGSUNG ke DB kayak PCT_STEPS lama, gak lewat "Kunci
       // Progress" yang nyatet progress_checkpoint_log - jadi progress bisa kesimpen tanpa jejak
@@ -993,7 +994,7 @@ export function OperatorView({user,viewMode}:any){
     // yang udah dipilih user gak hilang/harus pilih ulang) - cuma dikasih tau lewat alert.
     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     try{
-      const{error}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId));
+      const{error}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
       if(error)throw error;
       // FIX akar masalah "operator kosong": PCT_STEPS ini persist LANGSUNG ke DB seketika diklik,
       // gak lewat "Kunci Progress" (lockSingleKomponen) yang baru nyatet progress_checkpoint_log -
@@ -1050,7 +1051,7 @@ export function OperatorView({user,viewMode}:any){
     try{
       const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert([checkpointEntry]));
       if(cpErr)throw cpErr;
-      const{error:panelErr}=await withRetry(()=>supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId));
+      const{error:panelErr}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
       if(panelErr)throw panelErr;
     }catch{
       alert('Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Kunci Progress lagi.');
@@ -1156,7 +1157,7 @@ export function OperatorView({user,viewMode}:any){
     // Sama kayak updatePctManual - optimistic, gak di-revert kalau retry akhirnya tetap gagal.
     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     try{
-      const{error}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",panelId));
+      const{error}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
       if(error)throw error;
       // FIX akar masalah "operator kosong" (audit investigasi-operator-kosong.md) - SAMA kayak
       // updatePctManual (non-BUSBAR): tahap ini persist LANGSUNG ke progress.BUSBAR gabungan
@@ -1227,7 +1228,7 @@ export function OperatorView({user,viewMode}:any){
     try{
       const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert([checkpointEntry]));
       if(cpErr)throw cpErr;
-      const{error:panelErr}=await withRetry(()=>supabase.from('panels').update({checklist:newChecklist}).eq('id',panelId));
+      const{error:panelErr}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
       if(panelErr)throw panelErr;
     }catch{
       alert('Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Simpan Progress lagi.');
@@ -1306,10 +1307,12 @@ export function OperatorView({user,viewMode}:any){
         const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(", "):user.nama;
         checkpointEntries.push({panel_id:r.panelId,kode_komponen:r.kode,proses,checkpoint:r.pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate});
       });
+      const partial:Record<string,any>={};
+      panelRows.forEach((r:any)=>{ if(newChecklist[r.kode])partial[r.kode]=newChecklist[r.kode]; });
       try{
         const{error:cpErr}=await withRetry(()=>supabase.from("progress_checkpoint_log").insert(checkpointEntries));
         if(cpErr)throw cpErr;
-        const{error:panelErr}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",Number(panelId)));
+        const{error:panelErr}=await withRetry(()=>mergePanelChecklist(Number(panelId),partial));
         if(panelErr)throw panelErr;
         setPanelsMap((prev:any)=>({...prev,[panelId]:{...prev[panelId],checklist:newChecklist}}));
       }catch{
@@ -1350,6 +1353,7 @@ export function OperatorView({user,viewMode}:any){
       if(!relatedTasks.length)continue;
       const newChecklist={...panel.checklist};
       const processed=new Set();
+      const touchedKode=new Set<string>();
 
       relatedTasks.forEach((task:any)=>{
         (task.komponen||[]).forEach((kode:string)=>{
@@ -1369,6 +1373,7 @@ export function OperatorView({user,viewMode}:any){
                 const updatedHist=[...prevHist];
                 updatedHist[existIdx]={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
                 newChecklist[kode]={...cl,history:{...(cl.history||{}),[pr]:updatedHist}};
+                touchedKode.add(kode);
                 const idsKomp=(task.pekerja_per_komponen||{})[kode]||[];
                 const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
                 const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(", "):user.nama;
@@ -1389,6 +1394,7 @@ export function OperatorView({user,viewMode}:any){
               ...cl,
               history:{...(cl.history||{}),[pr]:[...prevHist,newEntry]}
             };
+            touchedKode.add(kode);
             newLocked[`${panelId}_${kode}_${pr}_${viewDate}_${shift}`]=true;
             processed.add(cellKey);
             count++;
@@ -1427,12 +1433,17 @@ export function OperatorView({user,viewMode}:any){
       // Retry singkat; kalau tetap gagal, checklist panel ini DILEWATI (bukan dianggap sukses) -
       // angka yang udah dipilih user tetap ada di panelsMap dari langkah pilih persentase
       // sebelumnya (updatePctManual/dkk), cuma checkpoint "terkunci"-nya yang belum tersimpan.
+      const partial:Record<string,any>={};
+      touchedKode.forEach(kode=>{ partial[kode]=newChecklist[kode]; });
       try{
-        const{error}=await withRetry(()=>supabase.from("panels").update({
-          checklist:newChecklist,
-          ...(busbarProgressUpdate?{busbar_progress:busbarProgressUpdate}:{})
-        }).eq("id",Number(panelId)));
-        if(error)throw error;
+        if(Object.keys(partial).length>0){
+          const{error}=await withRetry(()=>mergePanelChecklist(Number(panelId),partial));
+          if(error)throw error;
+        }
+        if(busbarProgressUpdate){
+          const{error}=await withRetry(()=>supabase.from("panels").update({busbar_progress:busbarProgressUpdate}).eq("id",Number(panelId)));
+          if(error)throw error;
+        }
       }catch{
         panelGagal.push(panel.nama||("Panel #"+panelId));
         continue;

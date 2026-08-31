@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry } from "../lib/koneksi";
+import { mergePanelChecklist } from "../lib/checklistHelpers";
 import { fetchAllPanels, isKomponenRelevant, hitungProgressBusbarGabungan, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA, PASANG_KOMPONEN_URUTAN_TAHAP } from "../lib/panelHelpers";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
@@ -173,7 +174,7 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     }
     const newChecklist={...freshChecklist,[kode]:newCl};
     setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
-    await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",panel.id));
+    await withRetry(()=>mergePanelChecklist(panel.id,{[kode]:newCl}));
   };
 
   // "Simpan Progress" - commit checkpoint+history (fresh-refetch checklist biar gak nimpa balik
@@ -210,7 +211,7 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
         panel_id:panel.id,kode_komponen:kode,proses:"PASANG KOMPONEN",checkpoint:combined,pekerja_nama:user.nama,tanggal:TODAY,
       }));
       if(cpErr)throw cpErr;
-      const{error:panelErr}=await withRetry(()=>supabase.from("panels").update({checklist:newChecklist}).eq("id",panel.id));
+      const{error:panelErr}=await withRetry(()=>mergePanelChecklist(panel.id,{[kode]:newChecklist[kode]}));
       if(panelErr)throw panelErr;
       setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
 
@@ -294,9 +295,9 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
         const kode=key.split("_")[1];
         const cl=panel.checklist?.[kode]||{};
         const newFoto=[...(cl.fotoPemasangan||[]),...fotoTerupload];
-        const newChecklist={...panel.checklist,[kode]:{...cl,fotoPemasangan:newFoto}};
-        await supabase.from("panels").update({checklist:newChecklist}).eq("id",panel.id);
-        setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
+        const newEntry={...cl,fotoPemasangan:newFoto};
+        await mergePanelChecklist(panel.id,{[kode]:newEntry});
+        setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:{...p.checklist,[kode]:newEntry}}:p));
       }
       // Cuma revoke+buang staged foto yang BERHASIL diupload. Yang gagal tetap di stagedFoto[key]
       // (di-filter by reference dari state TERKINI, bukan snapshot awal, biar aman kalau operator
@@ -345,9 +346,9 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
       if(fotoTerupload.length>0){
         const cl=panel.checklist?.[kode]||{};
         const newFotoLive=[...(cl.fotoPemasangan||[]),...fotoTerupload];
-        const newChecklist={...panel.checklist,[kode]:{...cl,fotoPemasangan:newFotoLive}};
-        await supabase.from("panels").update({checklist:newChecklist}).eq("id",panel.id);
-        setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
+        const newEntry={...cl,fotoPemasangan:newFotoLive};
+        await mergePanelChecklist(panel.id,{[kode]:newEntry});
+        setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:{...p.checklist,[kode]:newEntry}}:p));
 
         const{data:arsipRow}=await supabase.from("panel_seksi_archived").select("data").eq("panel_id",panel.id).eq("seksi",tugas.seksi).eq("kode",kode).maybeSingle();
         if(arsipRow){
@@ -388,9 +389,9 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     } else {
       const cl=panel.checklist?.[kode as string]||{};
       const newFoto=(cl.fotoPemasangan||[]).filter((f:any)=>f.url!==fotoUrl);
-      const newChecklist={...panel.checklist,[kode as string]:{...cl,fotoPemasangan:newFoto}};
-      await supabase.from("panels").update({checklist:newChecklist}).eq("id",panel.id);
-      setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
+      const newEntry={...cl,fotoPemasangan:newFoto};
+      await mergePanelChecklist(panel.id,{[kode as string]:newEntry});
+      setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:{...p.checklist,[kode as string]:newEntry}}:p));
     }
   };
 
