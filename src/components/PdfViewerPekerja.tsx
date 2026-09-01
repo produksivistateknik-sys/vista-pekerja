@@ -24,8 +24,20 @@ const downloadPdf=async(url:string,filename:string)=>{
 //
 // UI wrapper (judul, "‹ Kembali", Bagikan, Download) TETAP dipertahankan. Toolbar zoom
 // (-/100%/+) dan navigasi halaman custom (‹ 1/5 ›) DIHAPUS - browser sudah sediakan sendiri.
+//
+// FIX (1 Sep 2026) - PDF di R2 (photo.vistaproduksi.com) beda domain dari app
+// (operator.vistaproduksi.com) - HP (Chrome Android) ternyata malah MEN-DOWNLOAD PDF
+// cross-origin yang di-iframe-in, bukan nampilin inline (kebijakan browser mobile, dikonfirmasi
+// user coba langsung). Fix: proxy lewat rewrite Vercel (/pdf-proxy/* -> photo.vistaproduksi.com/*,
+// lihat vercel.json) biar dari sudut pandang browser PDF-nya "1 domain" sama app-nya - iframe src
+// DAN fetch() download sama-sama dialihkan ke path proxy ini, sekalian nge-bypass kebutuhan CORS
+// di R2 buat tombol Download (fetch jadi same-origin, gak perlu CORS sama sekali).
 // ─────────────────────────────────────────────────────────────────────────────
+const R2_BASE=import.meta.env.VITE_R2_PUBLIC_BASE_URL as string|undefined;
+const toProxyUrl=(u:string)=>(R2_BASE&&u.startsWith(R2_BASE))?("/pdf-proxy"+u.slice(R2_BASE.length)):u;
+
 export function PdfViewerPekerja({url,title,subtitle,onBack}:{url:string,title:string,subtitle?:string,onBack:()=>void}){
+  const proxyUrl=toProxyUrl(url);
   const[loading,setLoading]=useState(true);
   const[downloading,setDownloading]=useState(false);
   const[shareMsg,setShareMsg]=useState("");
@@ -45,7 +57,7 @@ export function PdfViewerPekerja({url,title,subtitle,onBack}:{url:string,title:s
 
   const doDownload=async()=>{
     setDownloading(true);
-    try{await downloadPdf(url,sanitizeNamaFile(title)+".pdf");}
+    try{await downloadPdf(proxyUrl,sanitizeNamaFile(title)+".pdf");}
     catch{alert("Gagal download file.");}
     setDownloading(false);
   };
@@ -94,7 +106,7 @@ export function PdfViewerPekerja({url,title,subtitle,onBack}:{url:string,title:s
             Memuat PDF...
           </div>
         )}
-        <iframe src={url} title={title} onLoad={onIframeLoad}
+        <iframe src={proxyUrl} title={title} onLoad={onIframeLoad}
           style={{width:"100%",height:"100%",border:"none"}}/>
       </div>
       <style>{`@keyframes pdfv-spin{to{transform:rotate(360deg)}}`}</style>
