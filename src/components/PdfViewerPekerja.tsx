@@ -20,8 +20,13 @@ const sanitizeNamaFile=(nama:string)=>(nama||"dokumen").replace(/[\\/:*?"<>|]/g,
 // vercel.json) buat fetch()-nya - same-origin, gak butuh CORS di R2. Progress loading dibaca
 // manual dari ReadableStream (content-length vs bytes yang sudah kebaca).
 // ─────────────────────────────────────────────────────────────────────────────
-const R2_BASE=import.meta.env.VITE_R2_PUBLIC_BASE_URL as string|undefined;
-const toProxyUrl=(u:string)=>(R2_BASE&&u.startsWith(R2_BASE))?("/pdf-proxy"+u.slice(R2_BASE.length)):u;
+// BUG FIX (1 Sep 2026) - awalnya baca dari import.meta.env.VITE_R2_PUBLIC_BASE_URL, tapi env var
+// itu TERNYATA gak ke-set di Vercel production (cuma ada di .env.local buat dev lokal) - jadi
+// toProxyUrl() diam-diam gak pernah jalan (R2_BASE selalu undefined), fetch() tetap ke domain
+// R2 asli dan kena CORS. Domain ini BUKAN rahasia (sudah publik di tiap URL file WO Digital),
+// jadi hardcode langsung - gak lagi bergantung env var yang rawan kelewat di-set.
+const R2_BASE="https://photo.vistaproduksi.com";
+const toProxyUrl=(u:string)=>u.startsWith(R2_BASE)?("/pdf-proxy"+u.slice(R2_BASE.length)):u;
 
 export function PdfViewerPekerja({url,title,subtitle,onBack}:{url:string,title:string,subtitle?:string,onBack:()=>void}){
   const proxyUrl=toProxyUrl(url);
