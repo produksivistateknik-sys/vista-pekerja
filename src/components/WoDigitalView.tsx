@@ -4,6 +4,21 @@ import { SectionCard, EmptyState, Badge } from "./ui/Primitives";
 
 const PdfViewerPekerja=lazy(()=>import("./PdfViewerPekerja").then(m=>({default:m.PdfViewerPekerja})));
 
+// FIX (1 Sep 2026) - viewer in-app (iframe remote, canvas custom, blob-URL - semua sudah dicoba)
+// TERBUKTI gagal khusus di iOS kalau app-nya dibuka lewat ikon home screen (mode "standalone").
+// Ini limitasi WebKit/iOS yang sudah lama dikenal - WebView standalone PWA gak bisa diandalkan
+// buat blob URL/download, beda dari Safari biasa. Gak bisa diperbaiki dari kode. Solusi: khusus
+// iOS, "Lihat" langsung window.open() ke Safari (URL asli, BUKAN proxy - top-level navigation
+// gak butuh CORS sama sekali, beda dari fetch()) - Safari penuh sudah pasti bisa render PDF
+// dengan baik, sudah dikonfirmasi lewat tes langsung. Android tetap in-app pakai canvas custom
+// (PdfViewerPekerja.tsx) - itu SUDAH terbukti render, cuma ada bug zoom yang sudah diperbaiki.
+const isIOS=()=>{
+  const ua=navigator.userAgent;
+  if(/iPad|iPhone|iPod/.test(ua))return true;
+  if(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1)return true;
+  return false;
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // WO DIGITAL (31 Agu 2026) - versi digital gambar teknik (construction drawing, sudah
 // ber-watermark) menggantikan distribusi kertas cetak. READ-ONLY (upload cuma dari Vista
@@ -106,7 +121,11 @@ export function WoDigitalView(){
               const panelNames=panelNamesOf(w.id);
               const rev=currentRevOf(w.id);
               return(
-                <div key={w.id} onClick={()=>rev&&setViewing({url:rev.file_url,title:w.proyek||`WO ${w.wo}`,subtitle:`WO ${w.wo}`})}
+                <div key={w.id} onClick={()=>{
+                    if(!rev)return;
+                    if(isIOS()){window.open(rev.file_url,"_blank");return;}
+                    setViewing({url:rev.file_url,title:w.proyek||`WO ${w.wo}`,subtitle:`WO ${w.wo}`});
+                  }}
                   style={{border:"1px solid #e2e8f0",borderRadius:12,padding:"16px 18px",display:"flex",alignItems:"center",gap:14,
                     cursor:rev?"pointer":"default"}}>
                   <div style={{flex:1,minWidth:0}}>
