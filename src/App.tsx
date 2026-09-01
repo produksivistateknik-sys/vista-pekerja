@@ -158,7 +158,17 @@ export default function App(){
   // SATU-SATUNYA router, tiap sub-tab lama (Review/Riwayat/Tambahan) jadi tile grid tersendiri,
   // konsisten sama pola nameplate/qc/komponen yang sudah lebih dulu di-routing langsung dari sini.
   // OperatorHome.tsx TIDAK dihapus (masih ada filenya), cuma berhenti dipakai.
-  const [selectedMenu,setSelectedMenu]=useState<string|null>(null);
+  // FIX (1 Sep 2026) - iOS standalone PWA (di-install ke home screen) sering RELOAD TOTAL
+  // halaman ini begitu user balik dari Safari (window.open buat lihat PDF WO Digital, misalnya)
+  // - manajemen memori background OS, bukan sesuatu yang bisa dicegah dari kode. Tanpa
+  // persist, selectedMenu reset ke null (Beranda) tiap kali itu kejadian, padahal user cuma
+  // mau balik ke menu yang lagi dibuka. Simpan ke localStorage, restore pas mount - divalidasi
+  // ulang begitu menuTiles ke-hitung (efek di bawah) biar gak nyangkut di tile yang gak valid
+  // buat divisi user ini. Dibersihkan pas logout (lihat doLogout) biar user lain di device yang
+  // sama gak mulai di tile milik user sebelumnya.
+  const [selectedMenu,setSelectedMenu]=useState<string|null>(()=>{
+    try{return localStorage.getItem("vista_pekerja_selected_menu")||null;}catch{return null;}
+  });
   const bisaReviewPotong=user?.divisi==="mekanik"&&user?.sub_bagian==="Potong";
   const bisaReviewPainting=user?.divisi==="painting";
   const prosesRiwayat:string[]=cfg?.subBagianProses?.[user?.sub_bagian]||cfg?.proses||[];
@@ -211,6 +221,22 @@ export default function App(){
     ];
   })();
   const selectedTile=menuTiles.find(t=>t.key===selectedMenu);
+
+  // Validasi selectedMenu yang di-restore dari localStorage (lihat komentar deklarasi state di
+  // atas) - baru bisa dicek setelah menuTiles ke-hitung (butuh `user`). Kalau ternyata gak valid
+  // buat divisi user ini (mis. tile lama dari sesi user lain), balik ke Beranda alih-alih
+  // nyangkut di halaman kosong.
+  useEffect(()=>{
+    if(user&&selectedMenu&&!menuTiles.some(t=>t.key===selectedMenu))setSelectedMenu(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[user?.id]);
+
+  useEffect(()=>{
+    try{
+      if(selectedMenu)localStorage.setItem("vista_pekerja_selected_menu",selectedMenu);
+      else localStorage.removeItem("vista_pekerja_selected_menu");
+    }catch{/* localStorage gak tersedia (private mode dll) - abaikan, gak fatal */}
+  },[selectedMenu]);
 
   // BOTTOM NAV (29 Agu 2026) - Beranda/Proses Aktif/Jadwal Pengiriman/Akun, TERPISAH dari grid
   // menu di atas (selectedMenu). Pola in-page state switch (konsisten sama grid menu, bukan
@@ -310,7 +336,7 @@ export default function App(){
     setPage("app");
   }}/>;
 
-  const doLogout=()=>{if(window.confirm("Keluar dari aplikasi?")){setUser(null);try{localStorage.removeItem("vista_pekerja_session");}catch{}setPage("landing");}};
+  const doLogout=()=>{if(window.confirm("Keluar dari aplikasi?")){setUser(null);try{localStorage.removeItem("vista_pekerja_session");localStorage.removeItem("vista_pekerja_selected_menu");}catch{}setPage("landing");}};
 
   // Restyle header profil (29 Agu 2026) - operator_users TIDAK punya kolom foto (dicek skema),
   // jadi avatar pakai inisial nama, bukan placeholder foto. Warna avatar ikut cfg.color/bg per
