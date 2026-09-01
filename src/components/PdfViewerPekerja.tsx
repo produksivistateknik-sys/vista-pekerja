@@ -18,14 +18,16 @@ const downloadPdf=async(url:string,filename:string)=>{
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PDF VIEWER (31 Agu 2026) - viewer in-app buat WO Digital, ganti download langsung. Sama
-// pola kayak vista-teknik/src/components/PdfViewer.tsx (render <canvas> via pdfjs-dist,
-// bukan <iframe>/<embed> - gak reliable semua device), watermark logo Vista otomatis
-// kelihatan (sudah nempel di file-nya). Bahasa visual niru FotoZoomViewerPekerja.tsx
-// (dark fullscreen modal) + tambahan mobile: lock scroll body, tombol close pakai
-// safe-area-inset (notch/status bar), sama kayak versi foto.
+// PDF VIEWER (31 Agu 2026, redesign 1 Sep 2026) - halaman FULL buat WO Digital (bukan modal
+// overlay lagi) - dipanggil dari WoDigitalView.tsx yang swap seluruh tampilan list jadi viewer
+// ini (pola sama kayak NameplateView.tsx: state lokal + early-return, tombol "‹ Kembali" teks
+// biasa, TANPA position:fixed/lock-scroll-body). Render tiap halaman ke <canvas> lewat
+// pdfjs-dist (bukan <iframe>/<embed> - gak reliable semua device/Android WebView). Watermark
+// logo Vista otomatis ikut kelihatan (sudah bagian file-nya sendiri).
 // ─────────────────────────────────────────────────────────────────────────────
-export function PdfViewerPekerja({url,title,subtitle,onClose}:{url:string,title:string,subtitle?:string,onClose:()=>void}){
+const ZOOM_MIN=0.5,ZOOM_MAX=3,ZOOM_STEP=0.25;
+
+export function PdfViewerPekerja({url,title,subtitle,onBack}:{url:string,title:string,subtitle?:string,onBack:()=>void}){
   const canvasRef=useRef<HTMLCanvasElement|null>(null);
   const containerRef=useRef<HTMLDivElement|null>(null);
   const pdfDocRef=useRef<any>(null);
@@ -37,17 +39,13 @@ export function PdfViewerPekerja({url,title,subtitle,onClose}:{url:string,title:
   const[error,setError]=useState<string|null>(null);
   const[resizeTick,setResizeTick]=useState(0);
   const[downloading,setDownloading]=useState(false);
-
-  useEffect(()=>{
-    const prevOverflow=document.body.style.overflow;
-    document.body.style.overflow="hidden";
-    return()=>{document.body.style.overflow=prevOverflow;};
-  },[]);
+  const[zoom,setZoom]=useState(1);
+  const[shareMsg,setShareMsg]=useState("");
 
   useEffect(()=>{
     let cancelled=false;
     firstPaintDoneRef.current=false;
-    setLoading(true);setError(null);setPageIndex(0);setNumPages(0);
+    setLoading(true);setError(null);setPageIndex(0);setNumPages(0);setZoom(1);
     pdfjsLib.getDocument({url}).promise.then((pdf:any)=>{
       if(cancelled)return;
       pdfDocRef.current=pdf;
@@ -70,7 +68,7 @@ export function PdfViewerPekerja({url,title,subtitle,onClose}:{url:string,title:
   // Render 2 tahap (31 Agu 2026, fix "loading lama") - sama pola kayak
   // vista-teknik/src/components/PdfViewer.tsx: render CEPAT resolusi rendah dulu (langsung
   // tampil, nutup spinner), baru upgrade ke kualitas penuh di background. Ukuran CSS canvas
-  // TETAP sama di kedua tahap biar gak "lompat" pas upgrade.
+  // TETAP sama di kedua tahap biar gak "lompat" pas upgrade. `zoom` ikut jadi dependency.
   useEffect(()=>{
     if(!pdfDocRef.current||!canvasRef.current||numPages===0)return;
     let cancelled=false;
@@ -84,7 +82,8 @@ export function PdfViewerPekerja({url,title,subtitle,onClose}:{url:string,title:
         if(!ctx)return;
         const containerWidth=containerRef.current?.clientWidth||360;
         const baseViewport=page.getViewport({scale:1});
-        const cssScale=Math.min((containerWidth-24)/baseViewport.width,2);
+        const fitScale=Math.min((containerWidth-24)/baseViewport.width,2);
+        const cssScale=fitScale*zoom;
         canvas.style.width=(baseViewport.width*cssScale)+"px";
         canvas.style.height=(baseViewport.height*cssScale)+"px";
 
@@ -104,10 +103,10 @@ export function PdfViewerPekerja({url,title,subtitle,onClose}:{url:string,title:
 
         const dpr=Math.min(window.devicePixelRatio||1,2);
         await paint(cssScale*dpr);
-      }catch{/* render dibatalkan (ganti halaman/ukuran cepat) - abaikan */}
+      }catch{/* render dibatalkan (ganti halaman/zoom/ukuran cepat) - abaikan */}
     })();
     return()=>{cancelled=true;};
-  },[pageIndex,numPages,resizeTick]);
+  },[pageIndex,numPages,resizeTick,zoom]);
 
   const doDownload=async()=>{
     setDownloading(true);
@@ -116,57 +115,81 @@ export function PdfViewerPekerja({url,title,subtitle,onClose}:{url:string,title:
     setDownloading(false);
   };
 
+  const doShare=async()=>{
+    if((navigator as any).share){
+      try{await (navigator as any).share({title,url});}catch{/* dibatalkan user - abaikan */}
+      return;
+    }
+    try{
+      await navigator.clipboard.writeText(url);
+      setShareMsg("Link disalin!");
+      setTimeout(()=>setShareMsg(""),1800);
+    }catch{alert("Gagal membagikan link.");}
+  };
+
+  const iconBtnStyle={background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:8,
+    width:34,height:34,color:"#475569",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0} as const;
+
   return(
-    <div onClick={onClose} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.92)",zIndex:9999,display:"flex",flexDirection:"column"}}>
-      <div onClick={e=>e.stopPropagation()} style={{padding:"14px 66px 14px 16px",display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,
-        background:"linear-gradient(rgba(0,0,0,0.55),transparent)",flexShrink:0}}>
-        <div style={{minWidth:0}}>
-          <div style={{color:"#fff",fontWeight:700,fontSize:13,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</div>
-          <div style={{color:"rgba(255,255,255,.6)",fontSize:10.5,marginTop:2}}>
-            {subtitle}{subtitle&&numPages>0?" · ":""}{numPages>0?`Halaman ${pageIndex+1} / ${numPages}`:""}
-          </div>
-        </div>
-        <button onClick={doDownload} disabled={downloading} style={{background:"rgba(255,255,255,.12)",border:"none",borderRadius:8,
-          padding:"7px 12px",color:"#fff",fontSize:11.5,fontWeight:700,cursor:downloading?"default":"pointer",display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
-          <i className="ti ti-download" style={{fontSize:14}}/>{downloading?"...":"Download"}
-        </button>
+    <div style={{padding:"12px 12px 20px"}}>
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",
+        color:"#1d4ed8",fontWeight:700,fontSize:13,cursor:"pointer",padding:0,marginBottom:10}}>
+        <i className="ti ti-arrow-left" style={{fontSize:15}}/> Kembali
+      </button>
+      <div style={{fontWeight:800,fontSize:14,color:"#0f172a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</div>
+      <div style={{fontSize:11,color:"#94a3b8",marginTop:1,marginBottom:10}}>
+        {subtitle}{subtitle&&numPages>0?" · ":""}{numPages>0?`Halaman ${pageIndex+1} / ${numPages}`:""}
       </div>
 
-      <button onClick={onClose} style={{position:"fixed",top:"calc(10px + env(safe-area-inset-top,0px))",right:"calc(10px + env(safe-area-inset-right,0px))",
-        width:44,height:44,borderRadius:"50%",background:"rgba(0,0,0,.55)",border:"none",color:"#fff",fontSize:18,cursor:"pointer",
-        display:"flex",alignItems:"center",justifyContent:"center",zIndex:3}}>
-        <i className="ti ti-x"/>
-      </button>
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10}}>
+        <div style={{display:"flex",alignItems:"center",gap:4}}>
+          <button onClick={()=>setZoom(z=>Math.max(ZOOM_MIN,+(z-ZOOM_STEP).toFixed(2)))} disabled={zoom<=ZOOM_MIN} style={iconBtnStyle}>−</button>
+          <span style={{fontSize:11,color:"#64748b",fontWeight:700,width:36,textAlign:"center"}}>{Math.round(zoom*100)}%</span>
+          <button onClick={()=>setZoom(z=>Math.min(ZOOM_MAX,+(z+ZOOM_STEP).toFixed(2)))} disabled={zoom>=ZOOM_MAX} style={iconBtnStyle}>+</button>
+        </div>
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{position:"relative"}}>
+            <button onClick={doShare} style={iconBtnStyle}><i className="ti ti-share"/></button>
+            {shareMsg&&<div style={{position:"absolute",top:"calc(100% + 6px)",right:0,background:"#0f172a",color:"#fff",fontSize:10.5,fontWeight:600,
+              padding:"5px 9px",borderRadius:6,whiteSpace:"nowrap",zIndex:3}}>{shareMsg}</div>}
+          </div>
+          <button onClick={doDownload} disabled={downloading} style={{background:"#1d4ed8",border:"none",borderRadius:8,
+            padding:"0 14px",height:34,color:"#fff",fontSize:12,fontWeight:700,cursor:downloading?"default":"pointer",display:"flex",alignItems:"center",gap:6}}>
+            <i className="ti ti-download" style={{fontSize:14}}/>{downloading?"...":"Download"}
+          </button>
+        </div>
+      </div>
 
-      <div ref={containerRef} onClick={e=>e.stopPropagation()} style={{flex:1,overflow:"auto",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:12,position:"relative"}}>
+      <div ref={containerRef} style={{background:"#f1f5f9",borderRadius:12,border:"1px solid #e2e8f0",minHeight:"55vh",
+        overflow:"auto",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:12,position:"relative"}}>
         {loading&&(
-          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",color:"rgba(255,255,255,.7)",textAlign:"center"}}>
+          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",color:"#94a3b8",textAlign:"center"}}>
             <i className="ti ti-loader-2" style={{fontSize:30,display:"block",marginBottom:8,animation:"pdfv-spin 1s linear infinite"}}/>
             Memuat PDF...
           </div>
         )}
         {error&&(
-          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",color:"rgba(255,255,255,.8)",textAlign:"center",maxWidth:280}}>
-            <i className="ti ti-file-alert" style={{fontSize:30,display:"block",marginBottom:8,color:"#f87171"}}/>
+          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",color:"#64748b",textAlign:"center",maxWidth:260}}>
+            <i className="ti ti-file-alert" style={{fontSize:30,display:"block",marginBottom:8,color:"#dc2626"}}/>
             {error}
             <div style={{marginTop:12}}>
-              <a href={url} target="_blank" rel="noreferrer" style={{color:"#60a5fa",fontSize:12,fontWeight:700}}>Buka di tab baru →</a>
+              <a href={url} target="_blank" rel="noreferrer" style={{color:"#2563eb",fontSize:12,fontWeight:700}}>Buka di tab baru →</a>
             </div>
           </div>
         )}
+        <canvas ref={canvasRef} style={{display:(!loading&&!error)?"block":"none",boxShadow:"0 4px 20px rgba(15,23,42,.15)",background:"#fff",maxWidth:"100%",flexShrink:0}}/>
         {!loading&&!error&&numPages>1&&pageIndex>0&&(
-          <button onClick={()=>setPageIndex(p=>p-1)} style={{position:"fixed",left:8,top:"50%",transform:"translateY(-50%)",
-            width:40,height:40,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:"#fff",fontSize:18,cursor:"pointer",zIndex:2}}>
+          <button onClick={()=>setPageIndex(p=>p-1)} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",
+            width:38,height:38,borderRadius:"50%",background:"rgba(15,23,42,.75)",border:"none",color:"#fff",fontSize:17,cursor:"pointer",zIndex:2}}>
             <i className="ti ti-chevron-left"/>
           </button>
         )}
         {!loading&&!error&&numPages>1&&pageIndex<numPages-1&&(
-          <button onClick={()=>setPageIndex(p=>p+1)} style={{position:"fixed",right:8,top:"50%",transform:"translateY(-50%)",
-            width:40,height:40,borderRadius:"50%",background:"rgba(0,0,0,.5)",border:"none",color:"#fff",fontSize:18,cursor:"pointer",zIndex:2}}>
+          <button onClick={()=>setPageIndex(p=>p+1)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",
+            width:38,height:38,borderRadius:"50%",background:"rgba(15,23,42,.75)",border:"none",color:"#fff",fontSize:17,cursor:"pointer",zIndex:2}}>
             <i className="ti ti-chevron-right"/>
           </button>
         )}
-        <canvas ref={canvasRef} style={{display:(!loading&&!error)?"block":"none",boxShadow:"0 8px 32px rgba(0,0,0,.5)",background:"#fff",maxWidth:"100%"}}/>
       </div>
       <style>{`@keyframes pdfv-spin{to{transform:rotate(360deg)}}`}</style>
     </div>
