@@ -1142,6 +1142,19 @@ export function OperatorView({user,viewMode}:any){
     urutan.forEach((t:string)=>{fresh[t]=cl?.busbarTahap?.[t]||{progress:0,sudahDisimpan100:false};});
     return fresh;
   };
+  // AUDIT (1 Sep 2026) - pesan error simpan BUSBAR dulu SELALU "koneksi lambat/putus" apapun
+  // penyebabnya, padahal Network tab pernah nunjukkin 400 Bad Request (server nolak data,
+  // BUKAN network) - Postgrest/Postgres error kirim balik {code,message,details,hint} yang
+  // BEDA dari error timeout polos (Error biasa tanpa .code) yang dilempar withTimeout(). Log
+  // detail lengkapnya ke console + bedakan pesan biar gak salah diagnosis lagi ke depannya.
+  const alertGagalSimpanBusbar=(err:any,label:string)=>{
+    console.error(`[BUSBAR ${label}] gagal simpan:`,err);
+    if(err&&typeof err==='object'&&'code'in err){
+      alert(`Gagal simpan progress - server menolak data (kode ${err.code}): ${err.message||'tidak ada pesan'}. Ini BUKAN masalah koneksi, laporkan ke admin beserta kode error ini.`);
+    } else {
+      alert("Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Simpan Progress lagi.");
+    }
+  };
   // Update progress tahap AKTIF secara live (tiap klik PCT_STEPS) - langsung ke-refleksi ke
   // progress.BUSBAR gabungan juga, tapi belum bikin checkpoint log / pindah tahap (itu baru
   // kejadian pas "Simpan Progress" diklik).
@@ -1188,8 +1201,8 @@ export function OperatorView({user,viewMode}:any){
           panel_id:panelId,kode_komponen:kode,proses:"BUSBAR",checkpoint:combined,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
         }));
       }
-    }catch{
-      alert("Gagal simpan progress ke server - koneksi lambat. Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.");
+    }catch(err){
+      alertGagalSimpanBusbar(err,'updatePctManualBusbarTahap');
     }
   };
   const canSimpanBusbarTahap=(task:any,panelId:number,kode:string,tahap:string):boolean=>{
@@ -1252,8 +1265,8 @@ export function OperatorView({user,viewMode}:any){
       if(cpErr)throw cpErr;
       const{error:panelErr}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
       if(panelErr)throw panelErr;
-    }catch{
-      alert('Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Simpan Progress lagi.');
+    }catch(err){
+      alertGagalSimpanBusbar(err,'simpanProgressTahapBusbar');
       return false;
     }
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
