@@ -216,6 +216,14 @@ export function OperatorView({user,viewMode}:any){
   const [tempSelectedPanelJenis,setTempSelectedPanelJenis]=useState<number[]>([]);
   // Flash "Tersimpan" sesaat di tombol Simpan Progress buat proses yg blm ada feedback visual saat disimpan <100%.
   const [savedFlash,setSavedFlash]=useState<Record<string,boolean>>({});
+  // Guard double-submit tombol "Simpan {tahap}" BUSBAR (audit "Gagal Simpan Progress", 1 Sep 2026) -
+  // dulu tombol ini gak pernah di-disable selama request jalan, beda dgn tombol Mulai/Selesai yang
+  // sudah pakai timerLoading. Karena simpanProgressTahapBusbar bisa makan waktu lama (2 request
+  // berurutan, masing2 sampai 3x retry) dan pesan errornya sendiri nyuruh "tekan lagi", operator bisa
+  // tap dobel pas request pertama masih jalan - dua panggilan konkuren insert checkpoint log dobel +
+  // rebutan lock di row panels yang sama, bikin request yg sebenarnya cuma agak lambat kelewat timeout
+  // dan dilaporkan sebagai "koneksi lambat/putus" padahal akarnya race condition di klien.
+  const [savingTahap,setSavingTahap]=useState<Record<string,boolean>>({});
   const PROSES_FLASH_TERSIMPAN=["FINISHING","RENDAM","PAINTING","WIRING CONTROL","WIRING POWER","RAKIT","PASANG KOMPONEN","BUSBAR"];
 
   // Auto-scroll + highlight kartu accordion begitu popup Konfirmasi ditutup, biar operator
@@ -1186,6 +1194,8 @@ export function OperatorView({user,viewMode}:any){
   // Simpan Progress SATU tahap tertentu (dipilih eksplisit lewat parameter tahap) - gak ada
   // lagi auto-pindah/estafet, tiap tahap berdiri sendiri dan bisa disimpan kapan saja.
   const simpanProgressTahapBusbar=async(panelId:number,kode:string,tahap:string):Promise<boolean>=>{
+    const savingKey=`${panelId}_${kode}_BUSBAR_${tahap}`;
+    if(savingTahap[savingKey])return false; // guard double-submit - request sebelumnya masih jalan
     const panel=panelsMap[panelId];
     if(!panel)return false;
     const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses==="BUSBAR"&&(t.komponen||[]).includes(kode));
@@ -1201,6 +1211,8 @@ export function OperatorView({user,viewMode}:any){
     const pctTahap=busbarTahapState[tahap]?.progress||0;
     if(pctTahap===0){alert('Progress tahap ini masih 0%, belum ada yang bisa disimpan.');return false;}
 
+    setSavingTahap(prev=>({...prev,[savingKey]:true}));
+    try{
     const newBusbarTahap={
       ...busbarTahapState,
       [tahap]:{...busbarTahapState[tahap],progress:pctTahap,sudahDisimpan100:pctTahap>=100},
@@ -1237,6 +1249,9 @@ export function OperatorView({user,viewMode}:any){
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     await autoStopTimerJikaSelesai(panelId,kode,"BUSBAR",pctTahap,idsKomp,tahap);
     return true;
+    }finally{
+      setSavingTahap(prev=>({...prev,[savingKey]:false}));
+    }
   };
 
   // PASANG KOMPONEN tahap (Box Control/Pintu: getPasangKomponenTahapState/
@@ -2606,7 +2621,7 @@ export function OperatorView({user,viewMode}:any){
                                   );
                                 })}
                               </div>
-                              <button disabled={pctTahap===0} onClick={async()=>{
+                              <button disabled={pctTahap===0||savingTahap[flashKeyTahap]} onClick={async()=>{
                                   const berhasil=await simpanProgressTahapBusbar(r.panelId,r.kode,t);
                                   if(berhasil&&pctTahap<100){
                                     setSavedFlash(prev=>({...prev,[flashKeyTahap]:true}));
@@ -2614,9 +2629,9 @@ export function OperatorView({user,viewMode}:any){
                                   }
                                 }}
                                 style={{fontSize:11,fontWeight:700,border:"none",borderRadius:8,padding:"9px 10px",minHeight:38,
-                                  cursor:pctTahap===0?"not-allowed":"pointer",
+                                  cursor:(pctTahap===0||savingTahap[flashKeyTahap])?"not-allowed":"pointer",
                                   background:flashingTahap?"#16a34a":"#eff6ff",color:flashingTahap?"#fff":"#1d4ed8"}}>
-                                {flashingTahap?"✅ Tersimpan":`💾 Simpan ${BUSBAR_TAHAP_LABEL[t]}`}
+                                {savingTahap[flashKeyTahap]?"⏳ Menyimpan...":flashingTahap?"✅ Tersimpan":`💾 Simpan ${BUSBAR_TAHAP_LABEL[t]}`}
                               </button>
                             </div>
                           );
