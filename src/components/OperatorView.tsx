@@ -1151,7 +1151,13 @@ export function OperatorView({user,viewMode}:any){
     const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{}};
     const urutan=getUrutanTahapBusbar(kode);
     const busbarTahapState=getBusbarTahapState(cl,kode);
-    const newBusbarTahap={...busbarTahapState,[tahap]:{...busbarTahapState[tahap],progress:pct}};
+    // FIX (audit "Simpan Fabrikasi diam tanpa reaksi", 1 Sep 2026) - dulu cuma progress yang
+    // di-overwrite di sini, sudahDisimpan100 dibiarkan nempel dari state lama. Kalau operator
+    // gak sengaja nge-tap step pertama pas udah 100% (progress jatuh ke 0 lewat toggle-turun di
+    // handler klik PCT_STEPS), badge checklist tetap ijo (sudahDisimpan100 masih true) padahal
+    // tombol Simpan jadi disabled (pctTahap===0) - keliatan kayak tombol "mati" tanpa reaksi.
+    // Sekarang sudahDisimpan100 ikut disinkronkan tiap progress berubah, bukan cuma pas Simpan.
+    const newBusbarTahap={...busbarTahapState,[tahap]:{...busbarTahapState[tahap],progress:pct,sudahDisimpan100:pct>=100}};
     const combined=hitungProgressBusbarGabungan(newBusbarTahap,urutan);
     const newChecklist={
       ...panel.checklist,
@@ -1197,11 +1203,15 @@ export function OperatorView({user,viewMode}:any){
     const savingKey=`${panelId}_${kode}_BUSBAR_${tahap}`;
     if(savingTahap[savingKey])return false; // guard double-submit - request sebelumnya masih jalan
     const panel=panelsMap[panelId];
-    if(!panel)return false;
+    // AUDIT (1 Sep 2026): 3 guard di bawah ini dulu return false TANPA jejak apa pun (gak ada
+    // alert, gak ada console) - kalau kena, tombol Simpan keliatan "diam aja" tanpa reaksi sama
+    // sekali, bikin bug ini nyaris mustahil didiagnosis dari laporan operator. Sekarang minimal
+    // ke-log ke console biar ketauan guard mana yang kena kalau terulang.
+    if(!panel){console.warn('[simpanProgressTahapBusbar] panel tidak ditemukan di panelsMap',{panelId,kode,tahap});return false;}
     const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses==="BUSBAR"&&(t.komponen||[]).includes(kode));
-    if(!task)return false;
+    if(!task){console.warn('[simpanProgressTahapBusbar] task BUSBAR hari ini tidak ditemukan di todayTasks',{panelId,kode,tahap});return false;}
     const cl=panel.checklist?.[kode];
-    if(!cl)return false;
+    if(!cl){console.warn('[simpanProgressTahapBusbar] checklist komponen tidak ditemukan',{panelId,kode,tahap});return false;}
     const urutan=getUrutanTahapBusbar(kode);
     const busbarTahapState=getBusbarTahapState(cl,kode);
     if(!canSimpanBusbarTahap(task,panelId,kode,tahap)){
