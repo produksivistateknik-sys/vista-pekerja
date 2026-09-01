@@ -2646,7 +2646,13 @@ export function OperatorView({user,viewMode}:any){
                               </div>
                               <button disabled={pctTahap===0||savingTahap[flashKeyTahap]} onClick={async()=>{
                                   const berhasil=await simpanProgressTahapBusbar(r.panelId,r.kode,t);
-                                  if(berhasil&&pctTahap<100){
+                                  // FIX (1 Sep 2026) - dulu flash "Tersimpan" cuma muncul kalau pctTahap<100,
+                                  // asumsinya di 100% badge checklist hijau di label section udah cukup jadi
+                                  // feedback. Tapi itu gak ngasih tau HASIL KLIK spesifik - begitu request
+                                  // (yang seringkali cepet banget) selesai, tombol balik ke teks semula tanpa
+                                  // konfirmasi apa pun, keliatan kayak "gak ada reaksi sama sekali" padahal
+                                  // sebenarnya berhasil. Sekarang flash tetap muncul di 100% juga.
+                                  if(berhasil){
                                     setSavedFlash(prev=>({...prev,[flashKeyTahap]:true}));
                                     setTimeout(()=>setSavedFlash(prev=>({...prev,[flashKeyTahap]:false})),1500);
                                   }
