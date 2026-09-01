@@ -1,5 +1,5 @@
 import "../lib/iteratorPolyfill";
-import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent } from "react";
+import { useEffect, useRef, useState, type TouchEvent as ReactTouchEvent, type MutableRefObject } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 // @ts-ignore - Vite `?url` import, sama pola kayak src/lib/ocrHelpers.ts
 import pdfjsWorkerUrl from "pdfjs-dist/build/pdf.worker.mjs?url";
@@ -18,30 +18,143 @@ const downloadPdf=async(url:string,filename:string)=>{
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
-// PDF VIEWER (1 Sep 2026) - BALIK ke render custom per-halaman ke <canvas> via pdfjs-dist
-// (BUKAN <iframe> ke native PDF viewer browser lagi). Sempat dicoba native embed, tapi
-// dikonfirmasi user coba langsung di HP: Chrome Android TIDAK render PDF yang di-iframe-in
-// secara inline - malah maksa DOWNLOAD (beda sama desktop Chrome yang baca langsung, dan beda
-// juga sama buka link PDF langsung di tab tanpa iframe). Fix "1 domain" (proxy Vercel) sempat
-// dicoba tapi gak ngaruh - ini murni keterbatasan Chrome Android buat PDF ter-iframe, bukan
-// soal CORS/origin. Vista Teknik (dipakai di laptop/desktop) TETAP pakai <iframe> native (jalan
-// normal di sana) - viewer custom ini KHUSUS vista-pekerja.
+// PDF VIEWER (1 Sep 2026, per-platform 1 Sep 2026) - dua jalur render beda per OS:
+// - Android/lainnya: render custom per-halaman ke <canvas> via pdfjs-dist. Sempat dicoba
+//   <iframe> native, tapi dikonfirmasi user coba langsung: Chrome Android TIDAK render PDF
+//   ter-iframe secara inline - malah maksa DOWNLOAD. Fix proxy "1 domain" gak ngaruh (bukan
+//   soal CORS/origin, murni keterbatasan Chrome Android buat PDF ter-iframe).
+// - iOS (iPhone/iPad): pakai <iframe> native lagi. Beda dari Android, Safari iOS UMUMNYA render
+//   PDF ter-iframe dengan baik - dan render custom (canvas/pdfjs-dist) dilaporkan lambat/macet
+//   di iPhone (>15 detik, kadang gak muncul-muncul sama sekali bahkan di dokumen yang sudah
+//   pernah dibuka/ke-cache). Jadi Safari-nya sendiri yang dipakai buat baca PDF, bukan render
+//   custom - lebih cepat & reliable.
+//
+// Vista Teknik (dipakai di laptop/desktop) TETAP pakai <iframe> native aja (jalan normal di
+// sana, gak perlu percabangan platform).
 //
 // Tetap pakai path proxy /pdf-proxy/... (rewrite Vercel ke photo.vistaproduksi.com, lihat
-// vercel.json) buat fetch() pdfjs-dist DAN tombol Download - jadi same-origin, gak butuh CORS
-// di R2 sama sekali (gak perlu nunggu R2 CORS policy dibenerin manual di Cloudflare Dashboard).
-//
-// Render 2 tahap (resolusi rendah dulu biar langsung muncul, baru upgrade kualitas penuh di
-// background) + pinch-zoom manual (touch 2 jari, sama teknik kayak FotoZoomViewerPekerja.tsx -
-// browser gak bisa native zoom karena user-scalable=no di index.html) + tombol zoom +/- sebagai
-// fallback. UI wrapper (Kembali, judul, Bagikan, Download) tetap sama.
+// vercel.json) buat SEMUA jalur (iframe src, fetch() pdfjs-dist, fetch() Download) - same-origin,
+// gak butuh CORS di R2 sama sekali.
 // ─────────────────────────────────────────────────────────────────────────────
-const ZOOM_MIN=0.5,ZOOM_MAX=3,ZOOM_STEP=0.25;
 const R2_BASE=import.meta.env.VITE_R2_PUBLIC_BASE_URL as string|undefined;
 const toProxyUrl=(u:string)=>(R2_BASE&&u.startsWith(R2_BASE))?("/pdf-proxy"+u.slice(R2_BASE.length)):u;
 
+const isIOS=()=>{
+  const ua=navigator.userAgent;
+  if(/iPad|iPhone|iPod/.test(ua))return true;
+  // iPadOS 13+ ngaku "Macintosh" di UA tapi punya multi-touch (Mac beneran gak punya).
+  if(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1)return true;
+  return false;
+};
+
 export function PdfViewerPekerja({url,title,subtitle,onBack}:{url:string,title:string,subtitle?:string,onBack:()=>void}){
   const proxyUrl=toProxyUrl(url);
+  const[useIframe]=useState(()=>isIOS());
+  const[downloading,setDownloading]=useState(false);
+  const[shareMsg,setShareMsg]=useState("");
+  // Cuma dipakai jalur canvas (Android) - halaman/zoom native gak relevan buat iframe (Safari
+  // sediakan sendiri navigasi & zoom-nya).
+  const[pageInfo,setPageInfo]=useState<{index:number,total:number}>({index:0,total:0});
+  const[zoom,setZoom]=useState(1);
+  const zoomApiRef=useRef<{zoomIn:()=>void,zoomOut:()=>void}|null>(null);
+
+  const doDownload=async()=>{
+    setDownloading(true);
+    try{await downloadPdf(proxyUrl,sanitizeNamaFile(title)+".pdf");}
+    catch{alert("Gagal download file.");}
+    setDownloading(false);
+  };
+
+  const doShare=async()=>{
+    if((navigator as any).share){
+      try{await (navigator as any).share({title,url});}catch{/* dibatalkan user - abaikan */}
+      return;
+    }
+    try{
+      await navigator.clipboard.writeText(url);
+      setShareMsg("Link disalin!");
+      setTimeout(()=>setShareMsg(""),1800);
+    }catch{alert("Gagal membagikan link.");}
+  };
+
+  const iconBtnStyle={background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:8,
+    width:34,height:34,color:"#475569",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0} as const;
+
+  return(
+    <div style={{padding:"12px 12px 20px"}}>
+      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",
+        color:"#1d4ed8",fontWeight:700,fontSize:13,cursor:"pointer",padding:0,marginBottom:10}}>
+        <i className="ti ti-arrow-left" style={{fontSize:15}}/> Kembali
+      </button>
+      <div style={{fontWeight:800,fontSize:14,color:"#0f172a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</div>
+      <div style={{fontSize:11,color:"#94a3b8",marginTop:1,marginBottom:10}}>
+        {subtitle}{subtitle&&!useIframe&&pageInfo.total>0?" · ":""}{!useIframe&&pageInfo.total>0?`Halaman ${pageInfo.index+1} / ${pageInfo.total}`:""}
+      </div>
+
+      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10}}>
+        {useIframe?<div/>:(
+          <div style={{display:"flex",alignItems:"center",gap:4}}>
+            <button onClick={()=>zoomApiRef.current?.zoomOut()} disabled={zoom<=0.5} style={iconBtnStyle}>−</button>
+            <span style={{fontSize:11,color:"#64748b",fontWeight:700,width:36,textAlign:"center"}}>{Math.round(zoom*100)}%</span>
+            <button onClick={()=>zoomApiRef.current?.zoomIn()} disabled={zoom>=3} style={iconBtnStyle}>+</button>
+          </div>
+        )}
+        <div style={{display:"flex",alignItems:"center",gap:8}}>
+          <div style={{position:"relative"}}>
+            <button onClick={doShare} style={iconBtnStyle}><i className="ti ti-share"/></button>
+            {shareMsg&&<div style={{position:"absolute",top:"calc(100% + 6px)",right:0,background:"#0f172a",color:"#fff",fontSize:10.5,fontWeight:600,
+              padding:"5px 9px",borderRadius:6,whiteSpace:"nowrap",zIndex:3}}>{shareMsg}</div>}
+          </div>
+          <button onClick={doDownload} disabled={downloading} style={{background:"#1d4ed8",border:"none",borderRadius:8,
+            padding:"0 14px",height:34,color:"#fff",fontSize:12,fontWeight:700,cursor:downloading?"default":"pointer",display:"flex",alignItems:"center",gap:6}}>
+            <i className="ti ti-download" style={{fontSize:14}}/>{downloading?"...":"Download"}
+          </button>
+        </div>
+      </div>
+
+      {useIframe?
+        <IframePdf url={proxyUrl} title={title}/> :
+        <CanvasPdf url={proxyUrl} originalUrl={url} zoom={zoom} setZoom={setZoom} onPageInfo={setPageInfo} zoomApiRef={zoomApiRef}/>
+      }
+    </div>
+  );
+}
+
+// ── Jalur iOS: <iframe> native ──────────────────────────────────────────────
+function IframePdf({url,title}:{url:string,title:string}){
+  const[loading,setLoading]=useState(true);
+  const timeoutRef=useRef<ReturnType<typeof setTimeout>|null>(null);
+
+  useEffect(()=>{
+    setLoading(true);
+    if(timeoutRef.current)clearTimeout(timeoutRef.current);
+    timeoutRef.current=setTimeout(()=>{setLoading(false);},15000);
+    return()=>{if(timeoutRef.current)clearTimeout(timeoutRef.current);};
+  },[url]);
+
+  return(
+    <div style={{background:"#f1f5f9",borderRadius:12,border:"1px solid #e2e8f0",height:"70vh",overflow:"hidden",position:"relative"}}>
+      {loading&&(
+        <div style={{position:"absolute",inset:0,display:"flex",alignItems:"center",justifyContent:"center",flexDirection:"column",
+          color:"#94a3b8",background:"#f1f5f9",zIndex:1}}>
+          <i className="ti ti-loader-2" style={{fontSize:30,marginBottom:8,animation:"pdfv-spin 1s linear infinite"}}/>
+          Memuat PDF...
+        </div>
+      )}
+      <iframe src={url} title={title} onLoad={()=>{if(timeoutRef.current)clearTimeout(timeoutRef.current);setLoading(false);}}
+        style={{width:"100%",height:"100%",border:"none"}}/>
+      <style>{`@keyframes pdfv-spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  );
+}
+
+// ── Jalur Android: <canvas> custom via pdfjs-dist ───────────────────────────
+const ZOOM_MIN=0.5,ZOOM_MAX=3,ZOOM_STEP=0.25;
+
+function CanvasPdf({url,originalUrl,zoom,setZoom,onPageInfo,zoomApiRef}:{
+  url:string,originalUrl:string,zoom:number,setZoom:(z:number)=>void,
+  onPageInfo:(p:{index:number,total:number})=>void,zoomApiRef:MutableRefObject<{zoomIn:()=>void,zoomOut:()=>void}|null>,
+}){
   const canvasRef=useRef<HTMLCanvasElement|null>(null);
   const containerRef=useRef<HTMLDivElement|null>(null);
   const pdfDocRef=useRef<any>(null);
@@ -52,31 +165,45 @@ export function PdfViewerPekerja({url,title,subtitle,onBack}:{url:string,title:s
   const[loading,setLoading]=useState(true);
   const[error,setError]=useState<string|null>(null);
   const[resizeTick,setResizeTick]=useState(0);
-  const[downloading,setDownloading]=useState(false);
-  const[zoom,setZoom]=useState(1);
-  const[shareMsg,setShareMsg]=useState("");
   const[loadPct,setLoadPct]=useState<number|null>(null);
   const[pinchScale,setPinchScale]=useState(1);
   const pinchStartDistRef=useRef<number|null>(null);
   const pinchStartZoomRef=useRef(1);
 
+  useEffect(()=>{onPageInfo({index:pageIndex,total:numPages});},[pageIndex,numPages]);
+  useEffect(()=>{
+    zoomApiRef.current={
+      zoomIn:()=>setZoom(Math.min(ZOOM_MAX,+(zoom+ZOOM_STEP).toFixed(2))),
+      zoomOut:()=>setZoom(Math.max(ZOOM_MIN,+(zoom-ZOOM_STEP).toFixed(2))),
+    };
+  },[zoom]);
+
   useEffect(()=>{
     let cancelled=false;
     firstPaintDoneRef.current=false;
-    setLoading(true);setError(null);setPageIndex(0);setNumPages(0);setZoom(1);setLoadPct(null);
-    const task=pdfjsLib.getDocument({url:proxyUrl});
+    setLoading(true);setError(null);setPageIndex(0);setNumPages(0);setLoadPct(null);
+    const task=pdfjsLib.getDocument({url});
     task.onProgress=(p:any)=>{if(p?.total)setLoadPct(Math.min(99,Math.round((p.loaded/p.total)*100)));};
+    // Safety-net (1 Sep 2026): pdfjs-dist kadang MACET TOTAL (gak resolve, gak reject) alih-alih
+    // gagal dengan error - mastiin tetap ada jalan keluar (pesan error + link buka tab baru).
+    const hangTimeout=setTimeout(()=>{
+      if(cancelled)return;
+      setError("PDF terlalu lama dimuat. Coba lagi atau buka di tab baru.");
+      setLoading(false);
+    },20000);
     task.promise.then((pdf:any)=>{
       if(cancelled)return;
+      clearTimeout(hangTimeout);
       pdfDocRef.current=pdf;
       setNumPages(pdf.numPages);
     }).catch(()=>{
       if(cancelled)return;
+      clearTimeout(hangTimeout);
       setError("Gagal memuat PDF. Coba lagi atau buka di tab baru.");
       setLoading(false);
     });
-    return()=>{cancelled=true;pdfDocRef.current?.destroy?.();pdfDocRef.current=null;};
-  },[proxyUrl]);
+    return()=>{cancelled=true;clearTimeout(hangTimeout);pdfDocRef.current?.destroy?.();pdfDocRef.current=null;};
+  },[url]);
 
   useEffect(()=>{
     const onResize=()=>setResizeTick(t=>t+1);
@@ -148,91 +275,44 @@ export function PdfViewerPekerja({url,title,subtitle,onBack}:{url:string,title:s
     }
   };
 
-  const doDownload=async()=>{
-    setDownloading(true);
-    try{await downloadPdf(proxyUrl,sanitizeNamaFile(title)+".pdf");}
-    catch{alert("Gagal download file.");}
-    setDownloading(false);
-  };
-
-  const doShare=async()=>{
-    if((navigator as any).share){
-      try{await (navigator as any).share({title,url});}catch{/* dibatalkan user - abaikan */}
-      return;
-    }
-    try{
-      await navigator.clipboard.writeText(url);
-      setShareMsg("Link disalin!");
-      setTimeout(()=>setShareMsg(""),1800);
-    }catch{alert("Gagal membagikan link.");}
-  };
-
-  const iconBtnStyle={background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:8,
-    width:34,height:34,color:"#475569",fontSize:15,cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0} as const;
-
   return(
-    <div style={{padding:"12px 12px 20px"}}>
-      <button onClick={onBack} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",
-        color:"#1d4ed8",fontWeight:700,fontSize:13,cursor:"pointer",padding:0,marginBottom:10}}>
-        <i className="ti ti-arrow-left" style={{fontSize:15}}/> Kembali
-      </button>
-      <div style={{fontWeight:800,fontSize:14,color:"#0f172a",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{title}</div>
-      <div style={{fontSize:11,color:"#94a3b8",marginTop:1,marginBottom:10}}>
-        {subtitle}{subtitle&&numPages>0?" · ":""}{numPages>0?`Halaman ${pageIndex+1} / ${numPages}`:""}
-      </div>
-
-      <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,marginBottom:10}}>
-        <div style={{display:"flex",alignItems:"center",gap:4}}>
-          <button onClick={()=>setZoom(z=>Math.max(ZOOM_MIN,+(z-ZOOM_STEP).toFixed(2)))} disabled={zoom<=ZOOM_MIN} style={iconBtnStyle}>−</button>
-          <span style={{fontSize:11,color:"#64748b",fontWeight:700,width:36,textAlign:"center"}}>{Math.round(zoom*100)}%</span>
-          <button onClick={()=>setZoom(z=>Math.min(ZOOM_MAX,+(z+ZOOM_STEP).toFixed(2)))} disabled={zoom>=ZOOM_MAX} style={iconBtnStyle}>+</button>
+    <div ref={containerRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}
+      style={{background:"#f1f5f9",borderRadius:12,border:"1px solid #e2e8f0",minHeight:"55vh",touchAction:"pan-x pan-y",
+      overflow:"auto",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:12,position:"relative"}}>
+      {loading&&(
+        <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",color:"#94a3b8",textAlign:"center"}}>
+          <i className="ti ti-loader-2" style={{fontSize:30,display:"block",marginBottom:8,animation:"pdfv-spin 1s linear infinite"}}/>
+          Memuat PDF...{loadPct!=null&&` ${loadPct}%`}
         </div>
-        <div style={{display:"flex",alignItems:"center",gap:8}}>
-          <div style={{position:"relative"}}>
-            <button onClick={doShare} style={iconBtnStyle}><i className="ti ti-share"/></button>
-            {shareMsg&&<div style={{position:"absolute",top:"calc(100% + 6px)",right:0,background:"#0f172a",color:"#fff",fontSize:10.5,fontWeight:600,
-              padding:"5px 9px",borderRadius:6,whiteSpace:"nowrap",zIndex:3}}>{shareMsg}</div>}
+      )}
+      {error&&(
+        <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",color:"#64748b",textAlign:"center",maxWidth:260}}>
+          <i className="ti ti-file-alert" style={{fontSize:30,display:"block",marginBottom:8,color:"#dc2626"}}/>
+          {error}
+          <div style={{marginTop:12}}>
+            <a href={originalUrl} target="_blank" rel="noreferrer" style={{color:"#2563eb",fontSize:12,fontWeight:700}}>Buka di tab baru →</a>
           </div>
-          <button onClick={doDownload} disabled={downloading} style={{background:"#1d4ed8",border:"none",borderRadius:8,
-            padding:"0 14px",height:34,color:"#fff",fontSize:12,fontWeight:700,cursor:downloading?"default":"pointer",display:"flex",alignItems:"center",gap:6}}>
-            <i className="ti ti-download" style={{fontSize:14}}/>{downloading?"...":"Download"}
-          </button>
         </div>
-      </div>
-
-      <div ref={containerRef} onTouchStart={onTouchStart} onTouchMove={onTouchMove} onTouchEnd={onTouchEnd} onTouchCancel={onTouchEnd}
-        style={{background:"#f1f5f9",borderRadius:12,border:"1px solid #e2e8f0",minHeight:"55vh",touchAction:"pan-x pan-y",
-        overflow:"auto",display:"flex",alignItems:"flex-start",justifyContent:"center",padding:12,position:"relative"}}>
-        {loading&&(
-          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",color:"#94a3b8",textAlign:"center"}}>
-            <i className="ti ti-loader-2" style={{fontSize:30,display:"block",marginBottom:8,animation:"pdfv-spin 1s linear infinite"}}/>
-            Memuat PDF...{loadPct!=null&&` ${loadPct}%`}
-          </div>
-        )}
-        {error&&(
-          <div style={{position:"absolute",top:"50%",left:"50%",transform:"translate(-50%,-50%)",color:"#64748b",textAlign:"center",maxWidth:260}}>
-            <i className="ti ti-file-alert" style={{fontSize:30,display:"block",marginBottom:8,color:"#dc2626"}}/>
-            {error}
-            <div style={{marginTop:12}}>
-              <a href={url} target="_blank" rel="noreferrer" style={{color:"#2563eb",fontSize:12,fontWeight:700}}>Buka di tab baru →</a>
-            </div>
-          </div>
-        )}
-        <canvas ref={canvasRef} style={{display:(!loading&&!error)?"block":"none",boxShadow:"0 4px 20px rgba(15,23,42,.15)",background:"#fff",maxWidth:"100%",flexShrink:0,
-          transform:pinchScale!==1?`scale(${pinchScale})`:undefined,transformOrigin:"center"}}/>
-        {!loading&&!error&&numPages>1&&pageIndex>0&&(
-          <button onClick={()=>setPageIndex(p=>p-1)} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",
-            width:38,height:38,borderRadius:"50%",background:"rgba(15,23,42,.75)",border:"none",color:"#fff",fontSize:17,cursor:"pointer",zIndex:2}}>
-            <i className="ti ti-chevron-left"/>
-          </button>
-        )}
-        {!loading&&!error&&numPages>1&&pageIndex<numPages-1&&(
-          <button onClick={()=>setPageIndex(p=>p+1)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",
-            width:38,height:38,borderRadius:"50%",background:"rgba(15,23,42,.75)",border:"none",color:"#fff",fontSize:17,cursor:"pointer",zIndex:2}}>
-            <i className="ti ti-chevron-right"/>
-          </button>
-        )}
-      </div>
+      )}
+      {/* BUG FIX (1 Sep 2026, dilaporkan di tablet): maxWidth:100% dulu ada di sini buat cegah
+          overflow horizontal di HP sempit - tapi ini SALAH, malah bikin gambar gepeng pas
+          di-zoom (lebar dibatasi CSS, tinggi enggak, jadi rasio rusak). Container-nya sudah
+          overflow:auto + justifyContent:center - biarkan canvas selebar aslinya (scroll kalau
+          kepotong), jangan dipaksa nyempit. */}
+      <canvas ref={canvasRef} style={{display:(!loading&&!error)?"block":"none",boxShadow:"0 4px 20px rgba(15,23,42,.15)",background:"#fff",flexShrink:0,
+        transform:pinchScale!==1?`scale(${pinchScale})`:undefined,transformOrigin:"center"}}/>
+      {!loading&&!error&&numPages>1&&pageIndex>0&&(
+        <button onClick={()=>setPageIndex(p=>p-1)} style={{position:"absolute",left:8,top:"50%",transform:"translateY(-50%)",
+          width:38,height:38,borderRadius:"50%",background:"rgba(15,23,42,.75)",border:"none",color:"#fff",fontSize:17,cursor:"pointer",zIndex:2}}>
+          <i className="ti ti-chevron-left"/>
+        </button>
+      )}
+      {!loading&&!error&&numPages>1&&pageIndex<numPages-1&&(
+        <button onClick={()=>setPageIndex(p=>p+1)} style={{position:"absolute",right:8,top:"50%",transform:"translateY(-50%)",
+          width:38,height:38,borderRadius:"50%",background:"rgba(15,23,42,.75)",border:"none",color:"#fff",fontSize:17,cursor:"pointer",zIndex:2}}>
+          <i className="ti ti-chevron-right"/>
+        </button>
+      )}
       <style>{`@keyframes pdfv-spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   );
