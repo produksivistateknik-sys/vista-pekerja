@@ -1,23 +1,6 @@
-import { useState, useEffect, useMemo, lazy, Suspense } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, Badge } from "./ui/Primitives";
-
-const PdfViewerPekerja=lazy(()=>import("./PdfViewerPekerja").then(m=>({default:m.PdfViewerPekerja})));
-
-// FIX (1 Sep 2026) - viewer in-app (iframe remote, canvas custom, blob-URL - semua sudah dicoba)
-// TERBUKTI gagal khusus di iOS kalau app-nya dibuka lewat ikon home screen (mode "standalone").
-// Ini limitasi WebKit/iOS yang sudah lama dikenal - WebView standalone PWA gak bisa diandalkan
-// buat blob URL/download, beda dari Safari biasa. Gak bisa diperbaiki dari kode. Solusi: khusus
-// iOS, "Lihat" langsung window.open() ke Safari (URL asli, BUKAN proxy - top-level navigation
-// gak butuh CORS sama sekali, beda dari fetch()) - Safari penuh sudah pasti bisa render PDF
-// dengan baik, sudah dikonfirmasi lewat tes langsung. Android tetap in-app pakai canvas custom
-// (PdfViewerPekerja.tsx) - itu SUDAH terbukti render, cuma ada bug zoom yang sudah diperbaiki.
-const isIOS=()=>{
-  const ua=navigator.userAgent;
-  if(/iPad|iPhone|iPod/.test(ua))return true;
-  if(/Macintosh/.test(ua)&&navigator.maxTouchPoints>1)return true;
-  return false;
-};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WO DIGITAL (31 Agu 2026) - versi digital gambar teknik (construction drawing, sudah
@@ -29,9 +12,16 @@ const isIOS=()=>{
 // ketik) dan Arsip (is_archived=true, search-first - historis, sama pola ArsipQCView.tsx).
 // Arsip personal per-operator DIBATALKAN (31 Agu 2026) - cukup 1 arsip resmi/bersama.
 //
-// REDESIGN (1 Sep 2026) - klik card WO (yang sudah ada dokumen) SWAP seluruh tampilan list
-// jadi halaman viewer full (bukan modal overlay lagi) - state `viewing` + early-return,
-// pola sama kayak NameplateView.tsx (list->detail->list, tombol "‹ Kembali").
+// VIEWER (1 Sep 2026, final) - sempat dicoba banyak pendekatan in-app (iframe remote, canvas
+// custom via pdfjs-dist, blob-URL) - SEMUA gagal gak konsisten khusus di iOS mode "standalone"
+// (app di-install ke home screen) karena limitasi lama WebKit yang gak reliable buat blob
+// URL/download di WebView standalone. Android (canvas custom) SEBENARNYA berhasil render di
+// device sungguhan, tapi user minta disamakan aja - lebih simpel & konsisten di semua platform.
+// Sekarang: "Lihat" = window.open() langsung ke browser (Safari/Chrome) buat SEMUA platform -
+// gak ada lagi viewer in-app. window.open ke top-level navigation gak butuh CORS sama sekali
+// (beda dari fetch()), dan ini cara paling teruji buat nampilin PDF di web (sama kayak klik
+// link PDF biasa) - jauh lebih simpel & reliable daripada semua percobaan in-app sebelumnya.
+// PdfViewerPekerja.tsx (canvas/pdfjs-dist) DIHAPUS - gak dipakai lagi.
 // ─────────────────────────────────────────────────────────────────────────────
 export function WoDigitalView(){
   const[loading,setLoading]=useState(true);
@@ -41,7 +31,6 @@ export function WoDigitalView(){
   const[revList,setRevList]=useState<any[]>([]);
   const[search,setSearch]=useState("");
   const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
-  const[viewing,setViewing]=useState<{url:string,title:string,subtitle?:string}|null>(null);
 
   const fetchAll=async()=>{
     setLoading(true);
@@ -83,16 +72,6 @@ export function WoDigitalView(){
     return revList.find((r:any)=>r.work_instruction_id===wi.id)||null;
   };
 
-  if(viewing){
-    return(
-      <div style={{padding:16}}>
-        <Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12}}>Memuat...</div>}>
-          <PdfViewerPekerja url={viewing.url} title={viewing.title} subtitle={viewing.subtitle} onBack={()=>setViewing(null)}/>
-        </Suspense>
-      </div>
-    );
-  }
-
   return(
     <div style={{padding:16}}>
       <SectionCard icon="📐" title="WO Digital" subtitle="Gambar teknik (construction drawing) versi digital">
@@ -121,11 +100,7 @@ export function WoDigitalView(){
               const panelNames=panelNamesOf(w.id);
               const rev=currentRevOf(w.id);
               return(
-                <div key={w.id} onClick={()=>{
-                    if(!rev)return;
-                    if(isIOS()){window.open(rev.file_url,"_blank");return;}
-                    setViewing({url:rev.file_url,title:w.proyek||`WO ${w.wo}`,subtitle:`WO ${w.wo}`});
-                  }}
+                <div key={w.id} onClick={()=>{if(rev)window.open(rev.file_url,"_blank");}}
                   style={{border:"1px solid #e2e8f0",borderRadius:12,padding:"16px 18px",display:"flex",alignItems:"center",gap:14,
                     cursor:rev?"pointer":"default"}}>
                   <div style={{flex:1,minWidth:0}}>
@@ -144,7 +119,7 @@ export function WoDigitalView(){
                   </div>
                   {rev?(
                     <div style={{width:40,height:40,borderRadius:10,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <i className="ti ti-eye" style={{fontSize:18,color:"#1d4ed8"}}/>
+                      <i className="ti ti-external-link" style={{fontSize:18,color:"#1d4ed8"}}/>
                     </div>
                   ):(
                     <span style={{fontSize:10.5,color:"#cbd5e1",flexShrink:0,fontStyle:"italic"}}>Belum ada</span>
