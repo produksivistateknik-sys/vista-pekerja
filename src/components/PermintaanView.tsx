@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { Lbl, Card, SectionCard, EmptyState, CardToggle, SearchableSelect } from "./ui/Primitives";
 import { DIVISI_CONFIG } from "../lib/panelTypes";
@@ -7,26 +7,29 @@ import { DIVISI_CONFIG } from "../lib/panelTypes";
 // TAB PERMINTAAN BARANG (BBMB & BBMU) - sistem request/approve pengeluaran
 // komponen. Independen total dari modul lama (komponen_stok/Warehouse progress
 // panel) - tabel sendiri permintaan/permintaan_item.
-// BBMB (Bantu): komponen dari master LAMA komponen_bbmb_master (diisi admin
-// lewat upload Excel di tab Database Gudang) - TIDAK disentuh, tiap item tetap
-// qty+satuan bebas ketik seperti sebelumnya.
-// BBMU (Utama): REVISI BESAR (2 Sep 2026) - balik pakai struktur penuh kayak
-// BBMB (dulu SEMPAT disederhanakan 14 Agu 2026 jadi 1 row header/catatan bebas,
-// TAPI gak pernah ada data yang kepakai format itu - 0 baris permintaan BBMU
-// waktu revisi ini dibuat, jadi gak ada yang perlu dimigrasi). Sekarang BBMU
-// juga per-item lewat permintaan_item, komponen dari master BARU
-// komponen_master (kategori='BBMU', hasil import DATABASE_BARU - REVISI.xlsx,
-// 1.424 baris) - satuan TIDAK bebas ketik kayak BBMB, tapi dipilih dari
-// satuan_list komponen itu (dropdown kalau >1 opsi, label otomatis kalau cuma
-// 1). Status BBMU tetap beda dari BBMB (tersedia/belum_lengkap/belum_datang,
-// BUKAN submit/reject) - dibedakan lewat permintaan.jenis, disimpan di kolom
-// permintaan_item.status yang sama (kolom text bebas, gak ada enum constraint).
-// Tab ini SENGAJA muncul buat SEMUA divisi (gak dikondisikan kayak tab
-// Komponen/Arsip), jadi App.tsx render ini tanpa cek user.divisi.
+// BBMB & BBMU sekarang STRUKTUR SAMA PERSIS (REVISI 2 Sep 2026 - lihat sejarah di bawah), komponen
+// dari komponen_master (kategori BBMB/BBMU, hasil import DATABASE_BARU - REVISI.xlsx: 550 BBMB +
+// 1.424 BBMU). Satuan TIDAK bebas ketik - dipilih dari satuan_list komponen itu (dropdown kalau
+// >1 opsi, label otomatis read-only kalau cuma 1) - field ini reaktif: begitu komponen dipilih/
+// diganti di dropdown "Pilih Komponen", satuanList & satuanDipilih ikut update/reset otomatis.
+//
+// RIWAYAT: BBMB awalnya (dan sampai 2 Sep 2026) sumbernya tabel LAMA komponen_bbmb_master
+// (satuan cuma teks bebas, gak ada satuan_list) - dipindah ke komponen_master supaya field
+// Satuan bisa reaktif kayak di atas (permintaan operator eksplisit: "field Satuan otomatis dari
+// master, bukan input manual"). Tabel lama TIDAK dihapus, sekarang beneran gak dipakai sama
+// sekali (sisi Database Gudang juga sudah pindah duluan).
+// BBMU sempat DISEDERHANAKAN 14 Agu 2026 jadi 1 row header/catatan bebas (TIDAK pakai
+// permintaan_item), tapi gak pernah ada data yang kepakai format itu (0 baris BBMU waktu
+// direvisi balik 2 Sep 2026) - jadi gak ada migrasi data yang diperlukan.
+// Status BBMB (pending/submit/reject) tetap beda dari BBMU (pending/tersedia/belum_lengkap/
+// belum_datang) - dibedakan lewat permintaan.jenis, disimpan di kolom permintaan_item.status yang
+// sama (kolom text bebas, gak ada enum constraint).
+// Tab ini SENGAJA muncul buat SEMUA divisi (gak dikondisikan kayak tab Komponen/Arsip), jadi
+// App.tsx render ini tanpa cek user.divisi.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Jenis="BBMB"|"BBMU";
-type ItemRow={value:string;namaKomponen:string;qty:number;satuan:string;satuanList:string[];satuanDipilih:string};
+type ItemRow={value:string;namaKomponen:string;qty:number;satuanList:string[];satuanDipilih:string};
 
 const STATUS_LABEL:Record<Jenis,Record<string,string>>={
   BBMB:{pending:"Menunggu",submit:"✓ Disiapkan",reject:"✕ Ditolak"},
@@ -37,7 +40,7 @@ const STATUS_COLOR:Record<Jenis,Record<string,string>>={
   BBMU:{pending:"#94a3b8",tersedia:"#16a34a",belum_lengkap:"#f59e0b",belum_datang:"#dc2626"},
 };
 
-const emptyItem=():ItemRow=>({value:"",namaKomponen:"",qty:1,satuan:"",satuanList:[],satuanDipilih:""});
+const emptyItem=():ItemRow=>({value:"",namaKomponen:"",qty:1,satuanList:[],satuanDipilih:""});
 
 // Supabase/PostgREST default cap 1000 baris tanpa .range() - komponen_master kategori BBMU
 // sendirian udah 1.424 baris (lebih dari cap), jadi WAJIB paginasi penuh di sini, bukan
@@ -73,8 +76,11 @@ export function PermintaanView({user}:{user:any}){
   const[panelList,setPanelList]=useState<any[]>([]);
   const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
 
-  const[masterList,setMasterList]=useState<any[]>([]); // BBMB: komponen_bbmb_master (lama, gak disentuh)
-  const[masterListBBMU,setMasterListBBMU]=useState<any[]>([]); // BBMU: komponen_master kategori BBMU (baru)
+  const[masterList,setMasterList]=useState<any[]>([]); // komponen_master, di-scope ke kategori=jenisTab
+  // Guard race condition (2 Sep 2026, pola sama kayak DatabaseGudangTab.tsx - ketemu bug nyata di
+  // situ) - toggle BBMB/BBMU cepat bisa bikin fetch lama nyampe belakangan & nimpa hasil fetch
+  // yang lebih baru. Ref nyimpen jenis TERAKHIR yang diminta, response yang gak match lagi dibuang.
+  const latestJenisRef=useRef<Jenis>("BBMB");
 
   const[items,setItems]=useState<ItemRow[]>([emptyItem()]); // BBMB & BBMU (REVISI 2 Sep 2026 - dulu BBMU cuma catatan bebas)
   const[submitting,setSubmitting]=useState(false);
@@ -89,11 +95,14 @@ export function PermintaanView({user}:{user:any}){
   useEffect(()=>{
     supabase.from("work_orders").select("id,wo,proyek").eq("is_archived",false).order("created_at",{ascending:false})
       .then(({data})=>setWoList(data??[]));
-    supabase.from("komponen_bbmb_master").select("id,nama,satuan").order("nama",{ascending:true})
-      .then(({data})=>setMasterList(data??[]));
-    fetchAllPaged((from,to)=>supabase.from("komponen_master").select("id,nama,satuan_utama,satuan_list").eq("kategori","BBMU").order("nama",{ascending:true}).range(from,to))
-      .then(setMasterListBBMU);
   },[]);
+
+  useEffect(()=>{
+    const jenisDiminta=jenisTab;
+    latestJenisRef.current=jenisDiminta;
+    fetchAllPaged((from,to)=>supabase.from("komponen_master").select("id,nama,satuan_utama,satuan_list").eq("kategori",jenisDiminta).order("nama",{ascending:true}).range(from,to))
+      .then(data=>{ if(latestJenisRef.current===jenisDiminta)setMasterList(data); });
+  },[jenisTab]);
 
   useEffect(()=>{
     setSelectedPanelId(null);
@@ -177,17 +186,16 @@ export function PermintaanView({user}:{user:any}){
   const tambahBaris=()=>setItems(prev=>[...prev,emptyItem()]);
   const hapusBaris=(idx:number)=>setItems(prev=>prev.length<=1?prev:prev.filter((_,i)=>i!==idx));
 
+  // Komponen dari komponen_master (BBMB & BBMU sama-sama, REVISI 2 Sep 2026 - field Satuan
+  // sekarang OTOMATIS dari satuan_list komponen yang dipilih, operator gak bisa ketik manual lagi
+  // sama sekali) - default satuanDipilih = satuan_utama (kalau valid ada di satuan_list), fallback
+  // opsi pertama. Ganti komponen -> satuanList/satuanDipilih OTOMATIS reset ke komponen baru
+  // (overwrite penuh tiap kali dipanggil, gak ada sisa dari komponen sebelumnya).
   const onPilihKomponen=(idx:number,id:string,label:string)=>{
-    if(jenisTab==="BBMU"){
-      // Komponen BBMU dari komponen_master - satuan gak bebas ketik, ikut satuan_list punya
-      // komponen itu. Default satuanDipilih = satuan_utama (kalau ada), fallback opsi pertama.
-      const m=masterListBBMU.find((x:any)=>String(x.id)===id);
-      const satuanList:string[]=m?.satuan_list||[];
-      const satuanDefault=m?.satuan_utama&&satuanList.includes(m.satuan_utama)?m.satuan_utama:(satuanList[0]||"");
-      updateItem(idx,{value:id,namaKomponen:label,satuanList,satuanDipilih:satuanDefault});
-    } else {
-      updateItem(idx,{value:id,namaKomponen:label});
-    }
+    const m=masterList.find((x:any)=>String(x.id)===id);
+    const satuanList:string[]=m?.satuan_list||[];
+    const satuanDefault=m?.satuan_utama&&satuanList.includes(m.satuan_utama)?m.satuan_utama:(satuanList[0]||"");
+    updateItem(idx,{value:id,namaKomponen:label,satuanList,satuanDipilih:satuanDefault});
   };
 
   const submitPermintaan=async()=>{
@@ -208,19 +216,10 @@ export function PermintaanView({user}:{user:any}){
       setSubmitting(false);
       return;
     }
-    // REVISI (2 Sep 2026) - BBMB & BBMU sekarang SAMA-SAMA insert ke permintaan_item. Beda cuma
-    // FK master-nya (komponen_bbmb_master_id lama vs komponen_master_id baru) dan satuan (BBMB
-    // bebas ketik di kolom satuan, BBMU dari satuan_dipilih hasil pilihan - kolom satuan JUGA
-    // diisi nilai yang sama biar kode display yang udah ada, misal it.satuan, tetap kepakai
-    // seragam buat kedua jenis tanpa harus cek jenis di tiap titik render).
-    const rows=itemsValid.map(it=>jenisTab==="BBMB"?{
-      permintaan_id:perm.id,
-      komponen_bbmb_master_id:it.value?Number(it.value):null,
-      nama_komponen:it.namaKomponen,
-      qty:Number(it.qty),
-      satuan:it.satuan||null,
-      status:"pending",
-    }:{
+    // REVISI (2 Sep 2026) - BBMB & BBMU sekarang SAMA PERSIS strukturnya, satu bentuk row buat
+    // keduanya (dulu 2 cabang beda FK/sumber satuan). komponen_bbmb_master_id (kolom lama) gak
+    // pernah ditulis lagi - kedua jenis sekarang eksklusif referensi komponen_master_id.
+    const rows=itemsValid.map(it=>({
       permintaan_id:perm.id,
       komponen_master_id:it.value?Number(it.value):null,
       nama_komponen:it.namaKomponen,
@@ -228,7 +227,7 @@ export function PermintaanView({user}:{user:any}){
       satuan:it.satuanDipilih||null,
       satuan_dipilih:it.satuanDipilih||null,
       status:"pending",
-    });
+    }));
     const{error:itemErr}=await supabase.from("permintaan_item").insert(rows);
     if(itemErr){
       alert("Permintaan tersimpan tapi gagal simpan komponen: "+itemErr.message);
@@ -284,58 +283,17 @@ export function PermintaanView({user}:{user:any}){
         </div>
       )}
 
-      {selectedWoId&&selectedPanelId&&jenisTab==="BBMB"&&(
+      {/* BBMB & BBMU sekarang 1 blok form yang sama persis (REVISI 2 Sep 2026 - dulu 2 blok
+          terpisah, BBMB satuan ketik bebas + BBMU dari dropdown). Satuan SELALU dari
+          komponen_master.satuan_list (masterList di-scope per jenisTab di useEffect atas),
+          operator gak bisa ketik satuan manual lagi sama sekali di jenis manapun. */}
+      {selectedWoId&&selectedPanelId&&(
         <>
           <Lbl>Daftar Komponen</Lbl>
           <div style={{display:"flex",flexDirection:"column" as const,gap:12,marginBottom:10}}>
             {items.map((it,idx)=>(
               <div key={idx} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:14}}>
                 <SearchableSelect options={masterList.map((m:any)=>({id:String(m.id),label:m.nama}))} value={it.value}
-                  onChange={(id,label)=>onPilihKomponen(idx,id,label)} placeholder="Ketik nama komponen..."/>
-                <div style={{display:"flex",alignItems:"flex-end",gap:8,marginTop:10}}>
-                  <div style={{flex:1}}>
-                    <Lbl>Satuan</Lbl>
-                    <input type="text" placeholder="pcs, meter, roll..." value={it.satuan}
-                      onChange={(e:any)=>updateItem(idx,{satuan:e.target.value})} style={inpStyle}/>
-                  </div>
-                  <div style={{display:"flex",alignItems:"center",border:"1.5px solid #cbd5e1",borderRadius:8,overflow:"hidden",flexShrink:0}}>
-                    <button onClick={()=>updateItem(idx,{qty:Math.max(1,it.qty-1)})}
-                      style={{width:32,height:34,border:"none",background:"#f8fafc",color:"#475569",fontSize:16,fontWeight:700,cursor:"pointer"}}>−</button>
-                    <input type="number" min="1" value={it.qty} onChange={(e:any)=>updateItem(idx,{qty:Math.max(1,Number(e.target.value))})}
-                      style={{width:40,height:34,border:"none",borderLeft:"1px solid #e2e8f0",borderRight:"1px solid #e2e8f0",textAlign:"center" as const,fontSize:14,fontWeight:700,color:"#0f172a",background:"#fff",fontFamily:"inherit"}}/>
-                    <button onClick={()=>updateItem(idx,{qty:it.qty+1})}
-                      style={{width:32,height:34,border:"none",background:"#f8fafc",color:"#475569",fontSize:16,fontWeight:700,cursor:"pointer"}}>+</button>
-                  </div>
-                  <button onClick={()=>hapusBaris(idx)} disabled={items.length<=1}
-                    style={{width:34,height:34,borderRadius:8,border:"1px solid #fecaca",background:items.length<=1?"#f8fafc":"#fef2f2",
-                      color:items.length<=1?"#cbd5e1":"#dc2626",cursor:items.length<=1?"default":"pointer",fontSize:15,fontWeight:700,flexShrink:0}}>×</button>
-                </div>
-              </div>
-            ))}
-          </div>
-          <button onClick={tambahBaris} style={{width:"100%",padding:"10px",borderRadius:10,border:"1.5px dashed #cbd5e1",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:16}}>
-            + Tambah Komponen Lagi
-          </button>
-
-          <button onClick={submitPermintaan} disabled={submitting}
-            style={{width:"100%",padding:"14px",borderRadius:10,border:"none",
-              background:submitting?"#94a3b8":accent,
-              color:"#fff",fontSize:15,fontWeight:700,cursor:submitting?"default":"pointer",fontFamily:"inherit",marginBottom:20}}>
-            {submitting?"Mengirim...":"Kirim Permintaan"}
-          </button>
-        </>
-      )}
-
-      {/* REVISI (2 Sep 2026) - BBMU balik ke struktur penuh kayak BBMB (dulu cuma Project+Panel+
-          catatan bebas) - komponen dari komponen_master kategori BBMU, satuan DIPILIH dari
-          satuan_list (bukan ketik bebas kayak BBMB, karena ini pilihan terbatas dari master). */}
-      {selectedWoId&&selectedPanelId&&jenisTab==="BBMU"&&(
-        <>
-          <Lbl>Daftar Komponen</Lbl>
-          <div style={{display:"flex",flexDirection:"column" as const,gap:12,marginBottom:10}}>
-            {items.map((it,idx)=>(
-              <div key={idx} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:14}}>
-                <SearchableSelect options={masterListBBMU.map((m:any)=>({id:String(m.id),label:m.nama}))} value={it.value}
                   onChange={(id,label)=>onPilihKomponen(idx,id,label)} placeholder="Ketik nama komponen..."/>
                 <div style={{display:"flex",alignItems:"flex-end",gap:8,marginTop:10}}>
                   <div style={{flex:1}}>
