@@ -1982,10 +1982,67 @@ export function OperatorView({user,viewMode}:any){
               })}
             </div>
             {(isDrilldownProses||viewMode==='mobile'||PROSES_KUMPUL_DULU_DESKTOP.includes(proses))&&(
-              viewMode==='mobile'&&PROSES_PILIH_PER_KOMPONEN.includes(proses)?(
-              <div style={proses==="BUSBAR"
-                ?{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}
-                :{display:"flex",flexWrap:"wrap",gap:8,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+              proses==="BUSBAR"?(
+              // BALIK URUTAN GRID (2 Sep 2026): BUSBAR sekarang grid PROYEK/PANEL dulu (bukan
+              // tipe komponen) - klik kartu panel baru munculin daftar komponennya (Outgoing/
+              // Netral/Ground/dst) di tahap yang aktif, lewat modal komponenPopup yang SAMA persis
+              // dipakai proses lain (POTONG/RENDAM/dst) buat alur panel-dulu - gak bikin modal baru.
+              <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
+                {(()=>{
+                  const seenPanel=new Set();
+                  const panelGroupList:any[]=[];
+                  chipSourceRows.forEach((r:any)=>{
+                    if(!seenPanel.has(r.panelId)){
+                      seenPanel.add(r.panelId);
+                      panelGroupList.push({panelId:r.panelId,panel:r.panel,proyek:r.task.proyek});
+                    }
+                  });
+                  if(panelGroupList.length===0&&statusFilter!=="ALL"){
+                    return(
+                      <div style={{fontSize:11,color:"#94a3b8",padding:"4px 0"}}>
+                        Gak ada panel dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di proses ini.
+                      </div>
+                    );
+                  }
+                  return panelGroupList.map((pg:any)=>{
+                    const groupRows=chipSourceRows.filter((r:any)=>r.panelId===pg.panelId);
+                    // Status kartu diagregat dari r.pipelineStatus - UDAH di-scope ke tahap terpilih
+                    // (lihat override rows di atas), sama persis logic yang dipakai kartu jenis
+                    // komponen sebelumnya, cuma sekarang diagregat per PANEL.
+                    const statuses=groupRows.map((r:any)=>r.pipelineStatus as ProsesStatus);
+                    const groupStatus:ProsesStatus=
+                      statuses.length>0&&statuses.every(s=>s==="DONE")?"DONE"
+                      :statuses.some(s=>s==="IN PROGRESS")?"IN PROGRESS"
+                      :statuses.length>0&&statuses.every(s=>s==="NOT YET")?"NOT YET"
+                      :"TO DO";
+                    const locked=groupStatus==="NOT YET";
+                    const stStyle=STATUS_PIPELINE_STYLE[groupStatus];
+                    const panelKey=`${proses}_${pg.panelId}`;
+                    return(
+                      <button key={pg.panelId} disabled={locked}
+                        onClick={()=>{setKomponenPopup({proses,panelId:pg.panelId});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
+                        style={{background:"#fff",borderRadius:14,padding:"14px 8px",
+                          border:"1.5px solid #e2e8f0",boxShadow:"0 2px 8px #0000000a",
+                          display:"flex",flexDirection:"column",alignItems:"center",gap:6,
+                          cursor:locked?"not-allowed":"pointer",fontFamily:"inherit",
+                          opacity:locked?0.55:1}}>
+                        <div style={{width:36,height:36,borderRadius:10,background:"#16a34a",
+                          display:"flex",alignItems:"center",justifyContent:"center"}}>
+                          <i className="ti ti-server" style={{fontSize:16,color:"#fff"}}/>
+                        </div>
+                        <span style={{fontSize:11,fontWeight:700,color:"#1e293b",textAlign:"center"}}>{pg.panel.nama}</span>
+                        <span style={{fontSize:9,color:"#94a3b8",textAlign:"center"}}>{pg.proyek}</span>
+                        <span style={{background:stStyle.bg,color:stStyle.color,border:`1px solid ${stStyle.border}`,
+                          borderRadius:20,padding:"2px 9px",fontSize:9,fontWeight:700}}>
+                          {STATUS_PIPELINE_LABEL[groupStatus]}
+                        </span>
+                      </button>
+                    );
+                  });
+                })()}
+              </div>
+              ):viewMode==='mobile'&&PROSES_PILIH_PER_KOMPONEN.includes(proses)?(
+              <div style={{display:"flex",flexWrap:"wrap",gap:8,padding:"10px 16px",background:"#f8fafc",borderBottom:"1px solid #f1f5f9"}}>
                 {(()=>{
                   const seenNama=new Set();
                   const jenisList:any[]=[];
@@ -2016,40 +2073,6 @@ export function OperatorView({user,viewMode}:any){
                     // Sama kayak panelSudahTuntas versi lama, cuma sekarang di-agregat per jenis komponen.
                     const groupAllRows=groupRows.filter((r:any)=>r.qtyKomp>0);
                     const groupSudahTuntas=groupAllRows.length>0&&groupAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
-                    // KOREKSI URUTAN NAVIGASI (2 Sep 2026) - restyle chip jenis komponen jadi grid
-                    // icon+label+badge status, konsisten sama grid pilih proses di Level 1. Status
-                    // per grup diagregat dari r.pipelineStatus yang UDAH di-scope ke tahap terpilih
-                    // (lihat override rows di atas) - BUKAN status BUSBAR gabungan.
-                    if(proses==="BUSBAR"){
-                      const statuses=groupRows.map((r:any)=>r.pipelineStatus as ProsesStatus);
-                      const groupStatus:ProsesStatus=
-                        statuses.length>0&&statuses.every(s=>s==="DONE")?"DONE"
-                        :statuses.some(s=>s==="IN PROGRESS")?"IN PROGRESS"
-                        :statuses.length>0&&statuses.every(s=>s==="NOT YET")?"NOT YET"
-                        :"TO DO";
-                      const locked=groupStatus==="NOT YET";
-                      const stStyle=STATUS_PIPELINE_STYLE[groupStatus];
-                      return(
-                        <button key={jg.namaKomponen} disabled={locked}
-                          onClick={()=>{setKomponenPopupJenis({proses,namaKomponen:jg.namaKomponen});setTempSelectedPanelJenis(selRows.map((r:any)=>r.panelId));}}
-                          style={{background:"#fff",borderRadius:14,padding:"14px 8px",
-                            border:"1.5px solid #e2e8f0",boxShadow:"0 2px 8px #0000000a",
-                            display:"flex",flexDirection:"column",alignItems:"center",gap:6,
-                            cursor:locked?"not-allowed":"pointer",fontFamily:"inherit",
-                            opacity:locked?0.55:1}}>
-                          <div style={{width:36,height:36,borderRadius:10,background:"#16a34a",
-                            display:"flex",alignItems:"center",justifyContent:"center"}}>
-                            <i className="ti ti-box" style={{fontSize:16,color:"#fff"}}/>
-                          </div>
-                          <span style={{fontSize:11,fontWeight:700,color:"#1e293b",textAlign:"center"}}>{jg.namaKomponen}</span>
-                          <span style={{fontSize:9,color:"#94a3b8"}}>{panelCount} panel</span>
-                          <span style={{background:stStyle.bg,color:stStyle.color,border:`1px solid ${stStyle.border}`,
-                            borderRadius:20,padding:"2px 9px",fontSize:9,fontWeight:700}}>
-                            {STATUS_PIPELINE_LABEL[groupStatus]}
-                          </span>
-                        </button>
-                      );
-                    }
                     return(
                       <button key={jg.namaKomponen} disabled={groupSudahTuntas}
                         onClick={()=>{setKomponenPopupJenis({proses,namaKomponen:jg.namaKomponen});setTempSelectedPanelJenis(selRows.map((r:any)=>r.panelId));}}
