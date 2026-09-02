@@ -2161,7 +2161,19 @@ export function OperatorView({user,viewMode}:any){
               )
             )}
             {komponenPopup&&komponenPopup.proses===proses&&(()=>{
-              const panelRows=rows.filter((r:any)=>r.panelId===komponenPopup.panelId);
+              // BUG FIX (2 Sep 2026) - modal ini dulu SELALU nampilin SEMUA komponen panel, gak
+              // peduli tab status (Not Yet/To Do/In Progress/Done) yang lagi aktif pas kartu
+              // panelnya diklik - operator ngira filter "gak ngefek" padahal filternya emang cuma
+              // nentuin kartu PANEL mana yang muncul di grid, isi modalnya sendiri gak ikut ke-
+              // filter. Scoped ke BUSBAR aja (proses lain yang lewat modal ini gak diubah) - filter
+              // komponen yang BELUM dikumpulkan sesuai statusFilter, komponen yang UDAH dikumpulkan
+              // tetap kelihatan apapun tab-nya (konsisten sama visibleRows di Level 3).
+              const panelRows=rows.filter((r:any)=>{
+                if(r.panelId!==komponenPopup.panelId)return false;
+                if(proses!=="BUSBAR"||statusFilter==="ALL")return true;
+                const alreadyConfirmed=(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode);
+                return alreadyConfirmed||r.pipelineStatus===statusFilter;
+              });
               const panelInfo=panelRows[0];
               return(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
