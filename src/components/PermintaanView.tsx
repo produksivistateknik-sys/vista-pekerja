@@ -92,6 +92,22 @@ export function PermintaanView({user}:{user:any}){
   // Gudang) - Riwayat Permintaan operator dulu cuma nampilin 30 terakhir tanpa filter waktu.
   const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
 
+  // Lock permintaan dari Gudang (2 Sep 2026) - gudang_lock_status (1 baris, id=1). Realtime supaya
+  // begitu Gudang kunci, form kirim langsung ke-block di semua device operator tanpa perlu refresh.
+  // Riwayat Permintaan di bawah TETAP bisa dilihat walau terkunci - cuma form kirim baru yang diblokir.
+  const[gudangLocked,setGudangLocked]=useState(false);
+  useEffect(()=>{
+    const fetchLock=async()=>{
+      const{data}=await supabase.from("gudang_lock_status").select("is_locked").eq("id",1).single();
+      setGudangLocked(data?.is_locked??false);
+    };
+    fetchLock();
+    const ch=supabase.channel("realtime-permintaan-lock-status")
+      .on("postgres_changes",{event:"*",schema:"public",table:"gudang_lock_status"},fetchLock)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+
   useEffect(()=>{
     supabase.from("work_orders").select("id,wo,proyek").eq("is_archived",false).order("created_at",{ascending:false})
       .then(({data})=>setWoList(data??[]));
@@ -199,6 +215,7 @@ export function PermintaanView({user}:{user:any}){
   };
 
   const submitPermintaan=async()=>{
+    if(gudangLocked){alert("Gudang sedang tutup - permintaan tidak bisa dikirim saat ini.");return;}
     if(!selectedWoId){alert("Pilih Work Order dulu");return;}
     if(!selectedPanelId){alert("Pilih Panel dulu");return;}
     const itemsValid=items.filter(it=>it.namaKomponen&&Number(it.qty)>0);
@@ -272,6 +289,18 @@ export function PermintaanView({user}:{user:any}){
         </span>
       </div>
 
+      {/* Lock permintaan (2 Sep 2026) - Gudang bisa "tutup" penerimaan baru, form WO/Panel/Komponen
+          diganti catatan ini. Riwayat di bawah TETAP tampil apa adanya - cuma form kirim yang diblokir. */}
+      {gudangLocked?(
+        <div style={{marginBottom:20,padding:"16px",borderRadius:14,background:"#fef2f2",border:"1.5px solid #fecaca",display:"flex",alignItems:"center",gap:12}}>
+          <span style={{fontSize:24}}>🔒</span>
+          <div>
+            <div style={{fontWeight:800,fontSize:14,color:"#991b1b"}}>Gudang Sedang Tutup</div>
+            <div style={{fontSize:12,color:"#b91c1c",marginTop:2}}>Permintaan tidak bisa dikirim saat ini. Coba lagi nanti.</div>
+          </div>
+        </div>
+      ):(
+      <>
       <div style={{marginBottom:14}}>
         <Lbl>Work Order</Lbl>
         <select value={selectedWoId??""} onChange={(e:any)=>setSelectedWoId(e.target.value?Number(e.target.value):null)} style={selStyle}>
@@ -342,6 +371,8 @@ export function PermintaanView({user}:{user:any}){
             {submitting?"Mengirim...":"Kirim Permintaan"}
           </button>
         </>
+      )}
+      </>
       )}
 
       <div style={{height:1,background:"#f1f5f9",margin:"4px 0 16px"}}/>

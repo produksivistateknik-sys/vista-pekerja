@@ -1,3 +1,5 @@
+import { useState, useEffect } from "react";
+import { supabase } from "../../lib/supabase";
 import { KoneksiBadge } from "../ui/Primitives";
 
 export { SectionCard, EmptyState } from "../ui/Primitives";
@@ -79,6 +81,57 @@ export function SegmentedControl<T extends string>({options,value,onChange}:{
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// ── LOCK/UNLOCK PERMINTAAN (2 Sep 2026) ───────────────────────────────────────
+// Gudang bisa "tutup" penerimaan permintaan baru dari operator - baca/tulis gudang_lock_status
+// (1 baris, id=1). Realtime supaya kalau di-toggle dari 1 device Gudang, device Gudang lain yang
+// kebetulan login bareng ikut ke-update tampilannya juga (bukan cuma operator).
+export function GudangLockToggle({adminName}:{adminName:string}){
+  const[locked,setLocked]=useState<boolean|null>(null); // null = belum kemuat
+  const[loading,setLoading]=useState(false);
+
+  const fetchStatus=async()=>{
+    const{data}=await supabase.from("gudang_lock_status").select("is_locked").eq("id",1).single();
+    setLocked(data?.is_locked??false);
+  };
+  useEffect(()=>{
+    fetchStatus();
+    const ch=supabase.channel("realtime-gudang-lock-status")
+      .on("postgres_changes",{event:"*",schema:"public",table:"gudang_lock_status"},fetchStatus)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+
+  const toggle=async()=>{
+    if(locked===null)return;
+    const next=!locked;
+    if(next&&!window.confirm("Kunci permintaan? Operator TIDAK akan bisa kirim permintaan baru (BBMB & BBMU) sampai Anda buka lagi."))return;
+    setLoading(true);
+    await supabase.from("gudang_lock_status").update({is_locked:next,updated_by:adminName,updated_at:new Date().toISOString()}).eq("id",1);
+    setLoading(false);
+  };
+
+  if(locked===null)return null;
+
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:12,
+      background:locked?"#fef2f2":"#f0fdf4",border:`1px solid ${locked?"#fecaca":"#bbf7d0"}`}}>
+      <div style={{width:34,height:34,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+        background:locked?"#dc2626":"#16a34a",color:"#fff",fontSize:15}}>{locked?"🔒":"🔓"}</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>Permintaan Barang {locked?"Terkunci":"Terbuka"}</div>
+        <div style={{fontSize:10.5,color:"#94a3b8"}}>
+          {locked?"Operator tidak bisa kirim permintaan baru saat ini":"Operator bisa kirim permintaan seperti biasa"}
+        </div>
+      </div>
+      <button onClick={toggle} disabled={loading} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",
+        background:loading?"#94a3b8":(locked?"#16a34a":"#dc2626"),color:"#fff",
+        fontSize:11.5,fontWeight:700,cursor:loading?"default":"pointer",fontFamily:"inherit",whiteSpace:"nowrap" as const}}>
+        {loading?"...":locked?"Buka":"Kunci"}
+      </button>
     </div>
   );
 }

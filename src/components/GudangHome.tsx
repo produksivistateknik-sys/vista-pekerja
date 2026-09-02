@@ -5,7 +5,7 @@ import { TarikGudangTab } from "./TarikGudangTab";
 import { DatabaseGudangTab } from "./DatabaseGudangTab";
 import { RiwayatGudangTab } from "./RiwayatGudangTab";
 import { KomponenProgressView } from "./KomponenProgressView";
-import { GudangHeader } from "./gudang/GudangUI";
+import { GudangHeader, GudangLockToggle } from "./gudang/GudangUI";
 import { NotifikasiPushToggle } from "./ui/Primitives";
 
 // Tab "Progress" - REUSE KomponenProgressView.tsx yang sama persis dipakai divisi
@@ -67,10 +67,12 @@ export function GudangHome({user,onLogout}:{user:any;onLogout:()=>void}){
   return(
     <div style={{display:"flex",flexDirection:"column",height:"100%",width:"100%"}}>
       <GudangHeader subtitle={TAB_SUBTITLE[tab]} notifCount={notifCount} onBellClick={()=>setTab("permintaan")} onLogout={onLogout}/>
-      {/* Toggle notifikasi push (3 REVISI, 2 Sep 2026) - Gudang gak punya tab "Akun" kayak
-          operator, jadi ditaruh persisten di bawah header (kelihatan di semua tab) bukan
-          dikubur di 1 tab spesifik. */}
-      <div style={{padding:"12px 16px 0"}}><NotifikasiPushToggle divisi="gudang"/></div>
+      {/* Toggle lock permintaan & notifikasi push - Gudang gak punya tab "Akun" kayak operator,
+          jadi ditaruh persisten di bawah header (kelihatan di semua tab) bukan dikubur di 1 tab. */}
+      <div style={{padding:"12px 16px 0",display:"flex",flexDirection:"column",gap:10}}>
+        <GudangLockToggle adminName={user?.nama||user?.name||"Gudang"}/>
+        <NotifikasiPushToggle divisi="gudang"/>
+      </div>
       <div style={{flex:1,overflowY:"auto",width:"100%",paddingBottom:"calc(52px + env(safe-area-inset-bottom))"}}>
         {tab==="permintaan"&&<PermintaanGudangTab user={user}/>}
         {tab==="tarik"&&<TarikGudangTab/>}
