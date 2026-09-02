@@ -203,7 +203,17 @@ export function DatabaseGudangTab(){
     fetchMasterList();
   };
 
-  const filteredList=masterList.filter((m:any)=>!search||m.nama.toLowerCase().includes(search.toLowerCase()));
+  // REVISI (2 Sep 2026) - search sekarang cari di nama ATAU kode_barang, bukan nama doang.
+  const filteredList=masterList.filter((m:any)=>{
+    if(!search)return true;
+    const q=search.toLowerCase();
+    return m.nama.toLowerCase().includes(q)||(m.kode_barang||"").toLowerCase().includes(q);
+  });
+  // Kategori badge - warna beda per kategori biar gampang dibedain sekilas mata.
+  const KATEGORI_BADGE:Record<string,{bg:string;color:string}>={
+    BBMB:{bg:"#fdf2f8",color:"#be185d"},
+    BBMU:{bg:"#eef2ff",color:"#4f46e5"},
+  };
   const inpStyle:any={width:"100%",padding:"9px 11px",borderRadius:9,border:"1.5px solid #cbd5e1",fontSize:13,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
 
   return(
@@ -296,7 +306,7 @@ export function DatabaseGudangTab(){
           </div>
         </div>
       )}
-      <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="🔍 Cari nama komponen..."
+      <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="🔍 Cari nama atau kode barang..."
         style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontFamily:"inherit",marginBottom:10}}/>
       {loadingList?(
         <div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>Memuat...</div>
@@ -304,24 +314,43 @@ export function DatabaseGudangTab(){
         <EmptyState title={search?"Tidak ditemukan":"Belum ada komponen"}
           description={search?"Gak ada komponen yang cocok dengan pencarian.":`Upload file Excel/CSV di atas buat mulai isi daftar komponen ${kategoriAktif}.`}/>
       ):(
-        <div style={{display:"flex",flexDirection:"column",gap:6,maxHeight:360,overflowY:"auto" as const}}>
-          {filteredList.map((m:any)=>(
-            <div key={m.id} style={{display:"flex",flexDirection:"column",gap:2,background:"#f8fafc",borderRadius:9,padding:"9px 12px"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                <span style={{fontSize:13,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>{m.nama}</span>
-                {m.satuan_list&&m.satuan_list.length>0&&(
-                  <span style={{flexShrink:0,fontSize:10,fontWeight:700,color:"#0369a1",background:"#eff6ff",borderRadius:20,padding:"2px 8px"}}>
-                    {m.satuan_list.join(" / ")}
+        // REVISI (2 Sep 2026) - card per baris dengan label kolom kecil di atas tiap value, meniru
+        // struktur kolom Excel sumber (KODE BARANG/NAMA BARANG/TIPE/MERK/SATUAN/KATEGORI) TAPI
+        // disusun vertikal - dipilih di atas tabel+scroll horizontal karena app ini murni mobile
+        // (GudangHome sengaja gak punya toggle desktop) dan pola card udah dipakai konsisten di
+        // semua list lain (BBMB/BBMU/Riwayat) - scroll horizontal 6 kolom di layar HP sempit
+        // gak nyaman dipakai jempol.
+        <div style={{display:"flex",flexDirection:"column",gap:8,maxHeight:420,overflowY:"auto" as const}}>
+          {filteredList.map((m:any)=>{
+            const badge=KATEGORI_BADGE[m.kategori]||{bg:"#f1f5f9",color:"#64748b"};
+            const satuanText=m.satuan_list&&m.satuan_list.length>0?m.satuan_list.join(", "):"-";
+            const kolom=[
+              {label:"KODE BARANG",value:m.kode_barang},
+              {label:"TIPE",value:m.tipe},
+              {label:"MERK",value:m.merk},
+              {label:"SATUAN",value:satuanText!=="-"?satuanText:null},
+            ].filter(k=>k.value);
+            return(
+              <div key={m.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"10px 12px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:kolom.length>0?8:0}}>
+                  <span style={{fontSize:13.5,fontWeight:700,color:"#1e293b",flex:1,minWidth:0}}>{m.nama}</span>
+                  <span style={{flexShrink:0,background:badge.bg,color:badge.color,borderRadius:20,padding:"2px 9px",fontSize:9.5,fontWeight:800,letterSpacing:.3}}>
+                    {m.kategori}
                   </span>
+                </div>
+                {kolom.length>0&&(
+                  <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 10px"}}>
+                    {kolom.map(k=>(
+                      <div key={k.label}>
+                        <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.3,marginBottom:1}}>{k.label}</div>
+                        <div style={{fontSize:12,fontWeight:600,color:"#334155"}}>{k.value}</div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
-              {(m.kode_barang||m.tipe||m.merk)&&(
-                <div style={{fontSize:10.5,color:"#94a3b8",fontWeight:600}}>
-                  {[m.kode_barang,m.tipe,m.merk].filter(Boolean).join(" · ")}
-                </div>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
       </SectionCard>
