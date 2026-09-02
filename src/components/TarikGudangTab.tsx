@@ -38,19 +38,26 @@ type FilterMode="belum"|"sudah";
 
 export function TarikGudangTab(){
   const[filterMode,setFilterMode]=useState<FilterMode>("belum");
+  // Filter tanggal (REVISI 2 Sep 2026, pola sama kayak RiwayatGudangTab.tsx) - discope ke tanggal
+  // PERMINTAAN DIBUAT (permintaan.created_at), bukan tanggal disiapkan/diambil - konsisten sama
+  // tab lain (Permintaan Masuk, Riwayat, Permintaan operator) yang semua discope ke created_at.
+  const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
   const[loading,setLoading]=useState(true);
   const[rows,setRows]=useState<any[]>([]); // item + permintaan header digabung flat
 
   const fetchData=async()=>{
     setLoading(true);
-    // BBMB yang sudah disiapkan Gudang ("submit") - baik yang belum maupun yang sudah diambil,
-    // biar Gudang bisa lihat dua-duanya (toggle filter di bawah), bukan cuma antrian aktif.
-    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").eq("status","submit").range(from,to));
-    const permIds=[...new Set(items.map((it:any)=>it.permintaan_id))];
-    if(permIds.length===0){setRows([]);setLoading(false);return;}
-    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").in("id",permIds).range(from,to));
+    const startIso=tanggal+"T00:00:00";
+    const endIso=tanggal+"T23:59:59.999";
+    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis","BBMB")
+      .gte("created_at",startIso).lte("created_at",endIso).range(from,to));
+    if(perms.length===0){setRows([]);setLoading(false);return;}
     const permMap:Record<number,any>={};
     perms.forEach((p:any)=>{permMap[p.id]=p;});
+    const permIds=perms.map((p:any)=>p.id);
+    // BBMB yang sudah disiapkan Gudang ("submit") - baik yang belum maupun yang sudah diambil,
+    // biar Gudang bisa lihat dua-duanya (toggle filter di bawah), bukan cuma antrian aktif.
+    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").eq("status","submit").in("permintaan_id",permIds).range(from,to));
     const merged=items
       .map((it:any)=>({...it,perm:permMap[it.permintaan_id]}))
       .filter((r:any)=>r.perm) // jaga-jaga kalau header udah gak ada
@@ -66,7 +73,7 @@ export function TarikGudangTab(){
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+  },[tanggal]);
 
   const filteredRows=rows.filter(r=>filterMode==="belum"?!r.sudah_diambil:r.sudah_diambil);
 
@@ -84,6 +91,8 @@ export function TarikGudangTab(){
   return(
     <div style={{padding:16}} className="fi">
       <SectionCard icon="📦" title="Pengambilan Komponen" subtitle="Status pengambilan fisik BBMB - dikonfirmasi operator, bukan di sini">
+      <input type="date" value={tanggal} onChange={(e:any)=>setTanggal(e.target.value)}
+        style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:14}}/>
       <div style={{display:"flex",gap:6,marginBottom:14,background:"#f1f5f9",borderRadius:12,padding:4}}>
         {([{k:"belum",l:"Belum Diambil"},{k:"sudah",l:"Sudah Diambil"}] as const).map(t=>(
           <button key={t.k} onClick={()=>setFilterMode(t.k)}
