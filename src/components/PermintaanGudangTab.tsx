@@ -142,9 +142,36 @@ function BBMBList({adminName,tanggal}:{adminName:string;tanggal:string}){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tanggal]);
 
+  // Push notif ke divisi pengaju (3 REVISI, 2 Sep 2026) - cari item+perm dari state yang UDAH ADA
+  // (itemsByPerm/permMap) SEBELUM update, biar tau divisi tujuan + nama komponen buat isi notif.
+  const findItemContext=(itemId:number)=>{
+    for(const permId of Object.keys(itemsByPerm)){
+      const found=(itemsByPerm[Number(permId)]||[]).find((it:any)=>it.id===itemId);
+      if(found)return{item:found,perm:permMap[Number(permId)]};
+    }
+    return null;
+  };
+
   const setItemStatus=async(itemId:number,status:"submit"|"reject",catatan?:string)=>{
     setSubmittingId(itemId);
+    const ctx=findItemContext(itemId);
     await supabase.from("permintaan_item").update({status,catatan_reject:catatan||null,updated_by:adminName,updated_at:new Date().toISOString(),dilihat_operator:false}).eq("id",itemId);
+    // Fitur tambahan, GAGAL DI SINI TIDAK BOLEH gagalin update status yang udah beres di atas.
+    if(ctx?.perm?.divisi){
+      try{
+        if(status==="submit"){
+          await supabase.functions.invoke("notify-permintaan",{body:{
+            trigger:"status",targetDivisi:ctx.perm.divisi,
+            namaKomponen:ctx.item.nama_komponen,qty:ctx.item.qty,satuan:ctx.item.satuan,statusLabel:"Sudah Siap",
+          }});
+        }else{
+          await supabase.functions.invoke("notify-permintaan",{body:{
+            trigger:"reject",targetDivisi:ctx.perm.divisi,
+            namaKomponen:ctx.item.nama_komponen,qty:ctx.item.qty,satuan:ctx.item.satuan,catatanReject:catatan||null,
+          }});
+        }
+      }catch{/* notifikasi gagal - diabaikan, status tetap tersimpan */}
+    }
     setRejectTarget(null);setRejectCatatan("");setSubmittingId(null);
     fetchData();
   };
@@ -205,7 +232,7 @@ function BBMBList({adminName,tanggal}:{adminName:string;tanggal:string}){
                         ):(
                           <span style={{flexShrink:0,background:it.status==="submit"?"#f0fdf4":"#fef2f2",color:it.status==="submit"?"#16a34a":"#dc2626",
                             borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>
-                            {it.status==="submit"?"Disiapkan":"Ditolak"}
+                            {it.status==="submit"?"Sudah Siap":"Ditolak"}
                           </span>
                         )}
                       </div>
@@ -283,9 +310,28 @@ function BBMUList({adminName,tanggal}:{adminName:string;tanggal:string}){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tanggal]);
 
+  // Push notif ke divisi pengaju - pola sama persis BBMBList.findItemContext di atas.
+  const findItemContext=(itemId:number)=>{
+    for(const permId of Object.keys(itemsByPerm)){
+      const found=(itemsByPerm[Number(permId)]||[]).find((it:any)=>it.id===itemId);
+      if(found)return{item:found,perm:permMap[Number(permId)]};
+    }
+    return null;
+  };
+
   const setItemStatus=async(itemId:number,status:string)=>{
     setSubmittingId(itemId);
+    const ctx=findItemContext(itemId);
     await supabase.from("permintaan_item").update({status,updated_by:adminName,updated_at:new Date().toISOString(),dilihat_operator:false}).eq("id",itemId);
+    if(ctx?.perm?.divisi){
+      try{
+        await supabase.functions.invoke("notify-permintaan",{body:{
+          trigger:"status",targetDivisi:ctx.perm.divisi,
+          namaKomponen:ctx.item.nama_komponen,qty:ctx.item.qty,satuan:ctx.item.satuan,
+          statusLabel:STATUS_LABEL_BBMU[status]||status,
+        }});
+      }catch{/* notifikasi gagal - diabaikan, status tetap tersimpan */}
+    }
     setSubmittingId(null);
     fetchData();
   };

@@ -32,7 +32,7 @@ type Jenis="BBMB"|"BBMU";
 type ItemRow={value:string;namaKomponen:string;qty:number;satuanList:string[];satuanDipilih:string};
 
 const STATUS_LABEL:Record<Jenis,Record<string,string>>={
-  BBMB:{pending:"Menunggu",submit:"✓ Disiapkan",reject:"✕ Ditolak"},
+  BBMB:{pending:"Menunggu",submit:"✓ Selesai",reject:"✕ Ditolak"},
   BBMU:{pending:"Menunggu",tersedia:"Tersedia",belum_lengkap:"Belum Lengkap",belum_datang:"Belum Datang"},
 };
 const STATUS_COLOR:Record<Jenis,Record<string,string>>={
@@ -234,6 +234,14 @@ export function PermintaanView({user}:{user:any}){
       setSubmitting(false);
       return;
     }
+    // Push notif ke Gudang - fitur tambahan, GAGAL DI SINI TIDAK BOLEH gagalin permintaan yang
+    // udah tersimpan di atas, makanya dibungkus try/catch sendiri & gak di-await sebagai kondisi.
+    try{
+      await supabase.functions.invoke("notify-permintaan",{body:{
+        trigger:"baru",jenis:jenisTab,operatorNama:namaOperator,divisi,
+        proyek:woObj?.proyek||null,panelNama:panelObj?.nama||null,jumlahItem:itemsValid.length,
+      }});
+    }catch{/* notifikasi gagal - diabaikan, permintaan tetap tersimpan */}
     setSubmitting(false);
     setSelectedWoId(null);
     setItems([emptyItem()]);

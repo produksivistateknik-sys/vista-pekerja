@@ -43,7 +43,7 @@ const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric
 // Badge status TERKINI - prioritas: udah diambil > disiapkan (nunggu diambil) > ditolak > lainnya.
 const statusTerkini=(item:any):{label:string,color:string}=>{
   if(item.sudah_diambil)return{label:"✓ Sudah Diambil",color:"#0369a1"};
-  if(item.status==="submit")return{label:"✓ Disiapkan",color:"#16a34a"};
+  if(item.status==="submit")return{label:"✓ Sudah Siap",color:"#16a34a"};
   if(item.status==="reject")return{label:"✕ Ditolak",color:"#dc2626"};
   return{label:item.status,color:"#94a3b8"};
 };
@@ -118,7 +118,7 @@ export function RiwayatGudangTab(){
                 <div style={{display:"flex",flexDirection:"column",gap:2,fontSize:10.5,color:"#64748b"}}>
                   <span>📝 Diminta oleh {r.perm.operator_nama||"-"} — {fmtDateTime(r.perm.created_at)}</span>
                   {r.updated_at&&(
-                    <span>{r.status==="reject"?"✕ Ditolak":"✓ Disiapkan"} oleh {r.updated_by||"-"} — {fmtDateTime(r.updated_at)}</span>
+                    <span>{r.status==="reject"?"✕ Ditolak":"✓ Sudah Siap"} oleh {r.updated_by||"-"} — {fmtDateTime(r.updated_at)}</span>
                   )}
                   {r.status==="submit"&&(
                     r.sudah_diambil
