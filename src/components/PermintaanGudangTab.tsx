@@ -45,20 +45,67 @@ const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric
 export function PermintaanGudangTab({user}:{user:any}){
   const adminName=user?.nama||user?.name||"Gudang";
   const[jenisTab,setJenisTab]=useState<"BBMB"|"BBMU">("BBMB");
+  // Filter tanggal per hari (REVISI 2 Sep 2026) - dulu Permintaan Masuk gak punya filter waktu
+  // sama sekali (BBMB nampilin SEMUA yang masih pending, BBMU nampilin SEMUA riwayat) - sekarang
+  // di-scope ke tanggal permintaan dibuat (permintaan.created_at), pola sama kayak RiwayatGudangTab.
+  const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
+
+  // Titik merah "belum dibaca" per sub-tab (REVISI 2 Sep 2026) - Gudang cuma 1 login SHARED
+  // (operator_users gak punya baris per-individu buat divisi gudang), jadi status "sudah dibaca"
+  // gak bisa disimpan di localStorage (beda device/sesi = beda status) - harus di tabel DB
+  // (gudang_read_state) biar konsisten buat siapapun yang pakai login itu. Titik nyala kalau ada
+  // permintaan.created_at LEBIH BARU dari last_read_at tab itu.
+  const[unread,setUnread]=useState<Record<"BBMB"|"BBMU",boolean>>({BBMB:false,BBMU:false});
+
+  const checkUnread=async()=>{
+    const{data:readState}=await supabase.from("gudang_read_state").select("*");
+    const readMap:Record<string,string>={};
+    (readState||[]).forEach((r:any)=>{readMap[r.tab]=r.last_read_at;});
+    const results:Record<"BBMB"|"BBMU",boolean>={BBMB:false,BBMU:false};
+    for(const t of["BBMB","BBMU"] as const){
+      const lastRead=readMap[t]||"1970-01-01T00:00:00Z";
+      const{count}=await supabase.from("permintaan").select("id",{count:"exact",head:true}).eq("jenis",t).gt("created_at",lastRead);
+      results[t]=(count||0)>0;
+    }
+    setUnread(results);
+  };
+  const markRead=async(t:"BBMB"|"BBMU")=>{
+    setUnread(prev=>({...prev,[t]:false}));
+    await supabase.from("gudang_read_state").upsert({tab:t,last_read_at:new Date().toISOString()});
+  };
+
+  useEffect(()=>{
+    checkUnread();
+    markRead(jenisTab); // tab default (BBMB) ke-mark dibaca begitu layar ini dibuka
+    const ch=supabase.channel("realtime-gudang-unread")
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"permintaan"},checkUnread)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  const handleTabChange=(k:"BBMB"|"BBMU")=>{
+    setJenisTab(k);
+    markRead(k);
+  };
 
   return(
     <div style={{padding:16}} className="fi">
       <SectionCard icon="📋" title="Permintaan Masuk" subtitle="Proses permintaan BBMB & BBMU dari operator">
-        <SegmentedControl options={[{key:"BBMB",label:"BBMB (Bantu)",icon:"🧰"},{key:"BBMU",label:"BBMU (Utama)",icon:"⚙️"}]}
-          value={jenisTab} onChange={setJenisTab}/>
-        {jenisTab==="BBMB"?<BBMBList adminName={adminName}/>:<BBMUList adminName={adminName}/>}
+        <SegmentedControl options={[
+          {key:"BBMB",label:"BBMB (Bantu)",icon:"🧰",dot:unread.BBMB},
+          {key:"BBMU",label:"BBMU (Utama)",icon:"⚙️",dot:unread.BBMU},
+        ]} value={jenisTab} onChange={handleTabChange}/>
+        <input type="date" value={tanggal} onChange={(e:any)=>setTanggal(e.target.value)}
+          style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:14}}/>
+        {jenisTab==="BBMB"?<BBMBList adminName={adminName} tanggal={tanggal}/>:<BBMUList adminName={adminName} tanggal={tanggal}/>}
       </SectionCard>
     </div>
   );
 }
 
 // ================= BBMB =================
-function BBMBList({adminName}:{adminName:string}){
+function BBMBList({adminName,tanggal}:{adminName:string;tanggal:string}){
   const[loading,setLoading]=useState(true);
   const[permMap,setPermMap]=useState<Record<number,any>>({});
   const[itemsByPerm,setItemsByPerm]=useState<Record<number,any[]>>({});
@@ -68,10 +115,15 @@ function BBMBList({adminName}:{adminName:string}){
 
   const fetchData=async()=>{
     setLoading(true);
-    const pendingItems=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").eq("status","pending").range(from,to));
-    const permIds=[...new Set(pendingItems.map((it:any)=>it.permintaan_id))];
-    if(permIds.length===0){setPermMap({});setItemsByPerm({});setLoading(false);return;}
-    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis","BBMB").in("id",permIds).order("created_at",{ascending:false}).range(from,to));
+    // Discope ke tanggal permintaan DIBUAT (bukan tanggal item-nya diproses) - fetch perms dulu
+    // (di-filter tanggal), baru ambil item punya perm-perm itu. Grouping "cuma yang masih pending"
+    // di bawah (grouped) tetap jalan seperti biasa dari itemsByPerm ini.
+    const startIso=tanggal+"T00:00:00";
+    const endIso=tanggal+"T23:59:59.999";
+    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis","BBMB")
+      .gte("created_at",startIso).lte("created_at",endIso).order("created_at",{ascending:false}).range(from,to));
+    if(perms.length===0){setPermMap({});setItemsByPerm({});setLoading(false);return;}
+    const permIds=perms.map((p:any)=>p.id);
     const allItems=await fetchItemsByPermintaanIds(permIds);
     const pMap:Record<number,any>={};
     perms.forEach((p:any)=>{pMap[p.id]=p;});
@@ -88,7 +140,7 @@ function BBMBList({adminName}:{adminName:string}){
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+  },[tanggal]);
 
   const setItemStatus=async(itemId:number,status:"submit"|"reject",catatan?:string)=>{
     setSubmittingId(itemId);
@@ -192,7 +244,7 @@ const BBMU_SUBTABS=[
   {key:"assembling",label:"Assembling",filter:(p:any)=>p.divisi==="assembling"&&p.sub_bagian==="Assembling Luar"},
 ] as const;
 
-function BBMUList({adminName}:{adminName:string}){
+function BBMUList({adminName,tanggal}:{adminName:string;tanggal:string}){
   void adminName; // permintaan (header BBMU) gak punya kolom updated_by/updated_at
   const[subTab,setSubTab]=useState<typeof BBMU_SUBTABS[number]["key"]>("wiring_ctrl");
   const[loading,setLoading]=useState(true);
@@ -200,7 +252,10 @@ function BBMUList({adminName}:{adminName:string}){
 
   const fetchData=async()=>{
     setLoading(true);
-    const rows=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis","BBMU").order("created_at",{ascending:false}).range(from,to));
+    const startIso=tanggal+"T00:00:00";
+    const endIso=tanggal+"T23:59:59.999";
+    const rows=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis","BBMU")
+      .gte("created_at",startIso).lte("created_at",endIso).order("created_at",{ascending:false}).range(from,to));
     setPerms(rows);
     setLoading(false);
   };
@@ -212,7 +267,7 @@ function BBMUList({adminName}:{adminName:string}){
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[]);
+  },[tanggal]);
 
   const setStatus=async(permId:number,status:string)=>{
     await supabase.from("permintaan").update({status,dilihat_operator:false}).eq("id",permId);

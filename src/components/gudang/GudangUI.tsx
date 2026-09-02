@@ -54,8 +54,10 @@ export function GudangHeader({subtitle,notifCount,onBellClick,onLogout}:{
 }
 
 // ── SEGMENTED CONTROL (icon-in-circle + underline di opsi aktif) ─────────────
+// `dot` opsional per opsi (2 Sep 2026) - titik merah kecil di pojok icon, dipakai buat notifikasi
+// "belum dibaca" (mis. tab BBMB/BBMU di PermintaanGudangTab) - generik, gak spesifik ke 1 fitur.
 export function SegmentedControl<T extends string>({options,value,onChange}:{
-  options:{key:T;label:string;icon:string}[];value:T;onChange:(k:T)=>void;
+  options:{key:T;label:string;icon:string;dot?:boolean}[];value:T;onChange:(k:T)=>void;
 }){
   return(
     <div style={{display:"flex",gap:6,marginBottom:14,background:"#f1f5f9",borderRadius:14,padding:4}}>
@@ -68,8 +70,11 @@ export function SegmentedControl<T extends string>({options,value,onChange}:{
             cursor:"pointer",fontFamily:"inherit",background:active?"#eff6ff":"transparent",
             color:active?"#0369a1":"#64748b",transition:"all .15s"}}>
             <span style={{width:22,height:22,borderRadius:"50%",background:"#fff",display:"flex",
-              alignItems:"center",justifyContent:"center",fontSize:12,flexShrink:0,
-              boxShadow:active?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>{o.icon}</span>
+              alignItems:"center",justifyContent:"center",fontSize:12,flexShrink:0,position:"relative",
+              boxShadow:active?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>
+              {o.icon}
+              {o.dot&&<span style={{position:"absolute",top:-2,right:-2,width:8,height:8,borderRadius:"50%",background:"#dc2626",border:"1.5px solid #fff"}}/>}
+            </span>
             <span style={{fontWeight:700,fontSize:12.5}}>{o.label}</span>
           </button>
         );

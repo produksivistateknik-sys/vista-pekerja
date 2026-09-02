@@ -59,6 +59,9 @@ export function PermintaanView({user}:{user:any}){
   const[riwayat,setRiwayat]=useState<any[]>([]);
   const[loadingRiwayat,setLoadingRiwayat]=useState(true);
   const[confirmingId,setConfirmingId]=useState<number|null>(null);
+  // Filter tanggal per hari (REVISI 2 Sep 2026, pola sama persis kayak RiwayatGudangTab.tsx sisi
+  // Gudang) - Riwayat Permintaan operator dulu cuma nampilin 30 terakhir tanpa filter waktu.
+  const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
 
   useEffect(()=>{
     supabase.from("work_orders").select("id,wo,proyek").eq("is_archived",false).order("created_at",{ascending:false})
@@ -92,8 +95,11 @@ export function PermintaanView({user}:{user:any}){
   // perhatian naik ke atas) DAN nentuin mana yang ditandai "sudah dibaca" begitu list ini tampil.
   const fetchRiwayat=async()=>{
     setLoadingRiwayat(true);
+    const startIso=tanggal+"T00:00:00";
+    const endIso=tanggal+"T23:59:59.999";
     const{data:perms}=await supabase.from("permintaan").select("*")
       .eq("jenis",jenisTab).eq("divisi",divisi)
+      .gte("created_at",startIso).lte("created_at",endIso)
       .order("created_at",{ascending:false}).limit(30);
     if(jenisTab==="BBMB"&&perms&&perms.length>0){
       const ids=perms.map((p:any)=>p.id);
@@ -131,7 +137,7 @@ export function PermintaanView({user}:{user:any}){
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[jenisTab,divisi]);
+  },[jenisTab,divisi,tanggal]);
 
   // Konfirmasi pengambilan fisik - SEKARANG dari sisi operator (bukan Gudang lagi, lihat
   // TarikGudangTab.tsx yang sudah jadi read-only). Siapapun yang login saat ini yang
@@ -302,6 +308,8 @@ export function PermintaanView({user}:{user:any}){
       <div style={{height:1,background:"#f1f5f9",margin:"4px 0 16px"}}/>
 
       <Lbl>Riwayat Permintaan Divisi ({jenisTab})</Lbl>
+      <input type="date" value={tanggal} onChange={(e:any)=>setTanggal(e.target.value)}
+        style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:12}}/>
       {loadingRiwayat?(
         <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Memuat...</div>
       ):riwayat.length===0?(
@@ -324,10 +332,20 @@ export function PermintaanView({user}:{user:any}){
                     <div key={it.id} style={{background:"#f8fafc",borderRadius:8,padding:"6px 10px"}}>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                         <span style={{fontSize:12.5,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>{it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span></span>
-                        <span style={{background:STATUS_COLOR.BBMB[it.status]+"18",color:STATUS_COLOR.BBMB[it.status],
-                          borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
-                          {STATUS_LABEL.BBMB[it.status]||it.status}
-                        </span>
+                        {/* REVISI (2 Sep 2026) - badge dulu macet di "Disiapkan" walau sudah_diambil
+                            udah true (baris "Sudah diambil oleh..." di bawah cuma nambah, badge
+                            atas gak ikut ganti). Sekarang badge nunjukin status TERKINI - begitu
+                            sudah_diambil, badge BERUBAH jadi "Sudah Diambil" (gantiin, bukan numpuk). */}
+                        {(()=>{
+                          const badgeLabel=it.sudah_diambil?"✓ Sudah Diambil":(STATUS_LABEL.BBMB[it.status]||it.status);
+                          const badgeColor=it.sudah_diambil?"#0369a1":STATUS_COLOR.BBMB[it.status];
+                          return(
+                            <span style={{background:badgeColor+"18",color:badgeColor,
+                              borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                              {badgeLabel}
+                            </span>
+                          );
+                        })()}
                       </div>
                       {it.status==="submit"&&!it.sudah_diambil&&(
                         <button onClick={()=>konfirmasiDiambil(it.id)} disabled={confirmingId===it.id}

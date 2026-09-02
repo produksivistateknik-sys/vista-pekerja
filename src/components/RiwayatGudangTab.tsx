@@ -7,10 +7,15 @@ import { SectionCard, EmptyState } from "./gudang/GudangUI";
 // (updated_at/updated_by, aksi GUDANG) dan konfirmasi pengambilan fisik BBMB
 // (diambil_at/diambil_oleh, aksi OPERATOR - sejak 17 Agu 2026 pengambilan
 // dikonfirmasi operator sendiri, bukan Gudang lagi). Dua kolom timestamp
-// TERPISAH (bukan cuma updated_at) supaya event pengambilan gak ketiban/nyampur
-// sama jejak submit/reject Gudang. Filter tanggal cek KEDUANYA - 1 item bisa
-// muncul 2x di tanggal beda (disiapkan hari Senin, diambil hari Rabu = 2 baris
-// riwayat terpisah, bukan cuma nampilin aksi terakhir).
+// TERPISAH (bukan cuma updated_at) - dipakai buat nentuin apa 1 item MASUK
+// tanggal yang lagi difilter (salah satu event jatuh di tanggal itu).
+//
+// REVISI (2 Sep 2026) - dulu 1 item bisa muncul 2 KALI sebagai baris riwayat
+// terpisah (1 buat event submit/reject, 1 lagi buat event diambil) kalau
+// kedua event itu jatuh di tanggal yang sama - laporan nyata: "AMPLAS 120
+// x10 Pcs" nongol 2x. Sekarang digabung jadi 1 CARD per item, isinya 3 baris
+// riwayat (Diminta/Disiapkan-Ditolak/Diambil) + 1 badge status TERKINI aja
+// (bukan 2 badge terpisah per event).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DIVISI_LABEL:Record<string,string>={
@@ -35,8 +40,9 @@ const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
 
 const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"-";
 
-const aksiInfo=(item:any):{label:string,color:string}=>{
-  if(item.eventType==="pickup")return{label:"✓ Sudah Diambil",color:"#0369a1"};
+// Badge status TERKINI - prioritas: udah diambil > disiapkan (nunggu diambil) > ditolak > lainnya.
+const statusTerkini=(item:any):{label:string,color:string}=>{
+  if(item.sudah_diambil)return{label:"✓ Sudah Diambil",color:"#0369a1"};
   if(item.status==="submit")return{label:"✓ Disiapkan",color:"#16a34a"};
   if(item.status==="reject")return{label:"✕ Ditolak",color:"#dc2626"};
   return{label:item.status,color:"#94a3b8"};
@@ -51,10 +57,8 @@ export function RiwayatGudangTab(){
     setLoading(true);
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
-    const inRange=(d:string)=>!!d&&d>=startIso&&d<=endIso;
-    // 2 sumber event TERPISAH per item - updated_at/updated_by (aksi Gudang: submit/reject) dan
-    // diambil_at/diambil_oleh (aksi operator: konfirmasi ambil) - 1 item bisa nyumbang 2 baris
-    // riwayat kalau dua-duanya kena tanggal yang sama query ini (jarang, tapi mungkin).
+    // 2 sumber event per item - updated_at (aksi Gudang: submit/reject) dan diambil_at (aksi
+    // operator: konfirmasi ambil) - query terpisah, tapi hasilnya di-dedup jadi 1 baris/item.
     const [byUpdated,byDiambil]=await Promise.all([
       fetchAllPaged((from,to)=>
         supabase.from("permintaan_item").select("*").not("updated_at","is",null)
@@ -63,20 +67,17 @@ export function RiwayatGudangTab(){
         supabase.from("permintaan_item").select("*").not("diambil_at","is",null)
           .gte("diambil_at",startIso).lte("diambil_at",endIso).range(from,to)),
     ]);
-    const events=[
-      ...byUpdated.map((it:any)=>({...it,eventType:"status",eventAt:it.updated_at,eventBy:it.updated_by})),
-      ...byDiambil.filter((it:any)=>!inRange(it.updated_at)).map((it:any)=>({...it,eventType:"pickup",eventAt:it.diambil_at,eventBy:it.diambil_oleh})),
-      // byDiambil yang updated_at-nya JUGA kena tanggal ini udah kebawa lewat byUpdated (event
-      // "status" duluan) - tambahin event "pickup"-nya juga biar 2 aksi beda hari tetap kelihatan
-      // dua-duanya, bukan 1 baris doang.
-      ...byDiambil.filter((it:any)=>inRange(it.updated_at)).map((it:any)=>({...it,eventType:"pickup",eventAt:it.diambil_at,eventBy:it.diambil_oleh})),
-    ].sort((a,b)=>(b.eventAt||"").localeCompare(a.eventAt||""));
-    const permIds=[...new Set(events.map((it:any)=>it.permintaan_id))];
+    // Item MASUK tanggal ini kalau SALAH SATU event (submit/reject ATAU diambil) jatuh di tanggal
+    // yang lagi difilter - tapi cuma 1 BARIS per item (dedup by id), bukan 2 event terpisah lagi.
+    const itemMap=new Map<number,any>();
+    [...byUpdated,...byDiambil].forEach((it:any)=>{if(!itemMap.has(it.id))itemMap.set(it.id,it);});
+    const merged=[...itemMap.values()].sort((a,b)=>((b.diambil_at||b.updated_at||"")).localeCompare(a.diambil_at||a.updated_at||""));
+    const permIds=[...new Set(merged.map((it:any)=>it.permintaan_id))];
     if(permIds.length===0){setRows([]);setLoading(false);return;}
     const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").in("id",permIds).range(from,to));
     const permMap:Record<number,any>={};
     perms.forEach((p:any)=>{permMap[p.id]=p;});
-    setRows(events.map((it:any)=>({...it,perm:permMap[it.permintaan_id]})).filter((r:any)=>r.perm));
+    setRows(merged.map((it:any)=>({...it,perm:permMap[it.permintaan_id]})).filter((r:any)=>r.perm));
     setLoading(false);
   };
 
@@ -102,21 +103,28 @@ export function RiwayatGudangTab(){
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {rows.map((r:any)=>{
-            const aksi=aksiInfo(r);
+            const status=statusTerkini(r);
             return(
-              <div key={`${r.id}-${r.eventType}`} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"11px 14px"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:6}}>
+              <div key={r.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"11px 14px"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
                   <div style={{minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{r.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{r.qty}{r.satuan?` ${r.satuan}`:""}</span></div>
                     <div style={{fontSize:10.5,color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                       {r.perm.jenis} · {DIVISI_LABEL[r.perm.divisi]||r.perm.divisi} · {r.perm.operator_nama} · {r.perm.proyek||"-"}
                     </div>
                   </div>
-                  <span style={{flexShrink:0,background:aksi.color+"18",color:aksi.color,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700,whiteSpace:"nowrap"}}>{aksi.label}</span>
+                  <span style={{flexShrink:0,background:status.color+"18",color:status.color,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700,whiteSpace:"nowrap"}}>{status.label}</span>
                 </div>
-                <div style={{display:"flex",justifyContent:"space-between",fontSize:10.5,color:"#94a3b8"}}>
-                  <span>oleh {r.eventBy||"-"}</span>
-                  <span>{fmtDateTime(r.eventAt)}</span>
+                <div style={{display:"flex",flexDirection:"column",gap:2,fontSize:10.5,color:"#64748b"}}>
+                  <span>📝 Diminta oleh {r.perm.operator_nama||"-"} — {fmtDateTime(r.perm.created_at)}</span>
+                  {r.updated_at&&(
+                    <span>{r.status==="reject"?"✕ Ditolak":"✓ Disiapkan"} oleh {r.updated_by||"-"} — {fmtDateTime(r.updated_at)}</span>
+                  )}
+                  {r.status==="submit"&&(
+                    r.sudah_diambil
+                      ?<span>📦 Diambil oleh {r.diambil_oleh||"-"} — {fmtDateTime(r.diambil_at)}</span>
+                      :<span style={{color:"#94a3b8"}}>⏳ Menunggu diambil</span>
+                  )}
                 </div>
                 {r.status==="reject"&&r.catatan_reject&&<div style={{fontSize:11,color:"#dc2626",marginTop:6}}>⚠ {r.catatan_reject}</div>}
               </div>
