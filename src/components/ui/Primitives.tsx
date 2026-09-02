@@ -148,11 +148,13 @@ export function SearchableSelect({options,value,onChange,placeholder,disabled,st
   // Dulu dipotong .slice(0,10) - keluarga komponen kayak "BAUT" bisa 85 baris, kepotong 10 hasil
   // pertama urut abjad ("BAUT 10X..." dst) jadi varian yang dicari (mis. "BAUT 5X15...") kesilep
   // meski cocok, kelihatan kayak "hilang". Dropdown-nya sendiri sudah scrollable (maxHeight+overflowY
-  // di bawah), jadi gak perlu batasi jumlah hasil - biarin semua yang cocok tampil.
+  // di bawah). Batas dinaikkan ke 150 (bukan dihapus total) - keluarga komponen terbesar yang ada
+  // sekarang cuma ~103 baris (SKUN), jadi gak akan kesilep, tapi query super umum 1 huruf (bisa
+  // cocok >1000 baris di kategori BBMU) tetap gak bikin render ratusan/ribuan tombol di HP.
   const filtered=q?options.filter(o=>{
     const label=o.label.toLowerCase();
     return label.includes(q)||stripSpace(label).includes(qNoSpace);
-  }):[];
+  }).slice(0,150):[];
 
   const pick=(opt:{id:string;label:string})=>{
     setQuery(opt.label);

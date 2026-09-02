@@ -147,8 +147,10 @@ export function DatabaseGudangTab(){
   const doUpload=async()=>{
     if(!parsed)return;
     setUploading(true);
-    const existing=await supabase.from("komponen_master").select("nama").eq("kategori",kategoriAktif).then(r=>r.data??[]);
-    const existingSet=new Set(existing.map((r:any)=>r.nama.trim().toLowerCase()));
+    // Pakai masterList yang udah di state (fetchMasterList paginasi penuh) - JANGAN .select() baru
+    // tanpa .range() di sini, kategori BBMU >1000 baris jadi kepotong diam-diam kalau query ulang
+    // (bug nyata ketemu 2 Sep 2026, sama persis kasus renhar - lihat komentar fetchMasterList).
+    const existingSet=new Set(masterList.map((r:any)=>r.nama.trim().toLowerCase()));
     const seenInFile=new Set<string>();
     const toInsert:any[]=[];
     let skipDuplikat=0,skipKosong=0;
