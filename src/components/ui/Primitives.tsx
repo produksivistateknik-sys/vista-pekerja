@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useKoneksiStatus } from "../../lib/koneksi";
+import { isPushSupported, subscribeToPush, unsubscribeFromPush, getPushStatus, type PushStatus } from "../../lib/pushNotif";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED UI COMPONENTS - dipisah dari App.tsx (Sprint 5, 5 Agu 2026)
@@ -222,6 +223,62 @@ export function CardToggle<T extends string>({options,value,onChange,color}:{
           </button>
         );
       })}
+    </div>
+  );
+}
+
+// ── TOGGLE NOTIFIKASI PUSH (3 REVISI, 2 Sep 2026) ─────────────────────────────
+// Pengaturan eksplisit aktifkan/nonaktifkan push notification per divisi/device - dulu cuma
+// banner sekali-muncul (App.tsx showPushBanner) yang begitu ditutup ATAU disetujui gak bisa
+// diubah lagi lewat UI (cuma lewat clear-data browser). Dipakai di AkunView (operator) & GudangHeader
+// area (Gudang) - keduanya device/login SHARED per divisi, jadi toggle ini efeknya per-device yang
+// device itu representasikan sebagai divisi X (bukan per-akun individual, gak ada akun individual).
+const PUSH_STATUS_LABEL:Record<PushStatus,string>={active:"Aktif",denied:"Diblokir browser",inactive:"Nonaktif",unsupported:"Tidak didukung"};
+export function NotifikasiPushToggle({divisi}:{divisi:string}){
+  const[status,setStatus]=useState<PushStatus|"checking">("checking");
+  const[loading,setLoading]=useState(false);
+
+  const refresh=async()=>{if(isPushSupported())setStatus(await getPushStatus());else setStatus("unsupported");};
+  useEffect(()=>{refresh();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
+
+  if(status==="unsupported")return null; // browser gak dukung push sama sekali - gak usah tampilin apa2
+
+  const toggle=async()=>{
+    setLoading(true);
+    if(status==="active"){
+      const res=await unsubscribeFromPush();
+      if(!res.success)alert("Gagal nonaktifkan notifikasi: "+(res.error||"unknown error"));
+    } else {
+      const res=await subscribeToPush(divisi);
+      if(!res.success)alert("Gagal aktifkan notifikasi: "+(res.error||"unknown error"));
+    }
+    await refresh();
+    setLoading(false);
+  };
+
+  const active=status==="active";
+  const denied=status==="denied";
+
+  return(
+    <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:12,
+      background:active?"#f0fdf4":"#f8fafc",border:`1px solid ${active?"#bbf7d0":"#e2e8f0"}`}}>
+      <div style={{width:34,height:34,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
+        background:active?"#16a34a":"#e2e8f0",color:active?"#fff":"#94a3b8",fontSize:15}}>🔔</div>
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>Notifikasi Push {status==="checking"?"...":PUSH_STATUS_LABEL[status]}</div>
+        <div style={{fontSize:10.5,color:"#94a3b8"}}>
+          {denied?"Diblokir di setting browser/HP - aktifkan manual, gak bisa lewat tombol ini":"Perangkat ini akan/tidak akan dapat notifikasi permintaan barang, dll"}
+        </div>
+      </div>
+      {!denied&&status!=="checking"&&(
+        <button onClick={toggle} disabled={loading} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",
+          background:loading?"#94a3b8":(active?"#fef2f2":"#16a34a"),color:active?"#dc2626":"#fff",
+          fontSize:11.5,fontWeight:700,cursor:loading?"default":"pointer",fontFamily:"inherit",whiteSpace:"nowrap" as const}}>
+          {loading?"...":active?"Nonaktifkan":"Aktifkan"}
+        </button>
+      )}
     </div>
   );
 }

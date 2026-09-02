@@ -67,3 +67,39 @@ export const subscribeToPush = async (divisi: string): Promise<{ success: boolea
     return { success: false, error: err?.message || String(err) }
   }
 }
+
+// Nonaktifkan - unsubscribe browser-level (PushManager) SEKALIGUS hapus baris push_subscriptions
+// (by endpoint) supaya edge function gak nyoba kirim ke situ lagi. Kalau gak ada subscription aktif
+// (sudah nonaktif/belum pernah aktif), dianggap sukses (gak ada apa-apa yang perlu dihapus).
+export const unsubscribeFromPush = async (): Promise<{ success: boolean; error?: string }> => {
+  if (!isPushSupported()) return { success: false, error: 'Browser ini tidak mendukung push notification.' }
+  try {
+    const registration = await navigator.serviceWorker.ready
+    const subscription = await registration.pushManager.getSubscription()
+    if (subscription) {
+      const endpoint = subscription.endpoint
+      await subscription.unsubscribe()
+      await supabase.from('push_subscriptions').delete().eq('endpoint', endpoint)
+    }
+    return { success: true }
+  } catch (err: any) {
+    return { success: false, error: err?.message || String(err) }
+  }
+}
+
+// Status TOGGLE (dipakai UI aktifkan/nonaktifkan) - beda dari getPushPermissionState() yang cuma
+// baca izin browser: ini cek subscription PushManager beneran ada atau enggak, jadi 'inactive'
+// walau permission udah granted tapi belum (atau sudah gak lagi) subscribe.
+export type PushStatus = 'active' | 'denied' | 'inactive' | 'unsupported'
+export const getPushStatus = async (): Promise<PushStatus> => {
+  if (!isPushSupported()) return 'unsupported'
+  if (Notification.permission === 'denied') return 'denied'
+  if (Notification.permission !== 'granted') return 'inactive'
+  try {
+    const registration = await navigator.serviceWorker.ready
+    const subscription = await registration.pushManager.getSubscription()
+    return subscription ? 'active' : 'inactive'
+  } catch {
+    return 'inactive'
+  }
+}

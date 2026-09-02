@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { DIVISI_CONFIG, PANEL_TYPES } from "../lib/panelTypes";
-import { SectionCard, EmptyState } from "./ui/Primitives";
+import { SectionCard, EmptyState, NotifikasiPushToggle } from "./ui/Primitives";
 import { fmtShort } from "../lib/dateHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -168,6 +168,10 @@ export function AkunView({user,isTimerDivisi,proses,notifCount,onBukaPermintaan,
           </div>
           <i className="ti ti-chevron-right" style={{fontSize:16,color:"#94a3b8"}}/>
         </div>
+      </SectionCard>
+
+      <SectionCard icon="📳" title="Pengaturan Notifikasi Push" subtitle="Aktifkan/nonaktifkan notifikasi ke perangkat ini" iconBg={cfg?.bg}>
+        <NotifikasiPushToggle divisi={user.divisi}/>
       </SectionCard>
 
       {isTimerDivisi&&(
