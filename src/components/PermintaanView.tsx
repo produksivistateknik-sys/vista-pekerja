@@ -6,21 +6,27 @@ import { DIVISI_CONFIG } from "../lib/panelTypes";
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB PERMINTAAN BARANG (BBMB & BBMU) - sistem request/approve pengeluaran
 // komponen. Independen total dari modul lama (komponen_stok/Warehouse progress
-// panel) - tabel sendiri (permintaan/permintaan_item/komponen_bbmb_master).
-// BBMB (Bantu): komponen dari master komponen_bbmb_master (diisi admin lewat
-// upload Excel), tiap item punya qty+satuan bebas. BBMU (Utama): SEJAK 14 Agu
-// 2026 disederhanakan jadi 1 row permintaan header per submit (proyek/panel/
-// catatan bebas + status), TIDAK LAGI pakai permintaan_item sama sekali -
-// permintaan_item sekarang eksklusif buat BBMB.
+// panel) - tabel sendiri permintaan/permintaan_item.
+// BBMB (Bantu): komponen dari master LAMA komponen_bbmb_master (diisi admin
+// lewat upload Excel di tab Database Gudang) - TIDAK disentuh, tiap item tetap
+// qty+satuan bebas ketik seperti sebelumnya.
+// BBMU (Utama): REVISI BESAR (2 Sep 2026) - balik pakai struktur penuh kayak
+// BBMB (dulu SEMPAT disederhanakan 14 Agu 2026 jadi 1 row header/catatan bebas,
+// TAPI gak pernah ada data yang kepakai format itu - 0 baris permintaan BBMU
+// waktu revisi ini dibuat, jadi gak ada yang perlu dimigrasi). Sekarang BBMU
+// juga per-item lewat permintaan_item, komponen dari master BARU
+// komponen_master (kategori='BBMU', hasil import DATABASE_BARU - REVISI.xlsx,
+// 1.424 baris) - satuan TIDAK bebas ketik kayak BBMB, tapi dipilih dari
+// satuan_list komponen itu (dropdown kalau >1 opsi, label otomatis kalau cuma
+// 1). Status BBMU tetap beda dari BBMB (tersedia/belum_lengkap/belum_datang,
+// BUKAN submit/reject) - dibedakan lewat permintaan.jenis, disimpan di kolom
+// permintaan_item.status yang sama (kolom text bebas, gak ada enum constraint).
 // Tab ini SENGAJA muncul buat SEMUA divisi (gak dikondisikan kayak tab
-// Komponen/Arsip), jadi App.tsx render ini tanpa cek user.divisi. Redesign 14
-// Agu 2026: pakai SectionCard/EmptyState/CardToggle (reuse dari redesign
-// Gudang, sekarang di ui/Primitives.tsx) + aksen warna ikut DIVISI_CONFIG per
-// divisi (bukan hardcode teal lagi).
+// Komponen/Arsip), jadi App.tsx render ini tanpa cek user.divisi.
 // ─────────────────────────────────────────────────────────────────────────────
 
 type Jenis="BBMB"|"BBMU";
-type ItemRow={value:string;namaKomponen:string;qty:number;satuan:string};
+type ItemRow={value:string;namaKomponen:string;qty:number;satuan:string;satuanList:string[];satuanDipilih:string};
 
 const STATUS_LABEL:Record<Jenis,Record<string,string>>={
   BBMB:{pending:"Menunggu",submit:"✓ Disiapkan",reject:"✕ Ditolak"},
@@ -31,7 +37,24 @@ const STATUS_COLOR:Record<Jenis,Record<string,string>>={
   BBMU:{pending:"#94a3b8",tersedia:"#16a34a",belum_lengkap:"#f59e0b",belum_datang:"#dc2626"},
 };
 
-const emptyItem=():ItemRow=>({value:"",namaKomponen:"",qty:1,satuan:""});
+const emptyItem=():ItemRow=>({value:"",namaKomponen:"",qty:1,satuan:"",satuanList:[],satuanDipilih:""});
+
+// Supabase/PostgREST default cap 1000 baris tanpa .range() - komponen_master kategori BBMU
+// sendirian udah 1.424 baris (lebih dari cap), jadi WAJIB paginasi penuh di sini, bukan
+// .select() polos (persis kasus renhar/activity_log yang pernah kejadian sebelumnya).
+const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
+  let all:any[]=[];
+  let from=0;
+  const PAGE=1000;
+  while(true){
+    const{data,error}=await build(from,from+PAGE-1);
+    if(error)throw error;
+    all=all.concat(data??[]);
+    if(!data||data.length<PAGE)break;
+    from+=PAGE;
+  }
+  return all;
+};
 
 const selStyle:any={width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
 const inpStyle:any={width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:13,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
@@ -50,10 +73,10 @@ export function PermintaanView({user}:{user:any}){
   const[panelList,setPanelList]=useState<any[]>([]);
   const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
 
-  const[masterList,setMasterList]=useState<any[]>([]); // BBMB: komponen_bbmb_master
+  const[masterList,setMasterList]=useState<any[]>([]); // BBMB: komponen_bbmb_master (lama, gak disentuh)
+  const[masterListBBMU,setMasterListBBMU]=useState<any[]>([]); // BBMU: komponen_master kategori BBMU (baru)
 
-  const[items,setItems]=useState<ItemRow[]>([emptyItem()]); // BBMB saja
-  const[catatan,setCatatan]=useState(""); // BBMU saja
+  const[items,setItems]=useState<ItemRow[]>([emptyItem()]); // BBMB & BBMU (REVISI 2 Sep 2026 - dulu BBMU cuma catatan bebas)
   const[submitting,setSubmitting]=useState(false);
 
   const[riwayat,setRiwayat]=useState<any[]>([]);
@@ -68,12 +91,13 @@ export function PermintaanView({user}:{user:any}){
       .then(({data})=>setWoList(data??[]));
     supabase.from("komponen_bbmb_master").select("id,nama,satuan").order("nama",{ascending:true})
       .then(({data})=>setMasterList(data??[]));
+    fetchAllPaged((from,to)=>supabase.from("komponen_master").select("id,nama,satuan_utama,satuan_list").eq("kategori","BBMU").order("nama",{ascending:true}).range(from,to))
+      .then(setMasterListBBMU);
   },[]);
 
   useEffect(()=>{
     setSelectedPanelId(null);
     setItems([emptyItem()]);
-    setCatatan("");
     if(selectedWoId){
       supabase.from("panels").select("id,no_pnl,nama,tipe,wo_id,checklist").eq("wo_id",selectedWoId).is("deleted_at",null)
         .order("no_pnl",{ascending:true}).then(({data})=>setPanelList(data??[]));
@@ -84,7 +108,6 @@ export function PermintaanView({user}:{user:any}){
 
   useEffect(()=>{
     setItems([emptyItem()]);
-    setCatatan("");
   },[selectedPanelId,jenisTab]);
 
   // Riwayat SE-DIVISI (bukan cuma milik operator yang sedang login) - siapapun yang login di
@@ -101,13 +124,17 @@ export function PermintaanView({user}:{user:any}){
       .eq("jenis",jenisTab).eq("divisi",divisi)
       .gte("created_at",startIso).lte("created_at",endIso)
       .order("created_at",{ascending:false}).limit(30);
-    if(jenisTab==="BBMB"&&perms&&perms.length>0){
+    // REVISI (2 Sep 2026) - BBMB & BBMU sekarang SAMA-SAMA per-item lewat permintaan_item, gak
+    // ada lagi cabang terpisah header-only buat BBMU. Bedanya cuma di definisi "aktif" (BBMB
+    // punya tahap sudah_diambil, BBMU enggak - BBMU beres begitu Gudang set status non-pending).
+    if(perms&&perms.length>0){
       const ids=perms.map((p:any)=>p.id);
       const{data:itemRows}=await supabase.from("permintaan_item").select("*").in("permintaan_id",ids);
       const map:Record<number,any[]>={};
       (itemRows||[]).forEach((it:any)=>{(map[it.permintaan_id]=map[it.permintaan_id]||[]).push(it);});
       const merged=perms.map((p:any)=>({...p,items:map[p.id]||[]}));
-      const isAktif=(p:any)=>(p.items||[]).some((it:any)=>it.status==="pending"||!it.dilihat_operator||(it.status==="submit"&&!it.sudah_diambil));
+      const isAktif=(p:any)=>(p.items||[]).some((it:any)=>
+        it.status==="pending"||!it.dilihat_operator||(jenisTab==="BBMB"&&it.status==="submit"&&!it.sudah_diambil));
       merged.sort((a:any,b:any)=>{
         const diff=Number(isAktif(b))-Number(isAktif(a));
         return diff!==0?diff:(b.created_at||"").localeCompare(a.created_at||"");
@@ -116,15 +143,7 @@ export function PermintaanView({user}:{user:any}){
       const unreadIds=(itemRows||[]).filter((it:any)=>it.status!=="pending"&&!it.dilihat_operator).map((it:any)=>it.id);
       if(unreadIds.length>0)supabase.from("permintaan_item").update({dilihat_operator:true}).in("id",unreadIds).then(()=>{});
     } else {
-      const merged=perms??[];
-      const isAktif=(p:any)=>p.status==="pending"||!p.dilihat_operator;
-      merged.sort((a:any,b:any)=>{
-        const diff=Number(isAktif(b))-Number(isAktif(a));
-        return diff!==0?diff:(b.created_at||"").localeCompare(a.created_at||"");
-      });
-      setRiwayat(merged);
-      const unreadIds=merged.filter((p:any)=>p.status&&p.status!=="pending"&&!p.dilihat_operator).map((p:any)=>p.id);
-      if(unreadIds.length>0)supabase.from("permintaan").update({dilihat_operator:true}).in("id",unreadIds).then(()=>{});
+      setRiwayat([]);
     }
     setLoadingRiwayat(false);
   };
@@ -159,14 +178,23 @@ export function PermintaanView({user}:{user:any}){
   const hapusBaris=(idx:number)=>setItems(prev=>prev.length<=1?prev:prev.filter((_,i)=>i!==idx));
 
   const onPilihKomponen=(idx:number,id:string,label:string)=>{
-    updateItem(idx,{value:id,namaKomponen:label});
+    if(jenisTab==="BBMU"){
+      // Komponen BBMU dari komponen_master - satuan gak bebas ketik, ikut satuan_list punya
+      // komponen itu. Default satuanDipilih = satuan_utama (kalau ada), fallback opsi pertama.
+      const m=masterListBBMU.find((x:any)=>String(x.id)===id);
+      const satuanList:string[]=m?.satuan_list||[];
+      const satuanDefault=m?.satuan_utama&&satuanList.includes(m.satuan_utama)?m.satuan_utama:(satuanList[0]||"");
+      updateItem(idx,{value:id,namaKomponen:label,satuanList,satuanDipilih:satuanDefault});
+    } else {
+      updateItem(idx,{value:id,namaKomponen:label});
+    }
   };
 
   const submitPermintaan=async()=>{
     if(!selectedWoId){alert("Pilih Work Order dulu");return;}
     if(!selectedPanelId){alert("Pilih Panel dulu");return;}
-    const itemsValid=jenisTab==="BBMB"?items.filter(it=>it.namaKomponen&&Number(it.qty)>0):[];
-    if(jenisTab==="BBMB"&&itemsValid.length===0){alert("Isi minimal 1 komponen dengan qty lebih dari 0");return;}
+    const itemsValid=items.filter(it=>it.namaKomponen&&Number(it.qty)>0);
+    if(itemsValid.length===0){alert("Isi minimal 1 komponen dengan qty lebih dari 0");return;}
     setSubmitting(true);
     const woObj=woList.find((w:any)=>w.id===selectedWoId);
     const panelObj=panelList.find((p:any)=>p.id===selectedPanelId);
@@ -174,33 +202,42 @@ export function PermintaanView({user}:{user:any}){
       jenis:jenisTab,operator_nama:namaOperator,divisi,sub_bagian:subBagian,
       wo_id:selectedWoId,panel_id:selectedPanelId,
       wo_number:woObj?.wo||null,proyek:woObj?.proyek||null,panel_nama:panelObj?.nama||null,
-      ...(jenisTab==="BBMU"?{catatan:catatan||null,status:"pending"}:{}),
     }).select().single();
     if(permErr||!perm){
       alert("Gagal mengirim permintaan: "+(permErr?.message||"unknown error"));
       setSubmitting(false);
       return;
     }
-    if(jenisTab==="BBMB"){
-      const rows=itemsValid.map(it=>({
-        permintaan_id:perm.id,
-        komponen_bbmb_master_id:it.value?Number(it.value):null,
-        nama_komponen:it.namaKomponen,
-        qty:Number(it.qty),
-        satuan:it.satuan||null,
-        status:"pending",
-      }));
-      const{error:itemErr}=await supabase.from("permintaan_item").insert(rows);
-      if(itemErr){
-        alert("Permintaan tersimpan tapi gagal simpan komponen: "+itemErr.message);
-        setSubmitting(false);
-        return;
-      }
+    // REVISI (2 Sep 2026) - BBMB & BBMU sekarang SAMA-SAMA insert ke permintaan_item. Beda cuma
+    // FK master-nya (komponen_bbmb_master_id lama vs komponen_master_id baru) dan satuan (BBMB
+    // bebas ketik di kolom satuan, BBMU dari satuan_dipilih hasil pilihan - kolom satuan JUGA
+    // diisi nilai yang sama biar kode display yang udah ada, misal it.satuan, tetap kepakai
+    // seragam buat kedua jenis tanpa harus cek jenis di tiap titik render).
+    const rows=itemsValid.map(it=>jenisTab==="BBMB"?{
+      permintaan_id:perm.id,
+      komponen_bbmb_master_id:it.value?Number(it.value):null,
+      nama_komponen:it.namaKomponen,
+      qty:Number(it.qty),
+      satuan:it.satuan||null,
+      status:"pending",
+    }:{
+      permintaan_id:perm.id,
+      komponen_master_id:it.value?Number(it.value):null,
+      nama_komponen:it.namaKomponen,
+      qty:Number(it.qty),
+      satuan:it.satuanDipilih||null,
+      satuan_dipilih:it.satuanDipilih||null,
+      status:"pending",
+    });
+    const{error:itemErr}=await supabase.from("permintaan_item").insert(rows);
+    if(itemErr){
+      alert("Permintaan tersimpan tapi gagal simpan komponen: "+itemErr.message);
+      setSubmitting(false);
+      return;
     }
     setSubmitting(false);
     setSelectedWoId(null);
     setItems([emptyItem()]);
-    setCatatan("");
     alert("Permintaan berhasil dikirim!");
     fetchRiwayat();
   };
@@ -289,12 +326,48 @@ export function PermintaanView({user}:{user:any}){
         </>
       )}
 
+      {/* REVISI (2 Sep 2026) - BBMU balik ke struktur penuh kayak BBMB (dulu cuma Project+Panel+
+          catatan bebas) - komponen dari komponen_master kategori BBMU, satuan DIPILIH dari
+          satuan_list (bukan ketik bebas kayak BBMB, karena ini pilihan terbatas dari master). */}
       {selectedWoId&&selectedPanelId&&jenisTab==="BBMU"&&(
         <>
-          <Lbl>Catatan</Lbl>
-          <textarea value={catatan} onChange={(e:any)=>setCatatan(e.target.value)} rows={5}
-            placeholder="Tuliskan detail komponen utama yang dibutuhkan..."
-            style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:500,color:"#0f172a",background:"#fff",fontFamily:"inherit",resize:"vertical" as const,marginBottom:16}}/>
+          <Lbl>Daftar Komponen</Lbl>
+          <div style={{display:"flex",flexDirection:"column" as const,gap:12,marginBottom:10}}>
+            {items.map((it,idx)=>(
+              <div key={idx} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:14}}>
+                <SearchableSelect options={masterListBBMU.map((m:any)=>({id:String(m.id),label:m.nama}))} value={it.value}
+                  onChange={(id,label)=>onPilihKomponen(idx,id,label)} placeholder="Ketik nama komponen..."/>
+                <div style={{display:"flex",alignItems:"flex-end",gap:8,marginTop:10}}>
+                  <div style={{flex:1}}>
+                    <Lbl>Satuan</Lbl>
+                    {it.satuanList.length>1?(
+                      <select value={it.satuanDipilih} onChange={(e:any)=>updateItem(idx,{satuanDipilih:e.target.value})} style={inpStyle}>
+                        {it.satuanList.map((s:string)=><option key={s} value={s}>{s}</option>)}
+                      </select>
+                    ):(
+                      <div style={{...inpStyle,display:"flex",alignItems:"center",color:it.satuanDipilih?"#0f172a":"#94a3b8",background:"#f8fafc"}}>
+                        {it.satuanDipilih||"— pilih komponen dulu —"}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{display:"flex",alignItems:"center",border:"1.5px solid #cbd5e1",borderRadius:8,overflow:"hidden",flexShrink:0}}>
+                    <button onClick={()=>updateItem(idx,{qty:Math.max(1,it.qty-1)})}
+                      style={{width:32,height:34,border:"none",background:"#f8fafc",color:"#475569",fontSize:16,fontWeight:700,cursor:"pointer"}}>−</button>
+                    <input type="number" min="1" value={it.qty} onChange={(e:any)=>updateItem(idx,{qty:Math.max(1,Number(e.target.value))})}
+                      style={{width:40,height:34,border:"none",borderLeft:"1px solid #e2e8f0",borderRight:"1px solid #e2e8f0",textAlign:"center" as const,fontSize:14,fontWeight:700,color:"#0f172a",background:"#fff",fontFamily:"inherit"}}/>
+                    <button onClick={()=>updateItem(idx,{qty:it.qty+1})}
+                      style={{width:32,height:34,border:"none",background:"#f8fafc",color:"#475569",fontSize:16,fontWeight:700,cursor:"pointer"}}>+</button>
+                  </div>
+                  <button onClick={()=>hapusBaris(idx)} disabled={items.length<=1}
+                    style={{width:34,height:34,borderRadius:8,border:"1px solid #fecaca",background:items.length<=1?"#f8fafc":"#fef2f2",
+                      color:items.length<=1?"#cbd5e1":"#dc2626",cursor:items.length<=1?"default":"pointer",fontSize:15,fontWeight:700,flexShrink:0}}>×</button>
+                </div>
+              </div>
+            ))}
+          </div>
+          <button onClick={tambahBaris} style={{width:"100%",padding:"10px",borderRadius:10,border:"1.5px dashed #cbd5e1",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit",marginBottom:16}}>
+            + Tambah Komponen Lagi
+          </button>
 
           <button onClick={submitPermintaan} disabled={submitting}
             style={{width:"100%",padding:"14px",borderRadius:10,border:"none",
@@ -371,13 +444,22 @@ export function PermintaanView({user}:{user:any}){
                   )}
                 </div>
               ):(
-                <>
-                  {r.catatan&&<div style={{fontSize:12.5,color:"#334155",marginBottom:8,background:"#f8fafc",borderRadius:8,padding:"8px 10px"}}>{r.catatan}</div>}
-                  <span style={{background:STATUS_COLOR.BBMU[r.status||"pending"]+"18",color:STATUS_COLOR.BBMU[r.status||"pending"],
-                    borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>
-                    {STATUS_LABEL.BBMU[r.status||"pending"]||r.status}
-                  </span>
-                </>
+                // BBMU (REVISI 2 Sep 2026 - dulu 1 catatan bebas + 1 status header, sekarang
+                // per-item kayak BBMB) - gak ada tombol/tahap "sudah diambil" (BBMU emang gak
+                // punya pengambilan fisik terpisah, sesuai desain awal fitur ini).
+                <div style={{display:"flex",flexDirection:"column" as const,gap:6}}>
+                  {(r.items||[]).map((it:any)=>(
+                    <div key={it.id} style={{background:"#f8fafc",borderRadius:8,padding:"6px 10px"}}>
+                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                        <span style={{fontSize:12.5,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>{it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span></span>
+                        <span style={{background:STATUS_COLOR.BBMU[it.status||"pending"]+"18",color:STATUS_COLOR.BBMU[it.status||"pending"],
+                          borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                          {STATUS_LABEL.BBMU[it.status||"pending"]||it.status}
+                        </span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
               )}
             </Card>
           ))}

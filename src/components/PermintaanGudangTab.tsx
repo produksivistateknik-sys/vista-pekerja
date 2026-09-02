@@ -244,38 +244,54 @@ const BBMU_SUBTABS=[
   {key:"assembling",label:"Assembling",filter:(p:any)=>p.divisi==="assembling"&&p.sub_bagian==="Assembling Luar"},
 ] as const;
 
+// REVISI (2 Sep 2026) - BBMU balik ke struktur penuh per-item (dulu SEMPAT disederhanakan jadi
+// 1 status buat SELURUH permintaan/catatan bebas, TAPI gak ada data yang kepakai format itu - 0
+// baris waktu revisi ini dibuat, jadi gak perlu migrasi). Sekarang polanya SAMA persis kayak
+// BBMBList di atas (permintaan_item per komponen, masing-masing status sendiri) - bedanya cuma
+// vocab status (tersedia/belum_lengkap/belum_datang, BUKAN submit/reject) dan gak ada reject-modal
+// (BBMU gak punya penolakan, cuma status ketersediaan).
 function BBMUList({adminName,tanggal}:{adminName:string;tanggal:string}){
-  void adminName; // permintaan (header BBMU) gak punya kolom updated_by/updated_at
   const[subTab,setSubTab]=useState<typeof BBMU_SUBTABS[number]["key"]>("wiring_ctrl");
   const[loading,setLoading]=useState(true);
-  const[perms,setPerms]=useState<any[]>([]);
+  const[permMap,setPermMap]=useState<Record<number,any>>({});
+  const[itemsByPerm,setItemsByPerm]=useState<Record<number,any[]>>({});
+  const[submittingId,setSubmittingId]=useState<number|null>(null);
 
   const fetchData=async()=>{
     setLoading(true);
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
-    const rows=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis","BBMU")
+    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis","BBMU")
       .gte("created_at",startIso).lte("created_at",endIso).order("created_at",{ascending:false}).range(from,to));
-    setPerms(rows);
+    if(perms.length===0){setPermMap({});setItemsByPerm({});setLoading(false);return;}
+    const permIds=perms.map((p:any)=>p.id);
+    const allItems=await fetchItemsByPermintaanIds(permIds);
+    const pMap:Record<number,any>={};
+    perms.forEach((p:any)=>{pMap[p.id]=p;});
+    setPermMap(pMap);
+    setItemsByPerm(groupItemsByPermintaan(allItems));
     setLoading(false);
   };
 
   useEffect(()=>{
     fetchData();
     const ch=supabase.channel("realtime-gudang-bbmu")
-      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan"},fetchData)
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},fetchData)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"permintaan"},fetchData)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tanggal]);
 
-  const setStatus=async(permId:number,status:string)=>{
-    await supabase.from("permintaan").update({status,dilihat_operator:false}).eq("id",permId);
+  const setItemStatus=async(itemId:number,status:string)=>{
+    setSubmittingId(itemId);
+    await supabase.from("permintaan_item").update({status,updated_by:adminName,updated_at:new Date().toISOString(),dilihat_operator:false}).eq("id",itemId);
+    setSubmittingId(null);
     fetchData();
   };
 
   const activeFilter=BBMU_SUBTABS.find(t=>t.key===subTab)!.filter;
-  const filtered=perms.filter(activeFilter);
+  const filteredPermIds=Object.values(permMap).filter(activeFilter).map((p:any)=>p.id);
 
   return(
     <div>
@@ -291,37 +307,49 @@ function BBMUList({adminName,tanggal}:{adminName:string;tanggal:string}){
       </div>
       {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
-      ):filtered.length===0?(
+      ):filteredPermIds.length===0?(
         <EmptyState title="Belum ada permintaan BBMU"
           description={`Belum ada permintaan dari ${BBMU_SUBTABS.find(t=>t.key===subTab)!.label}. Permintaan baru akan muncul di sini.`}/>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {filtered.map(p=>(
-            <div key={p.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,padding:"12px 14px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-              <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
-                <div style={{minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.operator_nama}</div>
-                  <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.proyek||"-"} · {p.panel_nama||"-"}</div>
+          {filteredPermIds.map(permId=>{
+            const p=permMap[permId];
+            const items=itemsByPerm[permId]||[];
+            return(
+              <div key={permId} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,padding:"12px 14px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
+                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
+                  <div style={{minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.operator_nama}</div>
+                    <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.proyek||"-"} · {p.panel_nama||"-"}</div>
+                  </div>
+                  <div style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap",flexShrink:0}}>{fmtDateTime(p.created_at)}</div>
                 </div>
-                <div style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap",flexShrink:0}}>{fmtDateTime(p.created_at)}</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8}}>
+                  {items.map((it:any)=>(
+                    <div key={it.id} style={{background:"#f8fafc",borderRadius:9,padding:"8px 10px"}}>
+                      <div style={{fontSize:12.5,fontWeight:600,color:"#334155",marginBottom:6}}>
+                        {it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span>
+                      </div>
+                      <div style={{display:"flex",gap:5,flexWrap:"wrap" as const}}>
+                        {(["tersedia","belum_lengkap","belum_datang"] as const).map(s=>{
+                          const active=(it.status||"pending")===s;
+                          return(
+                            <button key={s} onClick={()=>setItemStatus(it.id,s)} disabled={submittingId===it.id}
+                              style={{padding:"6px 10px",borderRadius:20,cursor:"pointer",fontSize:10.5,fontWeight:700,fontFamily:"inherit",
+                                border:active?"none":`1px solid ${STATUS_COLOR_BBMU[s]}44`,
+                                background:active?STATUS_COLOR_BBMU[s]:STATUS_COLOR_BBMU[s]+"10",
+                                color:active?"#fff":STATUS_COLOR_BBMU[s]}}>
+                              {STATUS_LABEL_BBMU[s]}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
+                </div>
               </div>
-              {p.catatan&&<div style={{fontSize:12.5,fontWeight:600,color:"#334155",background:"#f8fafc",borderRadius:9,padding:"8px 10px",marginBottom:10}}>{p.catatan}</div>}
-              <div style={{display:"flex",gap:5,flexWrap:"wrap" as const}}>
-                {(["tersedia","belum_lengkap","belum_datang"] as const).map(s=>{
-                  const active=(p.status||"pending")===s;
-                  return(
-                    <button key={s} onClick={()=>setStatus(p.id,s)}
-                      style={{padding:"6px 10px",borderRadius:20,cursor:"pointer",fontSize:10.5,fontWeight:700,fontFamily:"inherit",
-                        border:active?"none":`1px solid ${STATUS_COLOR_BBMU[s]}44`,
-                        background:active?STATUS_COLOR_BBMU[s]:STATUS_COLOR_BBMU[s]+"10",
-                        color:active?"#fff":STATUS_COLOR_BBMU[s]}}>
-                      {STATUS_LABEL_BBMU[s]}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </div>
