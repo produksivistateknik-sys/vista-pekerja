@@ -5,10 +5,10 @@ import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateH
 import { withRetry } from "../lib/koneksi";
 import { mergePanelChecklist } from "../lib/checklistHelpers";
 import {
-  timerKey, BUSBAR_TAHAP_LABEL,
+  timerKey, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_ICON,
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
-  computeProsesStatus, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
+  computeProsesStatus, computeBusbarTahapStatus, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
   PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA,
 } from "../lib/panelHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
@@ -224,6 +224,9 @@ export function OperatorView({user,viewMode}:any){
   // rebutan lock di row panels yang sama, bikin request yg sebenarnya cuma agak lambat kelewat timeout
   // dan dilaporkan sebagai "koneksi lambat/putus" padahal akarnya race condition di klien.
   const [savingTahap,setSavingTahap]=useState<Record<string,boolean>>({});
+  // Tahap BUSBAR yang lagi dibuka (grid->detail) per komponen - key `${panelId}_${kode}`, value
+  // nama tahap ("FABRIKASI" dst) atau absen = tampilan grid (REVISI grid+status, 2 Sep 2026).
+  const [openBusbarTahap,setOpenBusbarTahap]=useState<Record<string,string>>({});
   const PROSES_FLASH_TERSIMPAN=["FINISHING","RENDAM","PAINTING","WIRING CONTROL","WIRING POWER","RAKIT","PASANG KOMPONEN","BUSBAR"];
 
   // Auto-scroll + highlight kartu accordion begitu popup Konfirmasi ditutup, biar operator
@@ -2557,11 +2560,45 @@ export function OperatorView({user,viewMode}:any){
                     display:"flex",flexDirection:"column",gap:10,
                     opacity:isLocked?0.55:1,
                     pointerEvents:isLocked?"none" as const:"auto" as const}}>
-                    {isBusbarProses?(
-                      // ── BUSBAR: SEMUA tahap (4/3) tampil sekaligus, masing-masing berdiri sendiri
-                      // (operator, timer, persentase, simpan) - gak ada "tahap aktif"/estafet lagi.
-                      <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                        {busbarUrutan.map((t:string,ti:number)=>{
+                    {isBusbarProses?(()=>{
+                      // ── BUSBAR: REVISI grid+status (2 Sep 2026) - dulu semua tahap (4/3) tampil
+                      // sekaligus expanded vertikal. Sekarang grid 2 kolom (kartu icon+label+badge
+                      // status cascading Not Yet/To Do/In Progress/Done), klik kartu buka detail 1
+                      // tahap aja (operator, timer, persentase, simpan - konten sama kayak sebelumnya,
+                      // cuma dipindah dari .map() semua-sekaligus jadi per-tahap-terpilih).
+                      const rowKey=`${r.panelId}_${r.kode}`;
+                      const openTahap=openBusbarTahap[rowKey];
+                      if(!openTahap)return(
+                        <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
+                          {busbarUrutan.map((t:string,ti:number)=>{
+                            const status=computeBusbarTahapStatus(ti,busbarUrutan,busbarTahapState);
+                            const locked=status==="NOT YET";
+                            const stStyle=STATUS_PIPELINE_STYLE[status];
+                            return(
+                              <button key={t} disabled={locked}
+                                onClick={()=>setOpenBusbarTahap(prev=>({...prev,[rowKey]:t}))}
+                                style={{background:"#fff",borderRadius:14,padding:"14px 10px",
+                                  border:"1.5px solid #e2e8f0",boxShadow:"0 2px 8px #0000000a",
+                                  display:"flex",flexDirection:"column",alignItems:"center",gap:8,
+                                  cursor:locked?"not-allowed":"pointer",fontFamily:"inherit",
+                                  opacity:locked?0.6:1}}>
+                                <div style={{width:40,height:40,borderRadius:11,background:"#16a34a",
+                                  display:"flex",alignItems:"center",justifyContent:"center"}}>
+                                  <i className={`ti ti-${BUSBAR_TAHAP_ICON[t]}`} style={{fontSize:19,color:"#fff"}}/>
+                                </div>
+                                <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{BUSBAR_TAHAP_LABEL[t]}</span>
+                                <span style={{background:stStyle.bg,color:stStyle.color,border:`1px solid ${stStyle.border}`,
+                                  borderRadius:20,padding:"2px 9px",fontSize:9,fontWeight:700}}>
+                                  {STATUS_PIPELINE_LABEL[status]}
+                                </span>
+                              </button>
+                            );
+                          })}
+                        </div>
+                      );
+                      const t=openTahap;
+                      const ti=busbarUrutan.indexOf(t);
+                      {
                           const idsKompTahap=(r.task.pekerja_per_komponen?.[r.kode]?.[t])||[];
                           const workersTahap=idsKompTahap.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
                           const stTahap=busbarTahapState?.[t]||{progress:0,sudahDisimpan100:false};
@@ -2584,10 +2621,16 @@ export function OperatorView({user,viewMode}:any){
                           const flashKeyTahap=`${r.panelId}_${r.kode}_BUSBAR_${t}`;
                           const flashingTahap=!!savedFlash[flashKeyTahap];
                           return(
-                            <div key={t} style={{border:"1.5px solid #e2e8f0",borderRadius:10,padding:"8px 10px",
+                            <div style={{border:"1.5px solid #e2e8f0",borderRadius:10,padding:"8px 10px",
                               background:stTahap.sudahDisimpan100?"#f0fdf4":"#fafafa",display:"flex",flexDirection:"column",gap:6}}>
-                              <div style={{fontSize:11,fontWeight:800,color:stTahap.sudahDisimpan100?"#16a34a":"#374151"}}>
-                                {stTahap.sudahDisimpan100?"✅ ":""}{ti+1}. {BUSBAR_TAHAP_LABEL[t]}
+                              <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6}}>
+                                <div style={{fontSize:11,fontWeight:800,color:stTahap.sudahDisimpan100?"#16a34a":"#374151"}}>
+                                  {stTahap.sudahDisimpan100?"✅ ":""}{ti+1}. {BUSBAR_TAHAP_LABEL[t]}
+                                </div>
+                                <button onClick={()=>setOpenBusbarTahap(prev=>{const n={...prev};delete n[rowKey];return n;})}
+                                  style={{fontSize:10,color:"#64748b",fontWeight:700,background:"none",border:"1px solid #e2e8f0",borderRadius:8,padding:"3px 8px",cursor:"pointer",whiteSpace:"nowrap" as const}}>
+                                  ← Kembali
+                                </button>
                               </div>
                               {workersTahap.length===0?(
                                 <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t});setTempPekerjaIds(idsKompTahap);}}
@@ -2664,9 +2707,8 @@ export function OperatorView({user,viewMode}:any){
                               </button>
                             </div>
                           );
-                        })}
-                      </div>
-                    ):(
+                      }
+                    })():(
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
                       {workers.length===0&&(
                         operatorPerKartu?(

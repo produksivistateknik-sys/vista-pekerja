@@ -44,6 +44,8 @@ export function timerKey(panelId:number,kode:string,proses:string,pekerjaId:numb
 export const BUSBAR_URUTAN_TAHAP_LENGKAP=["FABRIKASI","PLATING","HEATSHRINK","PASANG"];
 export const BUSBAR_URUTAN_TAHAP_SINGKAT=["FABRIKASI","PLATING","PASANG"];
 export const BUSBAR_TAHAP_LABEL:Record<string,string>={FABRIKASI:"Fabrikasi",PLATING:"Plating",HEATSHRINK:"Heat-Shrink",PASANG:"Pasang"};
+// Nama icon tabler (dipakai lewat className={`ti ti-${...}`}) buat kartu grid tahap BUSBAR.
+export const BUSBAR_TAHAP_ICON:Record<string,string>={FABRIKASI:"tool",PLATING:"droplet",HEATSHRINK:"flame",PASANG:"plug"};
 export function getUrutanTahapBusbar(kode:string):string[]{
   return(kode==="COUPLER"||kode==="GROUND")?BUSBAR_URUTAN_TAHAP_SINGKAT:BUSBAR_URUTAN_TAHAP_LENGKAP;
 }
@@ -169,6 +171,20 @@ export function computeProsesStatus(progressMap:Record<string,number>|undefined|
   const progressSebelumnya=progressMap?.[prosesSebelumnya]||0;
   if(progressSebelumnya<PROSES_STATUS_GATE_PCT)return "NOT YET";
   return "TO DO";
+}
+// Status cascading ANTAR TAHAP di dalam BUSBAR sendiri (Fabrikasi->Plating->Heat-Shrink->Pasang) -
+// LEVEL BEDA dari computeProsesStatus() di atas (yang gating antar PROSES, dan BUSBAR di situ
+// sengaja gak digating - selalu TO DO dari 0%). Ini buat kartu grid per-tahap (REVISI 2 Sep 2026):
+// FABRIKASI (index 0) selalu minimal TO DO, gak pernah NOT YET. Tahap lain NOT YET (terkunci)
+// sampai tahap SEBELUMNYA tembus PROSES_STATUS_GATE_PCT (25%), pakai ambang yang sama kayak
+// gating antar-proses biar konsisten.
+export function computeBusbarTahapStatus(ti:number,urutan:string[],busbarTahapState:any):ProsesStatus{
+  const progress=busbarTahapState?.[urutan[ti]]?.progress||0;
+  if(progress>=100)return "DONE";
+  if(progress>0)return "IN PROGRESS";
+  if(ti===0)return "TO DO";
+  const progressSebelumnya=busbarTahapState?.[urutan[ti-1]]?.progress||0;
+  return progressSebelumnya>=PROSES_STATUS_GATE_PCT?"TO DO":"NOT YET";
 }
 export function getFirstCompletionDate(cl:any, proses:string){
   const byDate=cl?.progressByDate?.[proses];
