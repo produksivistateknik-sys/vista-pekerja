@@ -145,10 +145,14 @@ export function SearchableSelect({options,value,onChange,placeholder,disabled,st
   const stripSpace=(s:string)=>s.replace(/\s+/g,"");
   const q=query.trim().toLowerCase();
   const qNoSpace=stripSpace(q);
+  // Dulu dipotong .slice(0,10) - keluarga komponen kayak "BAUT" bisa 85 baris, kepotong 10 hasil
+  // pertama urut abjad ("BAUT 10X..." dst) jadi varian yang dicari (mis. "BAUT 5X15...") kesilep
+  // meski cocok, kelihatan kayak "hilang". Dropdown-nya sendiri sudah scrollable (maxHeight+overflowY
+  // di bawah), jadi gak perlu batasi jumlah hasil - biarin semua yang cocok tampil.
   const filtered=q?options.filter(o=>{
     const label=o.label.toLowerCase();
     return label.includes(q)||stripSpace(label).includes(qNoSpace);
-  }).slice(0,10):[];
+  }):[];
 
   const pick=(opt:{id:string;label:string})=>{
     setQuery(opt.label);
