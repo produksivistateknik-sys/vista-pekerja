@@ -139,8 +139,16 @@ export function SearchableSelect({options,value,onChange,placeholder,disabled,st
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[value]);
 
+  // Pencocokan tanpa peduli spasi (fix 2 Sep 2026) - nama komponen kayak "BAUT 5X10 JP" gak
+  // ketemu kalau operator ketik "5x10jp" nempel tanpa spasi (kejadian nyata dilaporkan), padahal
+  // barangnya ADA. Bandingin versi tanpa-spasi supaya kedua cara ketik sama-sama cocok.
+  const stripSpace=(s:string)=>s.replace(/\s+/g,"");
   const q=query.trim().toLowerCase();
-  const filtered=q?options.filter(o=>o.label.toLowerCase().includes(q)).slice(0,10):[];
+  const qNoSpace=stripSpace(q);
+  const filtered=q?options.filter(o=>{
+    const label=o.label.toLowerCase();
+    return label.includes(q)||stripSpace(label).includes(qNoSpace);
+  }).slice(0,10):[];
 
   const pick=(opt:{id:string;label:string})=>{
     setQuery(opt.label);
