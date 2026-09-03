@@ -266,19 +266,21 @@ function BBMBList({adminName,tanggal}:{adminName:string;tanggal:string}){
 }
 
 // ================= BBMU =================
-const BBMU_SUBTABS=[
-  {key:"wiring_ctrl",label:"Wiring Control",filter:(p:any)=>p.divisi==="wiring_ctrl"},
-  {key:"assembling",label:"Assembling",filter:(p:any)=>p.divisi==="assembling"&&p.sub_bagian==="Assembling Luar"},
-] as const;
-
 // REVISI (2 Sep 2026) - BBMU balik ke struktur penuh per-item (dulu SEMPAT disederhanakan jadi
 // 1 status buat SELURUH permintaan/catatan bebas, TAPI gak ada data yang kepakai format itu - 0
 // baris waktu revisi ini dibuat, jadi gak perlu migrasi). Sekarang polanya SAMA persis kayak
 // BBMBList di atas (permintaan_item per komponen, masing-masing status sendiri) - bedanya cuma
 // vocab status (tersedia/belum_lengkap/belum_datang, BUKAN submit/reject) dan gak ada reject-modal
 // (BBMU gak punya penolakan, cuma status ketersediaan).
+//
+// FIX BUG NYATA (3 Sep 2026, ketemu pas audit): dulu sub-tab di-HARDCODE cuma "wiring_ctrl" &
+// "assembling"+"Assembling Luar" (sisa desain lama waktu BBMU cuma buat 2 divisi itu) - tapi tab
+// BBMU di PermintaanView.tsx operator SENGAJA dibuka buat SEMUA divisi (gak dikondisikan). Akibatnya
+// permintaan BBMU dari divisi LAIN (kejadian nyata: mekanik/Bending, painting/Painting) TERSIMPAN
+// di DB tapi GAK PERNAH KELIHATAN di sub-tab manapun di sisi Gudang - stuck permanen, gak bisa
+// diproses. Sekarang dikelompokkan per-divisi OTOMATIS (persis pola BBMBList di atas), bukan
+// whitelist tetap - divisi apapun yang kirim BBMU otomatis dapat grup sendiri.
 function BBMUList({adminName,tanggal}:{adminName:string;tanggal:string}){
-  const[subTab,setSubTab]=useState<typeof BBMU_SUBTABS[number]["key"]>("wiring_ctrl");
   const[loading,setLoading]=useState(true);
   const[permMap,setPermMap]=useState<Record<number,any>>({});
   const[itemsByPerm,setItemsByPerm]=useState<Record<number,any[]>>({});
@@ -336,29 +338,31 @@ function BBMUList({adminName,tanggal}:{adminName:string;tanggal:string}){
     fetchData();
   };
 
-  const activeFilter=BBMU_SUBTABS.find(t=>t.key===subTab)!.filter;
-  const filteredPermIds=Object.values(permMap).filter(activeFilter).map((p:any)=>p.id);
+  const grouped:Record<string,number[]>={};
+  Object.values(permMap).forEach((p:any)=>{
+    const key=p.divisi||"-";
+    if(!grouped[key])grouped[key]=[];
+    grouped[key].push(p.id);
+  });
+  const divisiKeys=Object.keys(grouped).sort();
 
   return(
     <div>
-      <div style={{display:"flex",gap:6,marginBottom:14}}>
-        {BBMU_SUBTABS.map(t=>(
-          <button key={t.key} onClick={()=>setSubTab(t.key)}
-            style={{flex:1,height:32,borderRadius:8,cursor:"pointer",fontWeight:700,fontSize:12,fontFamily:"inherit",
-              border:subTab===t.key?"1.5px solid #1d4ed8":"1px solid #e2e8f0",
-              background:subTab===t.key?"#eff6ff":"#fff",color:subTab===t.key?"#1d4ed8":"#64748b"}}>
-            {t.label}
-          </button>
-        ))}
-      </div>
       {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
-      ):filteredPermIds.length===0?(
+      ):divisiKeys.length===0?(
         <EmptyState title="Belum ada permintaan BBMU"
-          description={`Belum ada permintaan dari ${BBMU_SUBTABS.find(t=>t.key===subTab)!.label}. Permintaan baru akan muncul di sini.`}/>
+          description="Permintaan dari operator akan muncul di sini, dikelompokkan per divisi."/>
       ):(
-        <div style={{display:"flex",flexDirection:"column",gap:10}}>
-          {filteredPermIds.map(permId=>{
+        <div style={{display:"flex",flexDirection:"column",gap:18}}>
+          {divisiKeys.map(divisi=>(
+            <div key={divisi}>
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
+                <span style={{background:"#eff6ff",color:"#1d4ed8",border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:700}}>{DIVISI_LABEL[divisi]||divisi}</span>
+                <span style={{color:"#94a3b8",fontWeight:600,fontSize:11}}>{grouped[divisi].length} permintaan</span>
+              </div>
+              <div style={{display:"flex",flexDirection:"column",gap:10}}>
+              {grouped[divisi].map(permId=>{
             const p=permMap[permId];
             const items=itemsByPerm[permId]||[];
             return(
@@ -395,7 +399,10 @@ function BBMUList({adminName,tanggal}:{adminName:string;tanggal:string}){
                 </div>
               </div>
             );
-          })}
+              })}
+              </div>
+            </div>
+          ))}
         </div>
       )}
     </div>

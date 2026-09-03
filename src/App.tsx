@@ -270,8 +270,21 @@ export default function App(){
       const bbmbIds=perms.filter((p:any)=>p.jenis==="BBMB").map((p:any)=>p.id);
       let bbmbUnread=0;
       if(bbmbIds.length>0){
-        const{data:items}=await supabase.from("permintaan_item").select("permintaan_id,status,dilihat_operator,sudah_diambil").neq("status","pending").in("permintaan_id",bbmbIds);
-        const needsAttention=(items||[]).filter((it:any)=>!it.dilihat_operator||(it.status==="submit"&&!it.sudah_diambil));
+        // Paginasi (2 Sep 2026, ketemu pas audit) - bbmbIds bisa sampai 100 permintaan (limit di
+        // atas), kalau tiap permintaan punya banyak item total bisa >1000 baris & kepotong diam-diam
+        // tanpa .range() (persis bug renhar/komponen_master yang sudah kejadian sebelumnya di app
+        // ini) - badge notif jadi under-count.
+        let items:any[]=[];
+        let from=0;
+        const PAGE=1000;
+        while(true){
+          const{data}=await supabase.from("permintaan_item").select("permintaan_id,status,dilihat_operator,sudah_diambil")
+            .neq("status","pending").in("permintaan_id",bbmbIds).range(from,from+PAGE-1);
+          items=items.concat(data??[]);
+          if(!data||data.length<PAGE)break;
+          from+=PAGE;
+        }
+        const needsAttention=items.filter((it:any)=>!it.dilihat_operator||(it.status==="submit"&&!it.sudah_diambil));
         bbmbUnread=new Set(needsAttention.map((it:any)=>it.permintaan_id)).size;
       }
       if(!cancelled)setNotifCount(bbmuUnread+bbmbUnread);
