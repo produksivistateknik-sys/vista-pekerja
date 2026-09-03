@@ -71,6 +71,15 @@ export const QTY_DIVISI = ["mekanik","painting"];
 // disalin manual - kalau ALL_PROSES di Vista Teknik diubah, ini WAJIB ikut diubah juga.
 export const ALL_PROSES = ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR","WIRING CONTROL","WIRING POWER","QC TEST","PACKING"];
 
+// Nama batang busbar yang SAH (SAMA PERSIS BUSBAR_KOMPONEN di vista-teknik/src/constants/
+// panelTypes.ts) - dipakai buat validasi tulis panels.busbar_progress (fix 3 Sep 2026, bug
+// nyata: FS.4/FS.9 nyasar jadi key di busbar_progress karena kode lama nulis SEMUA
+// t.komponen dari tugas proses="BUSBAR" tanpa cek, padahal komponen checklist biasa kayak
+// FS.4/FS.9 JUGA relevan ke proses BUSBAR (via bom_proses_relevan, bener secara fisik) tapi
+// progress-nya harusnya nyimpen di checklist[kode].progress.BUSBAR, BUKAN di busbar_progress
+// (field itu cuma buat batang busbar tetap: H-BUS/LINE/INCOMING/OUTGOING/NETRAL/GROUND/COUPLER).
+export const BUSBAR_KOMPONEN_VALID=new Set(["H-BUS","LINE","INCOMING","OUTGOING","NETRAL","GROUND","COUPLER"]);
+
 // Fallback statis dipakai getRelevantProsesForKode buat kode yang belum punya mapping di
 // bom_proses_relevan (tabel DB) - SAMA PERSIS dengan KOMPONEN_PROSES_MAP di
 // vista-teknik/src/constants/panelTypes.ts. Dua repo terpisah, disalin manual - kalau map di

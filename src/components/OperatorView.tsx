@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
-import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVISI_CONFIG, QC_ITEMS } from "../lib/panelTypes";
+import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVISI_CONFIG, QC_ITEMS, BUSBAR_KOMPONEN_VALID } from "../lib/panelTypes";
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
 import { withRetry } from "../lib/koneksi";
 import { mergePanelChecklist } from "../lib/checklistHelpers";
@@ -1466,6 +1466,12 @@ export function OperatorView({user,viewMode}:any){
         const newBusbarProgress={...(panel.busbar_progress||{})};
         busbarTasks.forEach((t:any)=>{
           (t.komponen||[]).forEach((komp:string)=>{
+            // GUARD (fix 3 Sep 2026, bug nyata: FS.4/FS.9 nyasar jadi key di busbar_progress) -
+            // komponen checklist biasa (FS.4/FS.9/dst) JUGA bisa relevan ke proses BUSBAR (via
+            // bom_proses_relevan, bener secara fisik - lihat komentar BUSBAR_KOMPONEN_VALID),
+            // tapi progress-nya harus nyimpen di checklist[kode].progress.BUSBAR (jalur di bawah),
+            // BUKAN di sini - busbar_progress cuma buat 7 nama batang busbar tetap.
+            if(!BUSBAR_KOMPONEN_VALID.has(komp))return;
             // Progress busbar disimpan di checklist dengan key nama komponen
             const cl=newChecklist[komp]||panel.checklist?.[komp];
             const pct=cl?.progress?.["BUSBAR"]||getProgressOnDate(cl,"BUSBAR",viewDate)||0;
