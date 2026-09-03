@@ -206,7 +206,13 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {grouped[divisi].map(permId=>{
               const p=permMap[permId];
-              const items=itemsByPerm[permId]||[];
+              // Fix (3 Sep 2026, bug nyata dilaporkan) - dulu SEMUA item ditampilkan (termasuk yang
+              // udah "Sudah Siap"/"Ditolak", nongkrong jadi baris badge) selama card-nya sendiri
+              // masih ada item lain yang pending. Sekarang cuma item PENDING yang tampil di sini -
+              // begitu 1 item diproses, item itu langsung hilang dari card ini (gak nunggu card-nya
+              // sendiri kosong total). Card-nya sendiri baru hilang kalau UDAH gak ada item pending
+              // sama sekali (logic grouped di atas, gak berubah).
+              const items=(itemsByPerm[permId]||[]).filter((it:any)=>it.status==="pending");
               return(
                 <div key={permId} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,padding:"12px 14px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
@@ -222,23 +228,16 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
                         <span style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#334155",overflow:"hidden",textOverflow:"ellipsis"}}>
                           {it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span>
                         </span>
-                        {it.status==="pending"?(
-                          <div style={{display:"flex",gap:6,flexShrink:0}}>
-                            <button onClick={()=>setItemStatus(it.id,"submit")} disabled={submittingId===it.id}
-                              title="Submit - barang disiapkan"
-                              style={{width:30,height:30,borderRadius:8,border:"1px solid #bbf7d0",background:"#f0fdf4",
-                                color:"#16a34a",cursor:"pointer",fontSize:15,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>✓</button>
-                            <button onClick={()=>{setRejectTarget(it);setRejectCatatan("");}} disabled={submittingId===it.id}
-                              title="Reject"
-                              style={{width:30,height:30,borderRadius:8,border:"1px solid #fecaca",background:"#fef2f2",
-                                color:"#dc2626",cursor:"pointer",fontSize:15,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
-                          </div>
-                        ):(
-                          <span style={{flexShrink:0,background:it.status==="submit"?"#f0fdf4":"#fef2f2",color:it.status==="submit"?"#16a34a":"#dc2626",
-                            borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap"}}>
-                            {it.status==="submit"?"Sudah Siap":"Ditolak"}
-                          </span>
-                        )}
+                        <div style={{display:"flex",gap:6,flexShrink:0}}>
+                          <button onClick={()=>setItemStatus(it.id,"submit")} disabled={submittingId===it.id}
+                            title="Submit - barang disiapkan"
+                            style={{width:30,height:30,borderRadius:8,border:"1px solid #bbf7d0",background:"#f0fdf4",
+                              color:"#16a34a",cursor:"pointer",fontSize:15,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>✓</button>
+                          <button onClick={()=>{setRejectTarget(it);setRejectCatatan("");}} disabled={submittingId===it.id}
+                            title="Reject"
+                            style={{width:30,height:30,borderRadius:8,border:"1px solid #fecaca",background:"#fef2f2",
+                              color:"#dc2626",cursor:"pointer",fontSize:15,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center"}}>✕</button>
+                        </div>
                       </div>
                     ))}
                   </div>
