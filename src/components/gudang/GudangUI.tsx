@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../../lib/supabase";
 import { KoneksiBadge } from "../ui/Primitives";
 
-export { SectionCard, EmptyState } from "../ui/Primitives";
+export { SectionCard, EmptyState, DatePickerField } from "../ui/Primitives";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // KOMPONEN UI REUSABLE - KHUSUS divisi Gudang (5 tab: Permintaan/Tarik/Database/

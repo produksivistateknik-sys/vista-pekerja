@@ -282,3 +282,81 @@ export function NotifikasiPushToggle({divisi}:{divisi:string}){
     </div>
   );
 }
+
+// ── DATE PICKER (3 Sep 2026) ──────────────────────────────────────────────────
+// Ganti <input type="date"> native - beda-beda tampilannya tiap browser DESKTOP (kurang intuitif,
+// terutama Firefox) dibanding di HP (browser mobile otomatis render kalender touch-friendly bawaan
+// OS - itu perilaku native juga, BUKAN library, jadi gak ada yang bisa "dipindah" dari situ). Custom
+// kecil (gak ada library kalender di project ini, pola sama SearchableSelect di atas - popover +
+// onMouseDown preventDefault di isi popover biar klik di dalam gak nutup duluan lewat onBlur).
+const WEEKDAYS_ID=["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
+const BULAN_ID=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+export function DatePickerField({value,onChange,style={}}:{value:string;onChange:(v:string)=>void;style?:any}){
+  const[open,setOpen]=useState(false);
+  const parseVal=(v:string)=>{const d=v?new Date(v+"T00:00:00"):new Date();return isNaN(d.getTime())?new Date():d;};
+  const[viewMonth,setViewMonth]=useState(()=>{const d=parseVal(value);return new Date(d.getFullYear(),d.getMonth(),1);});
+
+  // Sinkronkan bulan yang ditampilkan kalau `value` berubah dari luar (mis. reset form).
+  useEffect(()=>{
+    const d=parseVal(value);
+    setViewMonth(new Date(d.getFullYear(),d.getMonth(),1));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[value]);
+
+  const todayStr=new Date().toISOString().slice(0,10);
+  const fmtLabel=value?parseVal(value).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}):"Pilih tanggal";
+
+  const year=viewMonth.getFullYear(),month=viewMonth.getMonth();
+  const firstDow=new Date(year,month,1).getDay();
+  const daysInMonth=new Date(year,month+1,0).getDate();
+  const cells:(number|null)[]=[...Array(firstDow).fill(null),...Array.from({length:daysInMonth},(_,i)=>i+1)];
+
+  const pick=(day:number)=>{
+    onChange(`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`);
+    setOpen(false);
+  };
+
+  return(
+    <div style={{position:"relative" as const}}>
+      <button type="button" onClick={()=>setOpen(o=>!o)} onBlur={()=>setTimeout(()=>setOpen(false),150)}
+        style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,
+          fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",textAlign:"left" as const,
+          display:"flex",alignItems:"center",justifyContent:"space-between",gap:8,cursor:"pointer",...style}}>
+        <span>{fmtLabel}</span>
+        <i className="ti ti-calendar" style={{fontSize:15,color:"#64748b",flexShrink:0}}/>
+      </button>
+      {open&&(
+        <div onMouseDown={(e:any)=>e.preventDefault()} style={{position:"absolute" as const,top:"calc(100% + 4px)",left:0,
+          zIndex:50,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,
+          boxShadow:"0 8px 24px rgba(15,23,42,0.14)",padding:12,width:272}}>
+          <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:10}}>
+            <button type="button" onClick={()=>setViewMonth(new Date(year,month-1,1))}
+              style={{width:28,height:28,border:"1px solid #e2e8f0",borderRadius:8,background:"#f8fafc",cursor:"pointer",color:"#64748b",fontWeight:700}}>‹</button>
+            <span style={{fontWeight:700,fontSize:13,color:"#0f172a"}}>{BULAN_ID[month]} {year}</span>
+            <button type="button" onClick={()=>setViewMonth(new Date(year,month+1,1))}
+              style={{width:28,height:28,border:"1px solid #e2e8f0",borderRadius:8,background:"#f8fafc",cursor:"pointer",color:"#64748b",fontWeight:700}}>›</button>
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
+            {WEEKDAYS_ID.map(w=><div key={w} style={{textAlign:"center" as const,fontSize:10,fontWeight:700,color:"#94a3b8",padding:"4px 0"}}>{w}</div>)}
+          </div>
+          <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
+            {cells.map((day,i)=>{
+              if(day===null)return<div key={i}/>;
+              const dateStr=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
+              const isSelected=dateStr===value;
+              const isToday=dateStr===todayStr;
+              return(
+                <button key={i} type="button" onClick={()=>pick(day)}
+                  style={{aspectRatio:"1",border:isToday&&!isSelected?"1.5px solid #0369a1":"1.5px solid transparent",
+                    borderRadius:8,cursor:"pointer",fontSize:12.5,fontWeight:isSelected?800:600,fontFamily:"inherit",
+                    background:isSelected?"#0369a1":"transparent",color:isSelected?"#fff":"#334155"}}>
+                  {day}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

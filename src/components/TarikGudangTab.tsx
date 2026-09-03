@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { SectionCard, EmptyState } from "./gudang/GudangUI";
+import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB TARIK (dalam GudangHome) - READ-ONLY sejak 17 Agu 2026. Konfirmasi
@@ -91,8 +91,7 @@ export function TarikGudangTab(){
   return(
     <div style={{padding:16}} className="fi">
       <SectionCard icon="📦" title="Pengambilan Komponen" subtitle="Status pengambilan fisik BBMB - dikonfirmasi operator, bukan di sini">
-      <input type="date" value={tanggal} onChange={(e:any)=>setTanggal(e.target.value)}
-        style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:14}}/>
+      <div style={{marginBottom:14}}><DatePickerField value={tanggal} onChange={setTanggal}/></div>
       <div style={{display:"flex",gap:6,marginBottom:14,background:"#f1f5f9",borderRadius:12,padding:4}}>
         {([{k:"belum",l:"Belum Diambil"},{k:"sudah",l:"Sudah Diambil"}] as const).map(t=>(
           <button key={t.k} onClick={()=>setFilterMode(t.k)}

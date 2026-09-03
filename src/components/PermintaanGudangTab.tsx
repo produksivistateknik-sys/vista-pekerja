@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { SectionCard, SegmentedControl, EmptyState } from "./gudang/GudangUI";
+import { SectionCard, SegmentedControl, EmptyState, DatePickerField } from "./gudang/GudangUI";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB PERMINTAAN (dalam GudangHome) - sisi Gudang buat proses masuk BBMB (submit/
@@ -96,8 +96,7 @@ export function PermintaanGudangTab({user}:{user:any}){
           {key:"BBMB",label:"BBMB (Bantu)",icon:"🧰",dot:unread.BBMB},
           {key:"BBMU",label:"BBMU (Utama)",icon:"⚙️",dot:unread.BBMU},
         ]} value={jenisTab} onChange={handleTabChange}/>
-        <input type="date" value={tanggal} onChange={(e:any)=>setTanggal(e.target.value)}
-          style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:14}}/>
+        <div style={{marginBottom:14}}><DatePickerField value={tanggal} onChange={setTanggal}/></div>
         {jenisTab==="BBMB"?<BBMBList adminName={adminName} tanggal={tanggal}/>:<BBMUList adminName={adminName} tanggal={tanggal}/>}
       </SectionCard>
     </div>

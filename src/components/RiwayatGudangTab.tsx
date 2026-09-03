@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { SectionCard, EmptyState } from "./gudang/GudangUI";
+import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB RIWAYAT (dalam GudangHome) - histori aksi harian: submit/reject BBMB
@@ -93,8 +93,7 @@ export function RiwayatGudangTab(){
   return(
     <div style={{padding:16}} className="fi">
       <SectionCard icon="🕒" title="Riwayat Harian" subtitle="Aksi submit/reject/status/tarik yang sudah diproses">
-      <input type="date" value={tanggal} onChange={(e:any)=>setTanggal(e.target.value)}
-        style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:14}}/>
+      <div style={{marginBottom:14}}><DatePickerField value={tanggal} onChange={setTanggal}/></div>
 
       {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
