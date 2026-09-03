@@ -255,39 +255,40 @@ export default function App(){
   // Badge notif di header (17 Agu 2026) = jumlah permintaan (BBMB+BBMU) SE-DIVISI (bukan cuma
   // milik operator yang sedang login - Riwayat sekarang juga se-divisi, lihat PermintaanView.tsx)
   // yang butuh perhatian: STATUSNYA BARU DIUBAH Gudang dan belum dilihat (dilihat_operator), ATAU
-  // (BBMB) sudah disiapkan tapi belum dikonfirmasi diambil fisik (sudah_diambil). Gudang gak ikut
-  // sini - dia punya badge sendiri (jumlah pending) di GudangHeader.
+  // sudah disiapkan tapi belum dikonfirmasi diambil fisik (sudah_diambil). Gudang gak ikut sini -
+  // dia punya badge sendiri (jumlah pending) di GudangHeader.
+  //
+  // PENYATUAN PENUH (3 Sep 2026) - dulu 2 cabang beda logic: BBMU baca `permintaan.status` (kolom
+  // header dari desain "BBMU 1-row" Agustus yang SUDAH DIREVISI BALIK 2 Sep - kolom itu gak pernah
+  // ditulis lagi sejak itu, jadi bbmuUnread SELALU 0, bug laten yang gak sengaja ketemu pas
+  // penyatuan ini), BBMB baca permintaan_item per-item. Sekarang BBMB & BBMU PERSIS SAMA
+  // strukturnya, jadi 1 logic item-based generik buat keduanya (gak ada split bbmuIds/bbmbIds lagi).
   const [notifCount,setNotifCount]=useState(0);
   useEffect(()=>{
     if(!user||user.divisi==="gudang")return;
     let cancelled=false;
     const fetchNotifCount=async()=>{
-      const{data:perms}=await supabase.from("permintaan").select("id,jenis,status,dilihat_operator")
+      const{data:perms}=await supabase.from("permintaan").select("id,dilihat_operator")
         .eq("divisi",user.divisi)
         .order("created_at",{ascending:false}).limit(100);
       if(!perms||perms.length===0){if(!cancelled)setNotifCount(0);return;}
-      const bbmuUnread=perms.filter((p:any)=>p.jenis==="BBMU"&&p.status&&p.status!=="pending"&&!p.dilihat_operator).length;
-      const bbmbIds=perms.filter((p:any)=>p.jenis==="BBMB").map((p:any)=>p.id);
-      let bbmbUnread=0;
-      if(bbmbIds.length>0){
-        // Paginasi (2 Sep 2026, ketemu pas audit) - bbmbIds bisa sampai 100 permintaan (limit di
-        // atas), kalau tiap permintaan punya banyak item total bisa >1000 baris & kepotong diam-diam
-        // tanpa .range() (persis bug renhar/komponen_master yang sudah kejadian sebelumnya di app
-        // ini) - badge notif jadi under-count.
-        let items:any[]=[];
-        let from=0;
-        const PAGE=1000;
-        while(true){
-          const{data}=await supabase.from("permintaan_item").select("permintaan_id,status,dilihat_operator,sudah_diambil")
-            .neq("status","pending").in("permintaan_id",bbmbIds).range(from,from+PAGE-1);
-          items=items.concat(data??[]);
-          if(!data||data.length<PAGE)break;
-          from+=PAGE;
-        }
-        const needsAttention=items.filter((it:any)=>!it.dilihat_operator||(it.status==="submit"&&!it.sudah_diambil));
-        bbmbUnread=new Set(needsAttention.map((it:any)=>it.permintaan_id)).size;
+      const permIds=perms.map((p:any)=>p.id);
+      // Paginasi (2 Sep 2026, ketemu pas audit) - permIds bisa sampai 100 permintaan (limit di
+      // atas), kalau tiap permintaan punya banyak item total bisa >1000 baris & kepotong diam-diam
+      // tanpa .range() (persis bug renhar/komponen_master yang sudah kejadian sebelumnya di app
+      // ini) - badge notif jadi under-count.
+      let items:any[]=[];
+      let from=0;
+      const PAGE=1000;
+      while(true){
+        const{data}=await supabase.from("permintaan_item").select("permintaan_id,status,dilihat_operator,sudah_diambil")
+          .neq("status","pending").in("permintaan_id",permIds).range(from,from+PAGE-1);
+        items=items.concat(data??[]);
+        if(!data||data.length<PAGE)break;
+        from+=PAGE;
       }
-      if(!cancelled)setNotifCount(bbmuUnread+bbmbUnread);
+      const needsAttention=items.filter((it:any)=>!it.dilihat_operator||(it.status==="submit"&&!it.sudah_diambil));
+      if(!cancelled)setNotifCount(new Set(needsAttention.map((it:any)=>it.permintaan_id)).size);
     };
     fetchNotifCount();
     const ch=supabase.channel("realtime-operator-notif-"+user.id)

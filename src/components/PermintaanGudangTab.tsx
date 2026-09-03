@@ -3,11 +3,20 @@ import { supabase } from "../lib/supabase";
 import { SectionCard, SegmentedControl, EmptyState, DatePickerField } from "./gudang/GudangUI";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// TAB PERMINTAAN (dalam GudangHome) - sisi Gudang buat proses masuk BBMB (submit/
-// reject) dan BBMU (status tersedia/belum lengkap/belum datang). Query/grouping
-// logic sama persis prinsipnya dengan PermintaanBarangTab.tsx (vista-teknik admin),
-// direplikasi di sini (beda project, gak bisa cross-import) - UI mobile-first
-// beda dari versi desktop (tombol icon-only kecil, bukan pill full-width).
+// TAB PERMINTAAN (dalam GudangHome) - sisi Gudang buat proses masuk BBMB & BBMU.
+// Query/grouping logic sama persis prinsipnya dengan PermintaanBarangTab.tsx
+// (vista-teknik admin, SUDAH DIHAPUS 14 Agu 2026 - fitur ini sepenuhnya pindah
+// ke sini), UI mobile-first beda dari versi desktop lama.
+//
+// PENYATUAN PENUH (3 Sep 2026) - KEPUTUSAN FINAL: BBMB & BBMU sekarang HARUS
+// PERSIS SAMA di semua sisi, satu-satunya beda adalah KATEGORI DATA (komponen
+// dari master kategori BBMB vs BBMU), BUKAN behavior/status/layout. Sebelumnya
+// BBMU pakai vocab beda (tersedia/belum_lengkap/belum_datang, gak ada reject) &
+// komponen terpisah (BBMUList) dari BBMB (BBMBList) - digabung jadi 1 komponen
+// PermintaanList(jenis) di bawah. Status BBMU sekarang SAMA PERSIS BBMB:
+// pending -> submit (✓)/reject (✗, catatan wajib). TIDAK ADA migration DB yang
+// diperlukan - permintaan_item.status cuma `text`, gak ada CHECK constraint
+// sama sekali (dicek langsung ke migration aslinya).
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DIVISI_LABEL:Record<string,string>={
@@ -15,8 +24,6 @@ const DIVISI_LABEL:Record<string,string>={
   wiring_ctrl:"Wiring Control",wiring_pwr:"Wiring Power",
   qc:"QC",nameplate:"Nameplate",komponen:"Komponen",gudang:"Gudang",
 };
-const STATUS_LABEL_BBMU:Record<string,string>={pending:"Menunggu",tersedia:"Tersedia",belum_lengkap:"Belum Lengkap",belum_datang:"Belum Datang"};
-const STATUS_COLOR_BBMU:Record<string,string>={pending:"#94a3b8",tersedia:"#16a34a",belum_lengkap:"#f59e0b",belum_datang:"#dc2626"};
 
 const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
   let all:any[]=[];
@@ -45,9 +52,8 @@ const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric
 export function PermintaanGudangTab({user}:{user:any}){
   const adminName=user?.nama||user?.name||"Gudang";
   const[jenisTab,setJenisTab]=useState<"BBMB"|"BBMU">("BBMB");
-  // Filter tanggal per hari (REVISI 2 Sep 2026) - dulu Permintaan Masuk gak punya filter waktu
-  // sama sekali (BBMB nampilin SEMUA yang masih pending, BBMU nampilin SEMUA riwayat) - sekarang
-  // di-scope ke tanggal permintaan dibuat (permintaan.created_at), pola sama kayak RiwayatGudangTab.
+  // Filter tanggal per hari (REVISI 2 Sep 2026) - discope ke tanggal permintaan dibuat
+  // (permintaan.created_at), pola sama kayak RiwayatGudangTab.
   const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
 
   // Titik merah "belum dibaca" per sub-tab (REVISI 2 Sep 2026) - Gudang cuma 1 login SHARED
@@ -97,14 +103,14 @@ export function PermintaanGudangTab({user}:{user:any}){
           {key:"BBMU",label:"BBMU (Utama)",icon:"⚙️",dot:unread.BBMU},
         ]} value={jenisTab} onChange={handleTabChange}/>
         <div style={{marginBottom:14}}><DatePickerField value={tanggal} onChange={setTanggal}/></div>
-        {jenisTab==="BBMB"?<BBMBList adminName={adminName} tanggal={tanggal}/>:<BBMUList adminName={adminName} tanggal={tanggal}/>}
+        <PermintaanList jenis={jenisTab} adminName={adminName} tanggal={tanggal}/>
       </SectionCard>
     </div>
   );
 }
 
-// ================= BBMB =================
-function BBMBList({adminName,tanggal}:{adminName:string;tanggal:string}){
+// ================= BBMB & BBMU (1 komponen, persis sama) =================
+function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName:string;tanggal:string}){
   const[loading,setLoading]=useState(true);
   const[permMap,setPermMap]=useState<Record<number,any>>({});
   const[itemsByPerm,setItemsByPerm]=useState<Record<number,any[]>>({});
@@ -115,11 +121,10 @@ function BBMBList({adminName,tanggal}:{adminName:string;tanggal:string}){
   const fetchData=async()=>{
     setLoading(true);
     // Discope ke tanggal permintaan DIBUAT (bukan tanggal item-nya diproses) - fetch perms dulu
-    // (di-filter tanggal), baru ambil item punya perm-perm itu. Grouping "cuma yang masih pending"
-    // di bawah (grouped) tetap jalan seperti biasa dari itemsByPerm ini.
+    // (di-filter tanggal+jenis), baru ambil item punya perm-perm itu.
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
-    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis","BBMB")
+    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis",jenis)
       .gte("created_at",startIso).lte("created_at",endIso).order("created_at",{ascending:false}).range(from,to));
     if(perms.length===0){setPermMap({});setItemsByPerm({});setLoading(false);return;}
     const permIds=perms.map((p:any)=>p.id);
@@ -133,16 +138,16 @@ function BBMBList({adminName,tanggal}:{adminName:string;tanggal:string}){
 
   useEffect(()=>{
     fetchData();
-    const ch=supabase.channel("realtime-gudang-bbmb-masuk")
+    const ch=supabase.channel(`realtime-gudang-masuk-${jenis}`)
       .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},fetchData)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"permintaan"},fetchData)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[tanggal]);
+  },[jenis,tanggal]);
 
-  // Push notif ke divisi pengaju (3 REVISI, 2 Sep 2026) - cari item+perm dari state yang UDAH ADA
-  // (itemsByPerm/permMap) SEBELUM update, biar tau divisi tujuan + nama komponen buat isi notif.
+  // Push notif ke divisi pengaju - cari item+perm dari state yang UDAH ADA (itemsByPerm/permMap)
+  // SEBELUM update, biar tau divisi tujuan + nama komponen buat isi notif.
   const findItemContext=(itemId:number)=>{
     for(const permId of Object.keys(itemsByPerm)){
       const found=(itemsByPerm[Number(permId)]||[]).find((it:any)=>it.id===itemId);
@@ -186,8 +191,8 @@ function BBMBList({adminName,tanggal}:{adminName:string;tanggal:string}){
   const divisiKeys=Object.keys(grouped).sort();
 
   if(loading)return<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
-  if(divisiKeys.length===0)return<EmptyState title="Tidak ada permintaan BBMB"
-    description="Semua permintaan bantu sudah diproses. Permintaan baru dari operator akan muncul di sini."
+  if(divisiKeys.length===0)return<EmptyState title={`Tidak ada permintaan ${jenis}`}
+    description={`Semua permintaan ${jenis==="BBMB"?"bantu":"utama"} sudah diproses. Permintaan baru dari operator akan muncul di sini.`}
     tip="Pastikan stok tersedia sebelum memproses permintaan baru."/>;
 
   return(
@@ -258,150 +263,6 @@ function BBMBList({adminName,tanggal}:{adminName:string;tanggal:string}){
                 style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"#dc2626",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Konfirmasi</button>
             </div>
           </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ================= BBMU =================
-// REVISI (2 Sep 2026) - BBMU balik ke struktur penuh per-item (dulu SEMPAT disederhanakan jadi
-// 1 status buat SELURUH permintaan/catatan bebas, TAPI gak ada data yang kepakai format itu - 0
-// baris waktu revisi ini dibuat, jadi gak perlu migrasi). Sekarang polanya SAMA persis kayak
-// BBMBList di atas (permintaan_item per komponen, masing-masing status sendiri) - bedanya cuma
-// vocab status (tersedia/belum_lengkap/belum_datang, BUKAN submit/reject) dan gak ada reject-modal
-// (BBMU gak punya penolakan, cuma status ketersediaan).
-//
-// FIX BUG NYATA (3 Sep 2026, ketemu pas audit): dulu sub-tab di-HARDCODE cuma "wiring_ctrl" &
-// "assembling"+"Assembling Luar" (sisa desain lama waktu BBMU cuma buat 2 divisi itu) - tapi tab
-// BBMU di PermintaanView.tsx operator SENGAJA dibuka buat SEMUA divisi (gak dikondisikan). Akibatnya
-// permintaan BBMU dari divisi LAIN (kejadian nyata: mekanik/Bending, painting/Painting) TERSIMPAN
-// di DB tapi GAK PERNAH KELIHATAN di sub-tab manapun di sisi Gudang - stuck permanen, gak bisa
-// diproses. Sekarang dikelompokkan per-divisi OTOMATIS (persis pola BBMBList di atas), bukan
-// whitelist tetap - divisi apapun yang kirim BBMU otomatis dapat grup sendiri.
-function BBMUList({adminName,tanggal}:{adminName:string;tanggal:string}){
-  const[loading,setLoading]=useState(true);
-  const[permMap,setPermMap]=useState<Record<number,any>>({});
-  const[itemsByPerm,setItemsByPerm]=useState<Record<number,any[]>>({});
-  const[submittingId,setSubmittingId]=useState<number|null>(null);
-
-  const fetchData=async()=>{
-    setLoading(true);
-    const startIso=tanggal+"T00:00:00";
-    const endIso=tanggal+"T23:59:59.999";
-    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis","BBMU")
-      .gte("created_at",startIso).lte("created_at",endIso).order("created_at",{ascending:false}).range(from,to));
-    if(perms.length===0){setPermMap({});setItemsByPerm({});setLoading(false);return;}
-    const permIds=perms.map((p:any)=>p.id);
-    const allItems=await fetchItemsByPermintaanIds(permIds);
-    const pMap:Record<number,any>={};
-    perms.forEach((p:any)=>{pMap[p.id]=p;});
-    setPermMap(pMap);
-    setItemsByPerm(groupItemsByPermintaan(allItems));
-    setLoading(false);
-  };
-
-  useEffect(()=>{
-    fetchData();
-    const ch=supabase.channel("realtime-gudang-bbmu")
-      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},fetchData)
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"permintaan"},fetchData)
-      .subscribe();
-    return()=>{supabase.removeChannel(ch);};
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[tanggal]);
-
-  // Push notif ke divisi pengaju - pola sama persis BBMBList.findItemContext di atas.
-  const findItemContext=(itemId:number)=>{
-    for(const permId of Object.keys(itemsByPerm)){
-      const found=(itemsByPerm[Number(permId)]||[]).find((it:any)=>it.id===itemId);
-      if(found)return{item:found,perm:permMap[Number(permId)]};
-    }
-    return null;
-  };
-
-  const setItemStatus=async(itemId:number,status:string)=>{
-    setSubmittingId(itemId);
-    const ctx=findItemContext(itemId);
-    await supabase.from("permintaan_item").update({status,updated_by:adminName,updated_at:new Date().toISOString(),dilihat_operator:false}).eq("id",itemId);
-    if(ctx?.perm?.divisi){
-      try{
-        await supabase.functions.invoke("notify-permintaan",{body:{
-          trigger:"status",targetDivisi:ctx.perm.divisi,
-          namaKomponen:ctx.item.nama_komponen,qty:ctx.item.qty,satuan:ctx.item.satuan,
-          statusLabel:STATUS_LABEL_BBMU[status]||status,
-        }});
-      }catch{/* notifikasi gagal - diabaikan, status tetap tersimpan */}
-    }
-    setSubmittingId(null);
-    fetchData();
-  };
-
-  const grouped:Record<string,number[]>={};
-  Object.values(permMap).forEach((p:any)=>{
-    const key=p.divisi||"-";
-    if(!grouped[key])grouped[key]=[];
-    grouped[key].push(p.id);
-  });
-  const divisiKeys=Object.keys(grouped).sort();
-
-  return(
-    <div>
-      {loading?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
-      ):divisiKeys.length===0?(
-        <EmptyState title="Belum ada permintaan BBMU"
-          description="Permintaan dari operator akan muncul di sini, dikelompokkan per divisi."/>
-      ):(
-        <div style={{display:"flex",flexDirection:"column",gap:18}}>
-          {divisiKeys.map(divisi=>(
-            <div key={divisi}>
-              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <span style={{background:"#eff6ff",color:"#1d4ed8",border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:700}}>{DIVISI_LABEL[divisi]||divisi}</span>
-                <span style={{color:"#94a3b8",fontWeight:600,fontSize:11}}>{grouped[divisi].length} permintaan</span>
-              </div>
-              <div style={{display:"flex",flexDirection:"column",gap:10}}>
-              {grouped[divisi].map(permId=>{
-            const p=permMap[permId];
-            const items=itemsByPerm[permId]||[];
-            return(
-              <div key={permId} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:14,padding:"12px 14px",boxShadow:"0 1px 3px rgba(0,0,0,0.04)"}}>
-                <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:10,gap:8}}>
-                  <div style={{minWidth:0}}>
-                    <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.operator_nama}</div>
-                    <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.proyek||"-"} · {p.panel_nama||"-"}</div>
-                  </div>
-                  <div style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap",flexShrink:0}}>{fmtDateTime(p.created_at)}</div>
-                </div>
-                <div style={{display:"flex",flexDirection:"column",gap:8}}>
-                  {items.map((it:any)=>(
-                    <div key={it.id} style={{background:"#f8fafc",borderRadius:9,padding:"8px 10px"}}>
-                      <div style={{fontSize:12.5,fontWeight:600,color:"#334155",marginBottom:6}}>
-                        {it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span>
-                      </div>
-                      <div style={{display:"flex",gap:5,flexWrap:"wrap" as const}}>
-                        {(["tersedia","belum_lengkap","belum_datang"] as const).map(s=>{
-                          const active=(it.status||"pending")===s;
-                          return(
-                            <button key={s} onClick={()=>setItemStatus(it.id,s)} disabled={submittingId===it.id}
-                              style={{padding:"6px 10px",borderRadius:20,cursor:"pointer",fontSize:10.5,fontWeight:700,fontFamily:"inherit",
-                                border:active?"none":`1px solid ${STATUS_COLOR_BBMU[s]}44`,
-                                background:active?STATUS_COLOR_BBMU[s]:STATUS_COLOR_BBMU[s]+"10",
-                                color:active?"#fff":STATUS_COLOR_BBMU[s]}}>
-                              {STATUS_LABEL_BBMU[s]}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            );
-              })}
-              </div>
-            </div>
-          ))}
         </div>
       )}
     </div>

@@ -21,9 +21,13 @@ import { DIVISI_CONFIG } from "../lib/panelTypes";
 // BBMU sempat DISEDERHANAKAN 14 Agu 2026 jadi 1 row header/catatan bebas (TIDAK pakai
 // permintaan_item), tapi gak pernah ada data yang kepakai format itu (0 baris BBMU waktu
 // direvisi balik 2 Sep 2026) - jadi gak ada migrasi data yang diperlukan.
-// Status BBMB (pending/submit/reject) tetap beda dari BBMU (pending/tersedia/belum_lengkap/
-// belum_datang) - dibedakan lewat permintaan.jenis, disimpan di kolom permintaan_item.status yang
-// sama (kolom text bebas, gak ada enum constraint).
+//
+// PENYATUAN PENUH (3 Sep 2026) - KEPUTUSAN FINAL: BBMB & BBMU PERSIS SAMA di semua sisi, satu-
+// satunya beda adalah kategori data komponen (master BBMB vs BBMU), BUKAN status/layout. Status
+// BBMU dulu beda vocab (tersedia/belum_lengkap/belum_datang, gak ada reject) - sekarang SAMA
+// PERSIS BBMB (pending/submit/reject), disimpan di kolom permintaan_item.status yang sama (kolom
+// text bebas, gak ada enum constraint - konfirmasi langsung ke migration, gak perlu migrasi DB).
+// Konfirmasi "sudah diambil" sekarang berlaku BBMU juga, bukan BBMB doang.
 // Tab ini SENGAJA muncul buat SEMUA divisi (gak dikondisikan kayak tab Komponen/Arsip), jadi
 // App.tsx render ini tanpa cek user.divisi.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -31,14 +35,10 @@ import { DIVISI_CONFIG } from "../lib/panelTypes";
 type Jenis="BBMB"|"BBMU";
 type ItemRow={value:string;namaKomponen:string;qty:number;satuanList:string[];satuanDipilih:string};
 
-const STATUS_LABEL:Record<Jenis,Record<string,string>>={
-  BBMB:{pending:"Menunggu",submit:"✓ Selesai",reject:"✕ Ditolak"},
-  BBMU:{pending:"Menunggu",tersedia:"Tersedia",belum_lengkap:"Belum Lengkap",belum_datang:"Belum Datang"},
-};
-const STATUS_COLOR:Record<Jenis,Record<string,string>>={
-  BBMB:{pending:"#94a3b8",submit:"#16a34a",reject:"#dc2626"},
-  BBMU:{pending:"#94a3b8",tersedia:"#16a34a",belum_lengkap:"#f59e0b",belum_datang:"#dc2626"},
-};
+// Status SAMA PERSIS buat BBMB & BBMU (REVISI 3 Sep 2026) - dulu Record<Jenis,...> per jenis
+// (vocab beda), sekarang cuma 1 mapping generik dipakai keduanya.
+const STATUS_LABEL:Record<string,string>={pending:"Menunggu",submit:"✓ Selesai",reject:"✕ Ditolak"};
+const STATUS_COLOR:Record<string,string>={pending:"#94a3b8",submit:"#16a34a",reject:"#dc2626"};
 
 const emptyItem=():ItemRow=>({value:"",namaKomponen:"",qty:1,satuanList:[],satuanDipilih:""});
 
@@ -158,8 +158,11 @@ export function PermintaanView({user}:{user:any}){
       const map:Record<number,any[]>={};
       (itemRows||[]).forEach((it:any)=>{(map[it.permintaan_id]=map[it.permintaan_id]||[]).push(it);});
       const merged=perms.map((p:any)=>({...p,items:map[p.id]||[]}));
+      // PENYATUAN PENUH (3 Sep 2026) - dulu gate jenisTab==="BBMB" di kondisi terakhir (BBMU
+      // dikecualikan dari "masih aktif nunggu diambil"). Sekarang BBMU juga punya tahap
+      // pengambilan fisik sama seperti BBMB, jadi kondisinya berlaku buat keduanya.
       const isAktif=(p:any)=>(p.items||[]).some((it:any)=>
-        it.status==="pending"||!it.dilihat_operator||(jenisTab==="BBMB"&&it.status==="submit"&&!it.sudah_diambil));
+        it.status==="pending"||!it.dilihat_operator||(it.status==="submit"&&!it.sudah_diambil));
       merged.sort((a:any,b:any)=>{
         const diff=Number(isAktif(b))-Number(isAktif(a));
         return diff!==0?diff:(b.created_at||"").localeCompare(a.created_at||"");
@@ -186,7 +189,7 @@ export function PermintaanView({user}:{user:any}){
   // Konfirmasi pengambilan fisik - SEKARANG dari sisi operator (bukan Gudang lagi, lihat
   // TarikGudangTab.tsx yang sudah jadi read-only). Siapapun yang login saat ini yang
   // mengonfirmasi (dicatat di diambil_oleh), gak harus operator yang sama dengan operator_nama
-  // permintaan aslinya. BBMB saja - BBMU gak punya tahap pengambilan fisik terpisah.
+  // permintaan aslinya. Berlaku BBMB & BBMU (PENYATUAN PENUH 3 Sep 2026 - dulu BBMB saja).
   const konfirmasiDiambil=async(itemId:number)=>{
     setConfirmingId(itemId);
     await supabase.from("permintaan_item").update({
@@ -396,68 +399,52 @@ export function PermintaanView({user}:{user:any}){
                 </div>
                 <span style={{fontSize:10.5,fontWeight:600,color:"#94a3b8",whiteSpace:"nowrap" as const}}>{fmtDateTime(r.created_at)}</span>
               </div>
-              {jenisTab==="BBMB"?(
-                <div style={{display:"flex",flexDirection:"column" as const,gap:6}}>
-                  {(r.items||[]).map((it:any)=>(
-                    <div key={it.id} style={{background:"#f8fafc",borderRadius:8,padding:"6px 10px"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                        <span style={{fontSize:12.5,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>{it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span></span>
-                        {/* REVISI (2 Sep 2026) - badge dulu macet di "Disiapkan" walau sudah_diambil
-                            udah true (baris "Sudah diambil oleh..." di bawah cuma nambah, badge
-                            atas gak ikut ganti). Sekarang badge nunjukin status TERKINI - begitu
-                            sudah_diambil, badge BERUBAH jadi "Sudah Diambil" (gantiin, bukan numpuk). */}
-                        {(()=>{
-                          const badgeLabel=it.sudah_diambil?"✓ Sudah Diambil":(STATUS_LABEL.BBMB[it.status]||it.status);
-                          const badgeColor=it.sudah_diambil?"#0369a1":STATUS_COLOR.BBMB[it.status];
-                          return(
-                            <span style={{background:badgeColor+"18",color:badgeColor,
-                              borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
-                              {badgeLabel}
-                            </span>
-                          );
-                        })()}
+              {/* PENYATUAN PENUH (3 Sep 2026) - dulu 2 blok terpisah (BBMB ada tombol konfirmasi
+                  diambil, BBMU cuma badge status). Sekarang 1 blok yang sama buat keduanya -
+                  konfirmasi "sudah diambil" berlaku BBMU juga, bukan BBMB doang. */}
+              <div style={{display:"flex",flexDirection:"column" as const,gap:6}}>
+                {(r.items||[]).map((it:any)=>(
+                  <div key={it.id} style={{background:"#f8fafc",borderRadius:8,padding:"6px 10px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                      <span style={{fontSize:12.5,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>{it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span></span>
+                      {/* REVISI (2 Sep 2026) - badge dulu macet di "Disiapkan" walau sudah_diambil
+                          udah true (baris "Sudah diambil oleh..." di bawah cuma nambah, badge
+                          atas gak ikut ganti). Sekarang badge nunjukin status TERKINI - begitu
+                          sudah_diambil, badge BERUBAH jadi "Sudah Diambil" (gantiin, bukan numpuk). */}
+                      {(()=>{
+                        const badgeLabel=it.sudah_diambil?"✓ Sudah Diambil":(STATUS_LABEL[it.status]||it.status);
+                        const badgeColor=it.sudah_diambil?"#0369a1":STATUS_COLOR[it.status];
+                        return(
+                          <span style={{background:badgeColor+"18",color:badgeColor,
+                            borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
+                            {badgeLabel}
+                          </span>
+                        );
+                      })()}
+                    </div>
+                    {it.status==="submit"&&!it.sudah_diambil&&(
+                      <button onClick={()=>konfirmasiDiambil(it.id)} disabled={confirmingId===it.id}
+                        style={{width:"100%",marginTop:6,padding:"7px",borderRadius:7,border:"none",
+                          background:confirmingId===it.id?"#94a3b8":accent,color:"#fff",fontWeight:700,fontSize:11,
+                          cursor:confirmingId===it.id?"default":"pointer",fontFamily:"inherit"}}>
+                        {confirmingId===it.id?"Menyimpan...":"Konfirmasi Sudah Diambil"}
+                      </button>
+                    )}
+                    {it.sudah_diambil&&(
+                      <div style={{marginTop:6,fontSize:10.5,color:"#16a34a",fontWeight:700}}>
+                        ✓ Sudah diambil oleh {it.diambil_oleh||"-"} — {fmtDateTime(it.diambil_at)}
                       </div>
-                      {it.status==="submit"&&!it.sudah_diambil&&(
-                        <button onClick={()=>konfirmasiDiambil(it.id)} disabled={confirmingId===it.id}
-                          style={{width:"100%",marginTop:6,padding:"7px",borderRadius:7,border:"none",
-                            background:confirmingId===it.id?"#94a3b8":accent,color:"#fff",fontWeight:700,fontSize:11,
-                            cursor:confirmingId===it.id?"default":"pointer",fontFamily:"inherit"}}>
-                          {confirmingId===it.id?"Menyimpan...":"Konfirmasi Sudah Diambil"}
-                        </button>
-                      )}
-                      {it.sudah_diambil&&(
-                        <div style={{marginTop:6,fontSize:10.5,color:"#16a34a",fontWeight:700}}>
-                          ✓ Sudah diambil oleh {it.diambil_oleh||"-"} — {fmtDateTime(it.diambil_at)}
-                        </div>
-                      )}
-                    </div>
-                  ))}
-                  {(r.items||[]).some((it:any)=>it.status==="reject"&&it.catatan_reject)&&(
-                    <div style={{fontSize:11,color:"#dc2626",marginTop:2}}>
-                      {(r.items||[]).filter((it:any)=>it.status==="reject"&&it.catatan_reject).map((it:any)=>(
-                        <div key={it.id}>⚠ {it.nama_komponen}: {it.catatan_reject}</div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-              ):(
-                // BBMU (REVISI 2 Sep 2026 - dulu 1 catatan bebas + 1 status header, sekarang
-                // per-item kayak BBMB) - gak ada tombol/tahap "sudah diambil" (BBMU emang gak
-                // punya pengambilan fisik terpisah, sesuai desain awal fitur ini).
-                <div style={{display:"flex",flexDirection:"column" as const,gap:6}}>
-                  {(r.items||[]).map((it:any)=>(
-                    <div key={it.id} style={{background:"#f8fafc",borderRadius:8,padding:"6px 10px"}}>
-                      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
-                        <span style={{fontSize:12.5,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>{it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span></span>
-                        <span style={{background:STATUS_COLOR.BBMU[it.status||"pending"]+"18",color:STATUS_COLOR.BBMU[it.status||"pending"],
-                          borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>
-                          {STATUS_LABEL.BBMU[it.status||"pending"]||it.status}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    )}
+                  </div>
+                ))}
+                {(r.items||[]).some((it:any)=>it.status==="reject"&&it.catatan_reject)&&(
+                  <div style={{fontSize:11,color:"#dc2626",marginTop:2}}>
+                    {(r.items||[]).filter((it:any)=>it.status==="reject"&&it.catatan_reject).map((it:any)=>(
+                      <div key={it.id}>⚠ {it.nama_komponen}: {it.catatan_reject}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </Card>
           ))}
         </div>

@@ -7,9 +7,13 @@ import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
 // pengambilan fisik SEKARANG dilakukan OPERATOR sendiri (lewat Riwayat Permintaan
 // di PermintaanView.tsx, tombol "Konfirmasi Sudah Diambil"), Gudang cuma bisa
 // LIHAT status "Belum Diambil"/"Sudah Diambil" - gak ada lagi tombol tandai
-// manual dari sisi ini. BBMB SAJA - BBMU gak punya tahap pengambilan fisik
-// terpisah (statusnya cukup di header permintaan: tersedia/belum_lengkap/
-// belum_datang, gak ada kolom sudah_diambil di tabel permintaan).
+// manual dari sisi ini.
+//
+// PENYATUAN PENUH (3 Sep 2026) - dulu BBMB SAJA (BBMU gak punya tahap
+// pengambilan fisik, vocab status beda). Sekarang BBMB & BBMU PERSIS SAMA
+// (status submit/reject buat keduanya) - BBMU submit juga masuk antrian
+// pengambilan sama seperti BBMB, filter jenis="BBMB" DIHAPUS, badge jenis di
+// tiap card sekarang dinamis (r.perm.jenis, bukan di-hardcode "BBMB").
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DIVISI_LABEL:Record<string,string>={
@@ -49,14 +53,14 @@ export function TarikGudangTab(){
     setLoading(true);
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
-    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis","BBMB")
+    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*")
       .gte("created_at",startIso).lte("created_at",endIso).range(from,to));
     if(perms.length===0){setRows([]);setLoading(false);return;}
     const permMap:Record<number,any>={};
     perms.forEach((p:any)=>{permMap[p.id]=p;});
     const permIds=perms.map((p:any)=>p.id);
-    // BBMB yang sudah disiapkan Gudang ("submit") - baik yang belum maupun yang sudah diambil,
-    // biar Gudang bisa lihat dua-duanya (toggle filter di bawah), bukan cuma antrian aktif.
+    // BBMB & BBMU yang sudah disiapkan Gudang ("submit") - baik yang belum maupun yang sudah
+    // diambil, biar Gudang bisa lihat dua-duanya (toggle filter di bawah), bukan cuma antrian aktif.
     const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").eq("status","submit").in("permintaan_id",permIds).range(from,to));
     const merged=items
       .map((it:any)=>({...it,perm:permMap[it.permintaan_id]}))
@@ -90,7 +94,7 @@ export function TarikGudangTab(){
 
   return(
     <div style={{padding:16}} className="fi">
-      <SectionCard icon="📦" title="Pengambilan Komponen" subtitle="Status pengambilan fisik BBMB - dikonfirmasi operator, bukan di sini">
+      <SectionCard icon="📦" title="Pengambilan Komponen" subtitle="Status pengambilan fisik BBMB & BBMU - dikonfirmasi operator, bukan di sini">
       <div style={{marginBottom:14}}><DatePickerField value={tanggal} onChange={setTanggal}/></div>
       <div style={{display:"flex",gap:6,marginBottom:14,background:"#f1f5f9",borderRadius:12,padding:4}}>
         {([{k:"belum",l:"Belum Diambil"},{k:"sudah",l:"Sudah Diambil"}] as const).map(t=>(
@@ -123,7 +127,7 @@ export function TarikGudangTab(){
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}>
                       <div style={{minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                          <span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:5,padding:"1px 7px",fontSize:9.5,fontWeight:800}}>BBMB</span>
+                          <span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:5,padding:"1px 7px",fontSize:9.5,fontWeight:800}}>{r.perm.jenis}</span>
                           <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{r.perm.operator_nama}</span>
                         </div>
                         <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>

@@ -39,7 +39,7 @@ const TABS:{key:GudangTab,label:string,icon:string}[]=[
 
 const TAB_SUBTITLE:Record<GudangTab,string>={
   permintaan:"Kelola permintaan dan distribusi komponen",
-  tarik:"Status pengambilan fisik BBMB - dikonfirmasi operator",
+  tarik:"Status pengambilan fisik BBMB & BBMU - dikonfirmasi operator",
   database:"Master komponen BBMB",
   progress:"Progress checklist gudang per panel",
   riwayat:"Riwayat aksi harian gudang",
