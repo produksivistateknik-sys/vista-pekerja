@@ -52,6 +52,11 @@ export function RiwayatGudangTab(){
   const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
   const[loading,setLoading]=useState(true);
   const[rows,setRows]=useState<any[]>([]);
+  // Search (3 Sep 2026) - 1 field, cocokkan ke SEMUA nama yang terlibat (peminta/penyiap/
+  // pengambil) + panel + WO/proyek sekaligus, partial match case-insensitive. Filter murni JS
+  // (data 1 hari sudah di-fetch semua), jadi update real-time tanpa query baru tiap ketikan -
+  // dipakai BARENGAN sama filter tanggal (search cuma nyaring lebih lanjut dari situ).
+  const[search,setSearch]=useState("");
 
   const fetchData=async()=>{
     setLoading(true);
@@ -90,18 +95,27 @@ export function RiwayatGudangTab(){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tanggal]);
 
+  const q=search.trim().toLowerCase();
+  const filteredRows=q?rows.filter((r:any)=>[
+    r.perm.operator_nama,r.updated_by,r.diambil_oleh,r.perm.panel_nama,r.perm.proyek,r.perm.wo_number,
+  ].some(v=>(v||"").toLowerCase().includes(q))):rows;
+
   return(
     <div style={{padding:16}} className="fi">
       <SectionCard icon="🕒" title="Riwayat Harian" subtitle="Aksi submit/reject/status/tarik yang sudah diproses">
-      <div style={{marginBottom:14}}><DatePickerField value={tanggal} onChange={setTanggal}/></div>
+      <div style={{marginBottom:10}}><DatePickerField value={tanggal} onChange={setTanggal}/></div>
+      <input type="text" value={search} onChange={(e:any)=>setSearch(e.target.value)}
+        placeholder="Cari nama peminta/penyiap/pengambil, panel, atau WO..."
+        style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:13.5,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:14}}/>
 
       {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
-      ):rows.length===0?(
-        <EmptyState title="Belum ada aksi" description="Belum ada aksi submit/reject/ambil yang tercatat di tanggal ini."/>
+      ):filteredRows.length===0?(
+        <EmptyState title="Belum ada aksi"
+          description={q?"Tidak ada hasil yang cocok dengan pencarian.":"Belum ada aksi submit/reject/ambil yang tercatat di tanggal ini."}/>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
-          {rows.map((r:any)=>{
+          {filteredRows.map((r:any)=>{
             const status=statusTerkini(r);
             return(
               <div key={r.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"11px 14px"}}>

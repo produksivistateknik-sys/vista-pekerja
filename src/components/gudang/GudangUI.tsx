@@ -15,8 +15,8 @@ export { SectionCard, EmptyState, DatePickerField } from "../ui/Primitives";
 // ─────────────────────────────────────────────────────────────────────────────
 
 // ── HEADER (Gudang-only, ganti header global App.tsx yang dilewati khusus buat divisi ini) ──
-export function GudangHeader({subtitle,notifCount,onBellClick,onLogout}:{
-  subtitle:string;notifCount:number;onBellClick:()=>void;onLogout:()=>void;
+export function GudangHeader({subtitle,notifCount,onBellClick,onLogout,adminName}:{
+  subtitle:string;notifCount:number;onBellClick:()=>void;onLogout:()=>void;adminName:string;
 }){
   return(
     <div style={{background:"#fff",borderBottom:"1.5px solid #e2e8f0",padding:"10px 16px",
@@ -42,6 +42,7 @@ export function GudangHeader({subtitle,notifCount,onBellClick,onLogout}:{
         <span style={{display:"inline-flex",alignItems:"center",gap:4,background:"#eff6ff",color:"#0369a1",
           border:"1px solid #0369a130",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🚚 Gudang</span>
         <div style={{flex:1}}/>
+        <LockIconButton adminName={adminName}/>
         <button onClick={()=>window.location.reload()} title="Refresh" style={{width:34,height:34,
           border:"1px solid #e2e8f0",borderRadius:8,background:"#f8fafc",display:"flex",alignItems:"center",
           justifyContent:"center",cursor:"pointer",fontSize:13,color:"#64748b"}}>🔄</button>
@@ -85,11 +86,13 @@ export function SegmentedControl<T extends string>({options,value,onChange}:{
   );
 }
 
-// ── LOCK/UNLOCK PERMINTAAN (2 Sep 2026) ───────────────────────────────────────
+// ── LOCK/UNLOCK PERMINTAAN (2 Sep 2026, jadi icon 3 Sep 2026) ─────────────────
 // Gudang bisa "tutup" penerimaan permintaan baru dari operator - baca/tulis gudang_lock_status
 // (1 baris, id=1). Realtime supaya kalau di-toggle dari 1 device Gudang, device Gudang lain yang
 // kebetulan login bareng ikut ke-update tampilannya juga (bukan cuma operator).
-export function GudangLockToggle({adminName}:{adminName:string}){
+// REVISI (3 Sep 2026) - dulu card besar terpisah di body GudangHome, sekarang icon kecil di header
+// (sebelah tombol refresh) - logic fetch/realtime/toggle/confirm sama persis, cuma tampilannya.
+function LockIconButton({adminName}:{adminName:string}){
   const[locked,setLocked]=useState<boolean|null>(null); // null = belum kemuat
   const[loading,setLoading]=useState(false);
 
@@ -117,21 +120,12 @@ export function GudangLockToggle({adminName}:{adminName:string}){
   if(locked===null)return null;
 
   return(
-    <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 12px",borderRadius:12,
-      background:locked?"#fef2f2":"#f0fdf4",border:`1px solid ${locked?"#fecaca":"#bbf7d0"}`}}>
-      <div style={{width:34,height:34,borderRadius:10,flexShrink:0,display:"flex",alignItems:"center",justifyContent:"center",
-        background:locked?"#dc2626":"#16a34a",color:"#fff",fontSize:15}}>{locked?"🔒":"🔓"}</div>
-      <div style={{flex:1,minWidth:0}}>
-        <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>Permintaan Barang {locked?"Terkunci":"Terbuka"}</div>
-        <div style={{fontSize:10.5,color:"#94a3b8"}}>
-          {locked?"Operator tidak bisa kirim permintaan baru saat ini":"Operator bisa kirim permintaan seperti biasa"}
-        </div>
-      </div>
-      <button onClick={toggle} disabled={loading} style={{flexShrink:0,padding:"7px 14px",borderRadius:8,border:"none",
-        background:loading?"#94a3b8":(locked?"#16a34a":"#dc2626"),color:"#fff",
-        fontSize:11.5,fontWeight:700,cursor:loading?"default":"pointer",fontFamily:"inherit",whiteSpace:"nowrap" as const}}>
-        {loading?"...":locked?"Buka":"Kunci"}
-      </button>
-    </div>
+    <button onClick={toggle} disabled={loading}
+      title={locked?"Permintaan Terkunci - klik untuk buka":"Permintaan Terbuka - klik untuk kunci"}
+      style={{width:34,height:34,flexShrink:0,border:`1px solid ${locked?"#fecaca":"#bbf7d0"}`,borderRadius:8,
+        background:locked?"#fef2f2":"#f0fdf4",display:"flex",alignItems:"center",justifyContent:"center",
+        cursor:loading?"default":"pointer",fontSize:15,color:locked?"#dc2626":"#16a34a"}}>
+      <i className={`ti ti-lock${locked?"":"-open"}`}/>
+    </button>
   );
 }
