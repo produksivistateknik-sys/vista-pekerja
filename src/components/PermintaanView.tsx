@@ -37,7 +37,7 @@ type ItemRow={value:string;namaKomponen:string;qty:number;satuanList:string[];sa
 
 // Status SAMA PERSIS buat BBMB & BBMU (REVISI 3 Sep 2026) - dulu Record<Jenis,...> per jenis
 // (vocab beda), sekarang cuma 1 mapping generik dipakai keduanya.
-const STATUS_LABEL:Record<string,string>={pending:"Menunggu",submit:"✓ Selesai",reject:"✕ Ditolak"};
+const STATUS_LABEL:Record<string,string>={pending:"Menunggu",submit:"✓ Sudah Siap",reject:"✕ Ditolak"};
 const STATUS_COLOR:Record<string,string>={pending:"#94a3b8",submit:"#16a34a",reject:"#dc2626"};
 
 const emptyItem=():ItemRow=>({value:"",namaKomponen:"",qty:1,satuanList:[],satuanDipilih:""});
