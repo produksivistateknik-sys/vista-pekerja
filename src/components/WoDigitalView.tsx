@@ -1,6 +1,26 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
+import { fetchAllPanels } from "../lib/panelHelpers";
 import { SectionCard, EmptyState, Badge } from "./ui/Primitives";
+
+// Paginasi eksplisit (BUG FIX 5 Sep 2026) - Supabase/PostgREST default mentok 1000 baris per
+// request tanpa .range() (sama kelas bug fetchAllPanels di panelHelpers.tsx). work_orders/
+// work_instructions/wi_revisions belum sebesar itu sekarang, tapi fetchAll() di bawah query
+// semuanya polos - begitu salah satu tembus 1000 baris, sisanya ke-cut diam-diam dari daftar
+// WO Digital operator (gak nemu gambar teknik panel yang sebenarnya sudah ada dokumennya).
+const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
+  let all:any[]=[];
+  let from=0;
+  const PAGE=1000;
+  while(true){
+    const{data,error}=await build(from,from+PAGE-1);
+    if(error)throw error;
+    all=all.concat(data??[]);
+    if(!data||data.length<PAGE)break;
+    from+=PAGE;
+  }
+  return all;
+};
 
 // ─────────────────────────────────────────────────────────────────────────────
 // WO DIGITAL (31 Agu 2026) - versi digital gambar teknik (construction drawing, sudah
@@ -36,16 +56,16 @@ export function WoDigitalView(){
 
   const fetchAll=async()=>{
     setLoading(true);
-    const[{data:wo},{data:panels},{data:wi},{data:rev}]=await Promise.all([
-      supabase.from("work_orders").select("id,wo,proyek,is_archived"),
-      supabase.from("panels").select("id,wo_id,no_pnl,nama"),
-      supabase.from("work_instructions" as any).select("*"),
-      supabase.from("wi_revisions" as any).select("*").eq("is_current",true),
+    const[wo,panels,wi,rev]=await Promise.all([
+      fetchAllPaged((from,to)=>supabase.from("work_orders").select("id,wo,proyek,is_archived").range(from,to)),
+      fetchAllPanels("id,wo_id,no_pnl,nama"),
+      fetchAllPaged((from,to)=>supabase.from("work_instructions" as any).select("*").range(from,to)),
+      fetchAllPaged((from,to)=>supabase.from("wi_revisions" as any).select("*").eq("is_current",true).range(from,to)),
     ]);
-    setWoList(wo||[]);
-    setPanelsAll(panels||[]);
-    setWiList(wi||[]);
-    setRevList(rev||[]);
+    setWoList(wo);
+    setPanelsAll(panels);
+    setWiList(wi);
+    setRevList(rev);
     setLoading(false);
   };
   useEffect(()=>{
