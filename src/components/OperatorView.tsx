@@ -776,20 +776,39 @@ export function OperatorView({user,viewMode}:any){
   const startTimer=async(pekerjaId:number,panelId:number,kode:string,proses:string,tanggal:string,tahap?:string)=>{
     const key=timerKey(panelId,kode,proses,pekerjaId,tahap);
     setTimerLoading(key);
-    try{
+    // Query builder Supabase sekali-pakai per .await() - dibungkus fungsi biar bisa dipanggil
+    // ulang (dibangun fresh tiap kali), dipakai baik buat cek awal maupun re-cek di dalam retry
+    // insert di bawah.
+    const queryAktif=()=>{
       let q=supabase.from("fcs_timer_kerja")
         .select("*").eq("pekerja_id",pekerjaId).eq("panel_id",panelId)
         .eq("kode_komponen",kode).eq("proses",proses).is("selesai",null);
       q=tahap?q.eq("tahap",tahap):q.is("tahap",null);
-      const{data:existing}=await withRetry(()=>q.order("mulai",{ascending:false}).limit(1).maybeSingle());
+      return q.order("mulai",{ascending:false}).limit(1).maybeSingle();
+    };
+    try{
+      const{data:existing}=await withRetry(queryAktif);
       if(existing){
         setTimerAktif(prev=>({...prev,[key]:existing}));
         setTimerPernahMulai(prev=>({...prev,[key]:true}));
         return;
       }
-      const{data,error}=await withRetry(()=>supabase.from("fcs_timer_kerja").insert({
-        pekerja_id:pekerjaId,panel_id:panelId,kode_komponen:kode,proses,tanggal,mulai:new Date().toISOString(),tahap:tahap||null
-      }).select().single());
+      // BUG FIX 5 Sep 2026 (race condition timer dobel) - dulu withRetry() di bawah langsung
+      // retry INSERT mentah kalau timeout/gagal. Insert gak idempotent - kalau attempt
+      // sebelumnya SUKSES di server tapi responsnya telat/hilang di klien (umum di koneksi
+      // pabrik lambat/putus-putus, alasan withRetry ada), attempt retry berikutnya insert
+      // baris KEDUA buat kombinasi pekerja+panel+komponen+proses yang sama persis (timer
+      // dobel, double-counting durasi kerja di laporan). Sekarang tiap attempt re-cek dulu
+      // apakah timer aktif SUDAH ada (mungkin dari attempt sebelumnya yang sukses tapi
+      // responsnya gagal ke klien) sebelum insert - kalau ketemu, PAKAI itu, bukan insert
+      // baris baru.
+      const{data,error}=await withRetry(async()=>{
+        const{data:already}=await queryAktif();
+        if(already)return{data:already,error:null};
+        return await supabase.from("fcs_timer_kerja").insert({
+          pekerja_id:pekerjaId,panel_id:panelId,kode_komponen:kode,proses,tanggal,mulai:new Date().toISOString(),tahap:tahap||null
+        }).select().single();
+      });
       if(error){
         alert("Gagal mulai timer: "+error.message);
         return;
