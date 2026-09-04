@@ -30,6 +30,24 @@ type QCCard={
 const fmtTgl=(iso?:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"—";
 const fmtTglJam=(iso?:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"})+" "+new Date(iso).toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit"}):"—";
 
+// Paginasi eksplisit (BUG FIX 5 Sep 2026) - Supabase/PostgREST default mentok 1000 baris per
+// request tanpa .range(). Trigger arsip nulis SATU baris per PANEL per SEKSI (bukan per WO),
+// jadi tabel ini tumbuh lebih cepat dari panels sendiri - begitu tembus 1000 baris, arsip LAMA
+// (order .diarsipkan_pada desc) ke-cut diam-diam dari tab Arsip QC tanpa pesan error apa pun.
+const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
+  let all:any[]=[];
+  let from=0;
+  const PAGE=1000;
+  while(true){
+    const{data,error}=await build(from,from+PAGE-1);
+    if(error)throw error;
+    all=all.concat(data??[]);
+    if(!data||data.length<PAGE)break;
+    from+=PAGE;
+  }
+  return all;
+};
+
 export function ArsipQCView(){
   const[rows,setRows]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
@@ -41,8 +59,8 @@ export function ArsipQCView(){
 
   const fetchRows=async()=>{
     setLoading(true);
-    const{data}=await supabase.from("panel_seksi_archived").select("*").eq("seksi","qc").order("diarsipkan_pada",{ascending:false});
-    setRows(data??[]);
+    const data=await fetchAllPaged((from,to)=>supabase.from("panel_seksi_archived").select("*").eq("seksi","qc").order("diarsipkan_pada",{ascending:false}).range(from,to));
+    setRows(data);
     setLoading(false);
   };
   useEffect(()=>{

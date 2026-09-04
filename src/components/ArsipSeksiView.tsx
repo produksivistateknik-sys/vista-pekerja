@@ -12,6 +12,24 @@ import { FotoZoomViewerPekerja } from "./FotoZoomViewerPekerja";
 // cuma bisa dari Vista Teknik (admin) - lihat ArsipSeksiSection di ArsipTab.tsx.
 // Dipisah dari App.tsx (Sprint 7).
 // ─────────────────────────────────────────────────────────────────────────────
+// Paginasi eksplisit (BUG FIX 5 Sep 2026) - Supabase/PostgREST default mentok 1000 baris per
+// request tanpa .range(). Trigger arsip nulis SATU baris per PANEL per SEKSI (bukan per WO),
+// jadi tabel ini tumbuh lebih cepat dari panels sendiri - begitu tembus 1000 baris, arsip LAMA
+// (order .diarsipkan_pada desc) ke-cut diam-diam dari tab Arsip tanpa pesan error apa pun.
+const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
+  let all:any[]=[];
+  let from=0;
+  const PAGE=1000;
+  while(true){
+    const{data,error}=await build(from,from+PAGE-1);
+    if(error)throw error;
+    all=all.concat(data??[]);
+    if(!data||data.length<PAGE)break;
+    from+=PAGE;
+  }
+  return all;
+};
+
 export function ArsipSeksiView({seksi}:{seksi:string}){
   const[rows,setRows]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
@@ -21,8 +39,8 @@ export function ArsipSeksiView({seksi}:{seksi:string}){
 
   const fetchRows=async()=>{
     setLoading(true);
-    const{data}=await supabase.from("panel_seksi_archived").select("*").eq("seksi",seksi).order("diarsipkan_pada",{ascending:false});
-    setRows(data??[]);
+    const data=await fetchAllPaged((from,to)=>supabase.from("panel_seksi_archived").select("*").eq("seksi",seksi).order("diarsipkan_pada",{ascending:false}).range(from,to));
+    setRows(data);
     setLoading(false);
   };
   useEffect(()=>{
