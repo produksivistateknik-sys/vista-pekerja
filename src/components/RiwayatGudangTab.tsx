@@ -100,6 +100,16 @@ export function RiwayatGudangTab(){
     r.perm.operator_nama,r.updated_by,r.diambil_oleh,r.perm.panel_nama,r.perm.proyek,r.perm.wo_number,
   ].some(v=>(v||"").toLowerCase().includes(q))):rows;
 
+  // Checklist manual "Sudah Diinput" (5 Sep 2026) - penanda internal MURNI (gak terhubung
+  // sistem/proses lain apa pun), gudang tandai transaksi yang udah dicatat ke pembukuan/laporan
+  // di luar sistem. Toggle langsung update DB (gak ada tombol simpan terpisah) - update state
+  // lokal optimis dulu biar responsif, realtime channel yang udah ada bakal sinkronkan ulang.
+  const toggleSudahDiinput=async(item:any)=>{
+    const next=!item.sudah_diinput;
+    setRows(prev=>prev.map((r:any)=>r.id===item.id?{...r,sudah_diinput:next}:r));
+    await supabase.from("permintaan_item").update({sudah_diinput:next}).eq("id",item.id);
+  };
+
   return(
     <div style={{padding:16}} className="fi">
       <SectionCard icon="🕒" title="Riwayat Harian" subtitle="Aksi submit/reject/status/tarik yang sudah diproses">
@@ -140,6 +150,13 @@ export function RiwayatGudangTab(){
                   )}
                 </div>
                 {r.status==="reject"&&r.catatan_reject&&<div style={{fontSize:11,color:"#dc2626",marginTop:6}}>⚠ {r.catatan_reject}</div>}
+                <label style={{display:"flex",alignItems:"center",gap:6,marginTop:8,paddingTop:8,borderTop:"1px solid #f1f5f9",cursor:"pointer"}}>
+                  <input type="checkbox" checked={!!r.sudah_diinput} onChange={()=>toggleSudahDiinput(r)}
+                    style={{width:14,height:14,cursor:"pointer",accentColor:"#16a34a"}}/>
+                  <span style={{fontSize:10.5,fontWeight:600,color:r.sudah_diinput?"#16a34a":"#94a3b8"}}>
+                    {r.sudah_diinput?"✓ Sudah Diinput":"Sudah Diinput?"}
+                  </span>
+                </label>
               </div>
             );
           })}
