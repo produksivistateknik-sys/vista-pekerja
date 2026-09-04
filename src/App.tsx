@@ -2,6 +2,7 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import { supabase } from "./lib/supabase";
 import { isPushSupported, getPushPermissionState, subscribeToPush } from "./lib/pushNotif";
 import { TODAY, addDays } from "./lib/dateHelpers";
+import { useDateRollover } from "./lib/dateRollover";
 import { DIVISI_CONFIG } from "./lib/panelTypes";
 import { GCss } from "./lib/globalCss";
 import { KoneksiBadge } from "./components/ui/Primitives";
@@ -50,6 +51,7 @@ const TUGAS_KOMPONEN_ASSEMBLING:KomponenPasangTugas={seksi:"assembling_luar",lab
 // MAIN APP
 // ─────────────────────────────────────────────────────────────────────────────
 export default function App(){
+  const hasDateRolled=useDateRollover();
   const [user,setUser]=useState<any>(()=>{
     try{
       const saved=localStorage.getItem("vista_pekerja_session");
@@ -364,6 +366,16 @@ export default function App(){
   return(
     <div style={{minHeight:"100vh",background:"#f1f5f9"}}>
       <style>{GCss}</style>
+      {hasDateRolled&&(
+        <div style={{position:"fixed",top:0,left:0,right:0,zIndex:10000,background:"#1e293b",color:"#fff",
+          display:"flex",alignItems:"center",justifyContent:"center",gap:12,padding:"8px 16px",fontSize:12.5,flexWrap:"wrap" as const,textAlign:"center" as const}}>
+          <span>📅 Tanggal sudah berganti ke hari baru - halaman ini dibuka dari kemarin, muat ulang biar progress yang disimpan pakai tanggal yang benar.</span>
+          <button onClick={()=>window.location.reload()}
+            style={{padding:"5px 14px",borderRadius:7,border:"none",background:"#fff",color:"#1e293b",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
+            Muat Ulang
+          </button>
+        </div>
+      )}
       <style>{`
         .menu-tile-np:active{transform:translateY(-2px);box-shadow:0 8px 20px #00000022!important;}
         @media(hover:hover){.menu-tile-np:hover{transform:translateY(-2px);box-shadow:0 8px 20px #00000022!important;}}
