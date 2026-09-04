@@ -58,8 +58,14 @@ export function RiwayatGudangTab(){
   // dipakai BARENGAN sama filter tanggal (search cuma nyaring lebih lanjut dari situ).
   const[search,setSearch]=useState("");
 
-  const fetchData=async()=>{
-    setLoading(true);
+  // FIX (5 Sep 2026, ketemu pas nambah checkbox "Sudah Diinput") - fetchData dipicu ulang oleh
+  // realtime SETIAP kali ada row permintaan_item ke-update (termasuk toggle checkbox itu
+  // sendiri). Dulu selalu setLoading(true) di awal - checkbox yang dicentang berkali-kali
+  // berurutan (pola pemakaian wajar buat fitur ini) bikin SELURUH list "berkedip" ilang jadi
+  // placeholder "Memuat..." tiap 1 klik. silent=true (dipanggil dari realtime listener) skip
+  // loading state - data di-refresh diam-diam di background, list gak "kedip".
+  const fetchData=async(silent=false)=>{
+    if(!silent)setLoading(true);
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
     // 2 sumber event per item - updated_at (aksi Gudang: submit/reject) dan diambil_at (aksi
@@ -78,18 +84,18 @@ export function RiwayatGudangTab(){
     [...byUpdated,...byDiambil].forEach((it:any)=>{if(!itemMap.has(it.id))itemMap.set(it.id,it);});
     const merged=[...itemMap.values()].sort((a,b)=>((b.diambil_at||b.updated_at||"")).localeCompare(a.diambil_at||a.updated_at||""));
     const permIds=[...new Set(merged.map((it:any)=>it.permintaan_id))];
-    if(permIds.length===0){setRows([]);setLoading(false);return;}
+    if(permIds.length===0){setRows([]);if(!silent)setLoading(false);return;}
     const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").in("id",permIds).range(from,to));
     const permMap:Record<number,any>={};
     perms.forEach((p:any)=>{permMap[p.id]=p;});
     setRows(merged.map((it:any)=>({...it,perm:permMap[it.permintaan_id]})).filter((r:any)=>r.perm));
-    setLoading(false);
+    if(!silent)setLoading(false);
   };
 
   useEffect(()=>{
     fetchData();
     const ch=supabase.channel("realtime-gudang-riwayat")
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"permintaan_item"},fetchData)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"permintaan_item"},()=>fetchData(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
