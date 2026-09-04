@@ -59,8 +59,11 @@ export function GudangHeader({subtitle,notifCount,onBellClick,onLogout,adminName
 // ── SEGMENTED CONTROL (icon-in-circle + underline di opsi aktif) ─────────────
 // `dot` opsional per opsi (2 Sep 2026) - titik merah kecil di pojok icon, dipakai buat notifikasi
 // "belum dibaca" (mis. tab BBMB/BBMU di PermintaanGudangTab) - generik, gak spesifik ke 1 fitur.
+// `badge` opsional (5 Sep 2026, fitur Hutang) - angka bulat merah di pojok icon (beda dari `dot`
+// yang cuma titik biner) - dipakai buat "jumlah item outstanding" (mis. subtab HUTANG), cuma
+// tampil kalau >0. Kalau keduanya di-set, `badge` menang (dot gak dirender bareng).
 export function SegmentedControl<T extends string>({options,value,onChange}:{
-  options:{key:T;label:string;icon:string;dot?:boolean}[];value:T;onChange:(k:T)=>void;
+  options:{key:T;label:string;icon:string;dot?:boolean;badge?:number}[];value:T;onChange:(k:T)=>void;
 }){
   return(
     <div style={{display:"flex",gap:6,marginBottom:14,background:"#f1f5f9",borderRadius:14,padding:4}}>
@@ -76,7 +79,10 @@ export function SegmentedControl<T extends string>({options,value,onChange}:{
               alignItems:"center",justifyContent:"center",fontSize:12,flexShrink:0,position:"relative",
               boxShadow:active?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>
               {o.icon}
-              {o.dot&&<span style={{position:"absolute",top:-2,right:-2,width:8,height:8,borderRadius:"50%",background:"#dc2626",border:"1.5px solid #fff"}}/>}
+              {o.badge?o.badge>0&&<span style={{position:"absolute",top:-6,right:-6,minWidth:16,height:16,borderRadius:8,
+                background:"#dc2626",border:"1.5px solid #fff",color:"#fff",fontSize:9,fontWeight:800,
+                display:"flex",alignItems:"center",justifyContent:"center",padding:"0 3px"}}>{o.badge}</span>
+                :(o.dot&&<span style={{position:"absolute",top:-2,right:-2,width:8,height:8,borderRadius:"50%",background:"#dc2626",border:"1.5px solid #fff"}}/>)}
             </span>
             <span style={{fontWeight:700,fontSize:12.5}}>{o.label}</span>
           </button>

@@ -206,8 +206,10 @@ export function SearchableSelect({options,value,onChange,placeholder,disabled,st
 }
 
 // ── CARD TOGGLE (2+ kartu pilihan, dipakai buat toggle BBMB/BBMU) ─────────────
+// `badge` opsional (5 Sep 2026, fitur Hutang) - angka bulat merah di ujung kanan opsi, cuma
+// tampil kalau >0. Dipakai buat "jumlah item outstanding" (mis. subtab HUTANG).
 export function CardToggle<T extends string>({options,value,onChange,color}:{
-  options:{key:T;label:string;icon:string}[];value:T;onChange:(k:T)=>void;color:string;
+  options:{key:T;label:string;icon:string;badge?:number}[];value:T;onChange:(k:T)=>void;color:string;
 }){
   return(
     <div style={{display:"flex",gap:8,marginBottom:14}}>
@@ -219,7 +221,9 @@ export function CardToggle<T extends string>({options,value,onChange,color}:{
             border:active?`2px solid ${color}`:"1.5px solid #e2e8f0",
             background:active?color+"10":"#fff",transition:"all .15s"}}>
             <span style={{fontSize:17,flexShrink:0}}>{o.icon}</span>
-            <span style={{fontWeight:700,fontSize:12.5,color:active?color:"#64748b",textAlign:"left" as const}}>{o.label}</span>
+            <span style={{fontWeight:700,fontSize:12.5,color:active?color:"#64748b",textAlign:"left" as const,flex:1,minWidth:0}}>{o.label}</span>
+            {!!o.badge&&o.badge>0&&<span style={{flexShrink:0,minWidth:18,height:18,borderRadius:9,background:"#dc2626",color:"#fff",
+              fontSize:10,fontWeight:800,display:"flex",alignItems:"center",justifyContent:"center",padding:"0 4px"}}>{o.badge}</span>}
           </button>
         );
       })}

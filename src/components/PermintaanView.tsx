@@ -32,7 +32,7 @@ import { DIVISI_CONFIG } from "../lib/panelTypes";
 // App.tsx render ini tanpa cek user.divisi.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Jenis="BBMB"|"BBMU";
+type Jenis="BBMB"|"BBMU"|"HUTANG";
 type ItemRow={value:string;namaKomponen:string;qty:number;satuanList:string[];satuanDipilih:string};
 
 // Status SAMA PERSIS buat BBMB & BBMU (REVISI 3 Sep 2026) - dulu Record<Jenis,...> per jenis
@@ -114,6 +114,9 @@ export function PermintaanView({user}:{user:any}){
   },[]);
 
   useEffect(()=>{
+    // HUTANG bukan kategori komponen_master asli (cuma BBMB/BBMU) - skip fetch, gak ada form
+    // pengajuan buat mode Hutang sama sekali (lihat render di bawah).
+    if(jenisTab==="HUTANG"){setMasterList([]);return;}
     const jenisDiminta=jenisTab;
     latestJenisRef.current=jenisDiminta;
     fetchAllPaged((from,to)=>supabase.from("komponen_master").select("id,nama,satuan_utama,satuan_list").eq("kategori",jenisDiminta).order("nama",{ascending:true}).range(from,to))
@@ -142,6 +145,7 @@ export function PermintaanView({user}:{user:any}){
   // (BBMB) sudah disiapkan tapi belum dikonfirmasi diambil - dipakai buat ngurutin (yang butuh
   // perhatian naik ke atas) DAN nentuin mana yang ditandai "sudah dibaca" begitu list ini tampil.
   const fetchRiwayat=async()=>{
+    if(jenisTab==="HUTANG")return; // HUTANG punya fetch+state sendiri (fetchHutang di bawah)
     setLoadingRiwayat(true);
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
@@ -154,7 +158,10 @@ export function PermintaanView({user}:{user:any}){
     // punya tahap sudah_diambil, BBMU enggak - BBMU beres begitu Gudang set status non-pending).
     if(perms&&perms.length>0){
       const ids=perms.map((p:any)=>p.id);
-      const{data:itemRows}=await supabase.from("permintaan_item").select("*").in("permintaan_id",ids);
+      // is_hutang=false (5 Sep 2026) - row hutang (sisa belum terpenuhi) SENGAJA dikecualikan,
+      // dia punya permintaan_id yang SAMA dengan item asli tapi harus muncul di subtab HUTANG
+      // terpisah (fetchHutang di bawah), bukan tercampur di riwayat BBMB/BBMU biasa.
+      const{data:itemRows}=await supabase.from("permintaan_item").select("*").in("permintaan_id",ids).eq("is_hutang",false);
       const map:Record<number,any[]>={};
       (itemRows||[]).forEach((it:any)=>{(map[it.permintaan_id]=map[it.permintaan_id]||[]).push(it);});
       const merged=perms.map((p:any)=>({...p,items:map[p.id]||[]}));
@@ -186,10 +193,43 @@ export function PermintaanView({user}:{user:any}){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[jenisTab,divisi,tanggal]);
 
+  // ── HUTANG (5 Sep 2026) - subtab terpisah, read-only (operator gak mengajukan hutang, itu
+  // muncul otomatis dari Gudang yang cuma bisa penuhi sebagian). TANPA filter tanggal - hutang
+  // bisa lintas hari, harus tetap muncul sampai lunas. Query SEMUA status (bukan cuma pending)
+  // biar operator lihat histori penuh (termasuk yang udah disiapkan/ditolak), badge counter di
+  // CardToggle di bawah tetap cuma hitung yang is_hutang=true+pending (outstanding). ──
+  const[hutangList,setHutangList]=useState<any[]>([]);
+  const[loadingHutang,setLoadingHutang]=useState(true);
+  const[hutangCount,setHutangCount]=useState(0);
+  const fetchHutang=async()=>{
+    setLoadingHutang(true);
+    // Pola sama fetchRiwayat di atas - fetch permintaan (filter divisi) dulu, baru item-nya,
+    // gabung manual di JS - bukan embedded-filter PostgREST yang belum pernah dipakai di proyek
+    // ini, biar konsisten & gak spekulatif soal versi PostgREST yang dukung sintaks itu.
+    const{data:perms}=await supabase.from("permintaan").select("*").eq("divisi",divisi);
+    if(!perms||perms.length===0){setHutangList([]);setHutangCount(0);setLoadingHutang(false);return;}
+    const permMap:Record<number,any>={};
+    perms.forEach((p:any)=>{permMap[p.id]=p;});
+    const{data:items}=await supabase.from("permintaan_item").select("*").in("permintaan_id",perms.map((p:any)=>p.id)).eq("is_hutang",true).order("updated_at",{ascending:false,nullsFirst:false} as any);
+    const merged=(items||[]).map((it:any)=>({...it,perm:permMap[it.permintaan_id]})).filter((it:any)=>it.perm);
+    setHutangList(merged);
+    setHutangCount(merged.filter((it:any)=>it.status==="pending").length);
+    setLoadingHutang(false);
+  };
+  useEffect(()=>{
+    fetchHutang();
+    const ch=supabase.channel(`realtime-permintaan-hutang-${divisi}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},fetchHutang)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[divisi]);
+
   // Konfirmasi pengambilan fisik - SEKARANG dari sisi operator (bukan Gudang lagi, lihat
   // TarikGudangTab.tsx yang sudah jadi read-only). Siapapun yang login saat ini yang
   // mengonfirmasi (dicatat di diambil_oleh), gak harus operator yang sama dengan operator_nama
-  // permintaan aslinya. Berlaku BBMB & BBMU (PENYATUAN PENUH 3 Sep 2026 - dulu BBMB saja).
+  // permintaan aslinya. Berlaku BBMB & BBMU (PENYATUAN PENUH 3 Sep 2026 - dulu BBMB saja), dan
+  // Hutang (5 Sep 2026, item Hutang yang udah Sudah Siap tetap butuh konfirmasi ambil fisik).
   const konfirmasiDiambil=async(itemId:number)=>{
     setConfirmingId(itemId);
     await supabase.from("permintaan_item").update({
@@ -197,6 +237,7 @@ export function PermintaanView({user}:{user:any}){
     }).eq("id",itemId);
     setConfirmingId(null);
     fetchRiwayat();
+    fetchHutang();
   };
 
   const updateItem=(idx:number,patch:Partial<ItemRow>)=>{
@@ -274,8 +315,11 @@ export function PermintaanView({user}:{user:any}){
   return(
     <div style={{padding:16}} className="fi">
       <SectionCard icon="📥" iconBg={cfg?.bg} title="Permintaan Barang" subtitle="Ajukan permintaan komponen bantu atau utama.">
-        <CardToggle options={[{key:"BBMB",label:"BBMB (Bantu)",icon:"🧰"},{key:"BBMU",label:"BBMU (Utama)",icon:"⚙️"}]}
-          value={jenisTab} onChange={setJenisTab} color={accent}/>
+        <CardToggle options={[
+          {key:"BBMB",label:"BBMB (Bantu)",icon:"🧰"},
+          {key:"BBMU",label:"BBMU (Utama)",icon:"⚙️"},
+          {key:"HUTANG",label:"Hutang",icon:"🧾",badge:hutangCount},
+        ]} value={jenisTab} onChange={setJenisTab} color={accent}/>
       </SectionCard>
 
       <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:12,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"12px 16px"}}>
@@ -292,6 +336,10 @@ export function PermintaanView({user}:{user:any}){
         </span>
       </div>
 
+      {/* HUTANG (5 Sep 2026) - subtab terpisah, read-only, gak ada form pengajuan sama sekali
+          (hutang muncul otomatis dari Gudang, operator gak "minta" hutang secara manual). */}
+      {jenisTab==="HUTANG"?null:(
+      <>
       {/* Lock permintaan (2 Sep 2026) - Gudang bisa "tutup" penerimaan baru, form WO/Panel/Komponen
           diganti catatan ini. Riwayat di bawah TETAP tampil apa adanya - cuma form kirim yang diblokir. */}
       {gudangLocked?(
@@ -377,7 +425,18 @@ export function PermintaanView({user}:{user:any}){
       )}
       </>
       )}
+      </>
+      )}
 
+      {jenisTab==="HUTANG"?(
+        <>
+          <div style={{height:1,background:"#f1f5f9",margin:"4px 0 16px"}}/>
+          <Lbl>Hutang Divisi ({divisi})</Lbl>
+          <div style={{fontSize:11.5,color:"#94a3b8",marginBottom:12}}>Sisa permintaan yang belum sepenuhnya dipenuhi Gudang - dicicil otomatis sampai lunas.</div>
+          <HutangBlock hutangList={hutangList} loading={loadingHutang} accent={accent} confirmingId={confirmingId} konfirmasiDiambil={konfirmasiDiambil} fmtDateTime={fmtDateTime}/>
+        </>
+      ):(
+      <>
       <div style={{height:1,background:"#f1f5f9",margin:"4px 0 16px"}}/>
 
       <Lbl>Riwayat Permintaan Divisi ({jenisTab})</Lbl>
@@ -449,6 +508,62 @@ export function PermintaanView({user}:{user:any}){
           ))}
         </div>
       )}
+      </>
+      )}
+    </div>
+  );
+}
+
+// ── Blok list Hutang (5 Sep 2026, sisi Operator - read-only) ─────────────────────────────
+function HutangBlock({hutangList,loading,accent,confirmingId,konfirmasiDiambil,fmtDateTime}:{
+  hutangList:any[];loading:boolean;accent:string;confirmingId:number|null;
+  konfirmasiDiambil:(id:number)=>void;fmtDateTime:(d:string)=>string;
+}){
+  if(loading)return<div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
+  if(hutangList.length===0)return<EmptyState variant="box-paper" title="Tidak ada Hutang"
+    description="Hutang muncul otomatis kalau Gudang cuma bisa penuhi sebagian permintaan. Belum ada untuk divisi ini."/>;
+  return(
+    <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
+      {hutangList.map((it:any)=>{
+        const badgeLabel=it.sudah_diambil?"✓ Sudah Diambil":(STATUS_LABEL[it.status]||it.status);
+        const badgeColor=it.sudah_diambil?"#0369a1":STATUS_COLOR[it.status];
+        return(
+          <Card key={it.id} style={{padding:"14px 16px",borderColor:"#fecaca"}}>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
+              <div style={{minWidth:0}}>
+                <div style={{fontWeight:800,fontSize:13,color:"#0f172a"}}>{it.perm?.proyek||"-"} · {it.perm?.panel_nama||"-"}</div>
+                <div style={{fontSize:10.5,color:"#94a3b8"}}>{it.perm?.wo_number||"-"} · diminta oleh {it.perm?.operator_nama||"-"}</div>
+              </div>
+              <span style={{fontSize:10.5,fontWeight:600,color:"#94a3b8",whiteSpace:"nowrap" as const}}>{fmtDateTime(it.updated_at||it.perm?.created_at)}</span>
+            </div>
+            <div style={{background:"#fef2f2",borderRadius:8,padding:"6px 10px"}}>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
+                <span style={{fontSize:12.5,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>
+                  {it.nama_komponen} <span style={{color:"#dc2626",fontWeight:700}}>Hutang ×{it.qty}{it.satuan?` ${it.satuan}`:""}</span>
+                  {it.qty_diminta_awal&&<span style={{color:"#94a3b8",fontWeight:500}}> (dari {it.qty_diminta_awal})</span>}
+                </span>
+                <span style={{background:badgeColor+"18",color:badgeColor,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>{badgeLabel}</span>
+              </div>
+              {it.status==="submit"&&!it.sudah_diambil&&(
+                <button onClick={()=>konfirmasiDiambil(it.id)} disabled={confirmingId===it.id}
+                  style={{width:"100%",marginTop:6,padding:"7px",borderRadius:7,border:"none",
+                    background:confirmingId===it.id?"#94a3b8":accent,color:"#fff",fontWeight:700,fontSize:11,
+                    cursor:confirmingId===it.id?"default":"pointer",fontFamily:"inherit"}}>
+                  {confirmingId===it.id?"Menyimpan...":"Konfirmasi Sudah Diambil"}
+                </button>
+              )}
+              {it.sudah_diambil&&(
+                <div style={{marginTop:6,fontSize:10.5,color:"#16a34a",fontWeight:700}}>
+                  ✓ Sudah diambil oleh {it.diambil_oleh||"-"} — {fmtDateTime(it.diambil_at)}
+                </div>
+              )}
+              {it.status==="reject"&&it.catatan_reject&&(
+                <div style={{marginTop:6,fontSize:11,color:"#dc2626"}}>⚠ {it.catatan_reject}</div>
+              )}
+            </div>
+          </Card>
+        );
+      })}
     </div>
   );
 }
