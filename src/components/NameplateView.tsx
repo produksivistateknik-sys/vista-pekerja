@@ -111,6 +111,7 @@ export function NameplateView({user}:any){
         [t.fotoField]:newFoto,
       };
       await supabase.from("panels").update(patch).eq("id",p.id);
+      dirtyProgressRef.current.delete(key);
       setPanelsList(prev=>prev.map((pp:any)=>pp.id===p.id?{...pp,...patch}:pp));
       staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
       setStagedFotos(prev=>{const next={...prev};delete next[key];return next;});
@@ -120,6 +121,14 @@ export function NameplateView({user}:any){
     setUploadProgress(null);
     setSavingKey(null);
   };
+
+  // Panel_field yang persentase-nya barusan diklik tapi belum "Simpan Progress" - dilindungi
+  // dari ketiban fetchData() (BUG FIX 5 Sep 2026, sama pola KomponenProgressView.tsx - realtime
+  // nyala buat SEMUA update tabel panels, bukan cuma punya sendiri, jadi tanpa ini klik yang
+  // belum disimpan bisa ke-timpa balik pas ada panel LAIN yang berubah). Key-nya `${panelId}_
+  // ${field}` (bukan cuma panelId) karena satu panel punya 2 progress independen di sini
+  // (nameplate & yellowmark).
+  const dirtyProgressRef=useRef<Set<string>>(new Set());
 
   // Narrow select (audit egress Agu 2026) - panels punya ~13 kolom JSON lain (qc_checklist,
   // checklist proses, warehouse/qs/busbar dll) yang gak kepakai sama sekali di sini.
@@ -132,10 +141,21 @@ export function NameplateView({user}:any){
     const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target,is_archived").in("id",woIds):{data:[]};
     const woMap:Record<number,any>={};
     (wos??[]).forEach((w:any)=>{woMap[w.id]=w;});
-    const merged=(panels??[])
-      .filter((p:any)=>!woMap[p.wo_id]?.is_archived)
-      .map((p:any)=>({...p,_wo:woMap[p.wo_id]||{}}));
-    setPanelsList(merged);
+    setPanelsList(prev=>{
+      const prevMap:Record<number,any>={};
+      prev.forEach((p:any)=>{prevMap[p.id]=p;});
+      return(panels??[])
+        .filter((p:any)=>!woMap[p.wo_id]?.is_archived)
+        .map((p:any)=>{
+          const merged={...p,_wo:woMap[p.wo_id]||{}};
+          TUGAS_NP.forEach(t=>{
+            if(dirtyProgressRef.current.has(`${p.id}_${t.field}`)&&prevMap[p.id]){
+              merged[t.progressField]=prevMap[p.id][t.progressField];
+            }
+          });
+          return merged;
+        });
+    });
     if(!silent)setLoading(false);
   };
 
@@ -159,6 +179,8 @@ export function NameplateView({user}:any){
   const[lockLoading,setLockLoading]=useState(false);
 
   const updateProgress=(panelId:number,field:"nameplate_progress"|"yellowmark_progress",val:number)=>{
+    const tugasField=field==="nameplate_progress"?"nameplate":"yellowmark";
+    dirtyProgressRef.current.add(`${panelId}_${tugasField}`);
     setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,[field]:val}:p));
   };
 
@@ -188,6 +210,11 @@ export function NameplateView({user}:any){
           yellowmark_progress:p.yellowmark_progress||0,yellowmark_updated_by:user.nama,yellowmark_updated_at:new Date().toISOString(),yellowmark_history:newYmHist,
         }).eq("id",p.id));
         if(error)throw error;
+        // dirtyProgressRef CUMA di-clear kalau beneran sukses, sama alasan komentar di atas -
+        // biar fetchData() (dipanggil channel realtime kapan aja) tetap pertahanin nilai lokal
+        // yang belum ke-simpan kalau baris ini gagal.
+        dirtyProgressRef.current.delete(`${p.id}_nameplate`);
+        dirtyProgressRef.current.delete(`${p.id}_yellowmark`);
         count++;
       }catch{
         gagal.push(p.nama||("Panel #"+p.id));
