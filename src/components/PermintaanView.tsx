@@ -210,7 +210,10 @@ export function PermintaanView({user}:{user:any}){
     if(!perms||perms.length===0){setHutangList([]);setHutangCount(0);setLoadingHutang(false);return;}
     const permMap:Record<number,any>={};
     perms.forEach((p:any)=>{permMap[p.id]=p;});
-    const{data:items}=await supabase.from("permintaan_item").select("*").in("permintaan_id",perms.map((p:any)=>p.id)).eq("is_hutang",true).order("updated_at",{ascending:false,nullsFirst:false} as any);
+    // order by id (bukan updated_at) - row hutang BARU (belum pernah diproses lagi) punya
+    // updated_at NULL, bakal nyasar ke bawah list padahal itu yang paling perlu diperhatikan.
+    // id selalu terisi & mencerminkan urutan pembuatan akurat, gak ada masalah null-ordering.
+    const{data:items}=await supabase.from("permintaan_item").select("*").in("permintaan_id",perms.map((p:any)=>p.id)).eq("is_hutang",true).order("id",{ascending:false});
     const merged=(items||[]).map((it:any)=>({...it,perm:permMap[it.permintaan_id]})).filter((it:any)=>it.perm);
     setHutangList(merged);
     setHutangCount(merged.filter((it:any)=>it.status==="pending").length);
@@ -224,6 +227,20 @@ export function PermintaanView({user}:{user:any}){
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[divisi]);
+
+  // FIX (5 Sep 2026) - fetchHutang di atas SELALU jalan (badge counter harus akurat walau
+  // operator lagi di tab lain), makanya SENGAJA gak mark-as-read di situ. Tapi badge notifikasi
+  // GLOBAL di App.tsx baca dilihat_operator - tanpa effect ini, badge itu macet nyala terus buat
+  // item hutang yang status-nya berubah (submit/reject), padahal operator udah buka tab Hutang &
+  // lihat sendiri (ketemu bug nyata dari data live: row hutang dilihat_operator tetap false
+  // walau udah diproses gudang). Effect ini KHUSUS jalan begitu tab Hutang beneran dibuka - pola
+  // sama persis fetchRiwayat buat BBMB/BBMU di atas.
+  useEffect(()=>{
+    if(jenisTab!=="HUTANG")return;
+    const unreadIds=hutangList.filter((it:any)=>it.status!=="pending"&&!it.dilihat_operator).map((it:any)=>it.id);
+    if(unreadIds.length>0)supabase.from("permintaan_item").update({dilihat_operator:true}).in("id",unreadIds).then(()=>{});
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[jenisTab,hutangList]);
 
   // Konfirmasi pengambilan fisik - SEKARANG dari sisi operator (bukan Gudang lagi, lihat
   // TarikGudangTab.tsx yang sudah jadi read-only). Siapapun yang login saat ini yang
