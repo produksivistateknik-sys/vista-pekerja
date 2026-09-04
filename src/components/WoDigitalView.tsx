@@ -5,8 +5,10 @@ import { SectionCard, EmptyState, Badge } from "./ui/Primitives";
 // ─────────────────────────────────────────────────────────────────────────────
 // WO DIGITAL (31 Agu 2026) - versi digital gambar teknik (construction drawing, sudah
 // ber-watermark) menggantikan distribusi kertas cetak. READ-ONLY (upload cuma dari Vista
-// Teknik, lihat WoDigitalTab.tsx). 1 WO = 1 dokumen (mencakup semua panel sekaligus, sama
-// kayak PDF asli dari CAD - gak ada lagi pecahan per-panel, lihat WoDigitalTab.tsx).
+// Teknik, lihat WoDigitalTab.tsx).
+//
+// REVISI (4 Sep 2026) - dokumen sekarang PER-PANEL (dulu 1 WO = 1 dokumen buat semua panel).
+// Card WO expand jadi daftar panel, masing-masing punya dokumen sendiri.
 //
 // 2 tampilan: Aktif (work_orders.is_archived=false, langsung tampil semua tanpa perlu
 // ketik) dan Arsip (is_archived=true, search-first - historis, sama pola ArsipQCView.tsx).
@@ -36,7 +38,7 @@ export function WoDigitalView(){
     setLoading(true);
     const[{data:wo},{data:panels},{data:wi},{data:rev}]=await Promise.all([
       supabase.from("work_orders").select("id,wo,proyek,is_archived"),
-      supabase.from("panels").select("id,wo_id,nama"),
+      supabase.from("panels").select("id,wo_id,no_pnl,nama"),
       supabase.from("work_instructions" as any).select("*"),
       supabase.from("wi_revisions" as any).select("*").eq("is_current",true),
     ]);
@@ -65,11 +67,16 @@ export function WoDigitalView(){
     });
   },[woList,q,viewMode]);
 
-  const panelNamesOf=(woId:number)=>panelsAll.filter(p=>p.wo_id===woId).map(p=>p.nama);
-  const currentRevOf=(woId:number)=>{
-    const wi=wiList.find((w:any)=>w.wo_id===woId&&!w.panel_id);
+  const panelsOfWo=(woId:number)=>panelsAll.filter(p=>p.wo_id===woId);
+  const currentRevOfPanel=(panelId:number)=>{
+    const wi=wiList.find((w:any)=>w.panel_id===panelId);
     if(!wi)return null;
     return revList.find((r:any)=>r.work_instruction_id===wi.id)||null;
+  };
+  const statsOfWo=(woId:number)=>{
+    const woPanels=panelsOfWo(woId);
+    const docCount=woPanels.filter(p=>currentRevOfPanel(p.id)).length;
+    return{docCount,totalPanels:woPanels.length};
   };
 
   return(
@@ -97,33 +104,39 @@ export function WoDigitalView(){
         ):(
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {filteredWo.map(w=>{
-              const panelNames=panelNamesOf(w.id);
-              const rev=currentRevOf(w.id);
+              const panels=panelsOfWo(w.id);
+              const stats=statsOfWo(w.id);
               return(
-                <div key={w.id} onClick={()=>{if(rev)window.open(rev.file_url,"_blank");}}
-                  style={{border:"1px solid #e2e8f0",borderRadius:12,padding:"16px 18px",display:"flex",alignItems:"center",gap:14,
-                    cursor:rev?"pointer":"default"}}>
-                  <div style={{flex:1,minWidth:0}}>
+                <div key={w.id} style={{border:"1px solid #e2e8f0",borderRadius:12,overflow:"hidden"}}>
+                  <div style={{padding:"14px 18px"}}>
                     <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
                       <span style={{fontSize:10.5,color:"#94a3b8",fontWeight:700,letterSpacing:.3}}>WO {w.wo}</span>
-                      {rev&&<Badge label="Berlaku" color="#16a34a" bg="#f0fdf4"/>}
+                      {stats.totalPanels>0&&(stats.docCount===stats.totalPanels?<Badge label="Semua Ada Dokumen" color="#16a34a" bg="#f0fdf4"/>:stats.docCount>0?<Badge label={`${stats.docCount}/${stats.totalPanels} Dokumen`} color="#d97706" bg="#fffbeb"/>:<Badge label="Belum Ada Dokumen" color="#94a3b8" bg="#f1f5f9"/>)}
                     </div>
                     <div style={{fontSize:15,fontWeight:700,color:"#0f172a",marginTop:2,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{w.proyek}</div>
-                    {panelNames.length>0&&(
-                      <div style={{display:"flex",flexWrap:"wrap",gap:5,marginTop:8}}>
-                        {panelNames.map(n=>(
-                          <span key={n} style={{fontSize:11,color:"#64748b",background:"#f1f5f9",borderRadius:6,padding:"3px 9px"}}>{n}</span>
-                        ))}
-                      </div>
-                    )}
                   </div>
-                  {rev?(
-                    <div style={{width:40,height:40,borderRadius:10,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <i className="ti ti-external-link" style={{fontSize:18,color:"#1d4ed8"}}/>
-                    </div>
-                  ):(
-                    <span style={{fontSize:10.5,color:"#cbd5e1",flexShrink:0,fontStyle:"italic"}}>Belum ada</span>
-                  )}
+                  {panels.map(p=>{
+                    const rev=currentRevOfPanel(p.id);
+                    return(
+                      <div key={p.id} onClick={()=>{if(rev)window.open(rev.file_url,"_blank");}}
+                        style={{borderTop:"1px solid #f1f5f9",padding:"12px 18px",display:"flex",alignItems:"center",gap:14,
+                          cursor:rev?"pointer":"default",background:"#fafbff"}}>
+                        <div style={{flex:1,minWidth:0}}>
+                          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+                            <span style={{fontSize:13,fontWeight:700,color:"#0f172a"}}>#{p.no_pnl} {p.nama}</span>
+                            {rev&&<Badge label="Berlaku" color="#16a34a" bg="#f0fdf4"/>}
+                          </div>
+                        </div>
+                        {rev?(
+                          <div style={{width:36,height:36,borderRadius:9,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                            <i className="ti ti-external-link" style={{fontSize:16,color:"#1d4ed8"}}/>
+                          </div>
+                        ):(
+                          <span style={{fontSize:10.5,color:"#cbd5e1",flexShrink:0,fontStyle:"italic"}}>Belum ada</span>
+                        )}
+                      </div>
+                    );
+                  })}
                 </div>
               );
             })}
