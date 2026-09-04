@@ -206,15 +206,22 @@ export function PermintaanView({user}:{user:any}){
     // Pola sama fetchRiwayat di atas - fetch permintaan (filter divisi) dulu, baru item-nya,
     // gabung manual di JS - bukan embedded-filter PostgREST yang belum pernah dipakai di proyek
     // ini, biar konsisten & gak spekulatif soal versi PostgREST yang dukung sintaks itu.
-    const{data:perms}=await supabase.from("permintaan").select("*").eq("divisi",divisi);
-    if(!perms||perms.length===0){setHutangList([]);setHutangCount(0);setLoadingHutang(false);return;}
+    // Paginasi penuh (BUG FIX 5 Sep 2026, pola sama fetchAllPaged komponen_master di atas) - dulu
+    // .select("*") polos tanpa .range(). Hutang SENGAJA gak difilter tanggal (bisa lintas hari,
+    // lihat komentar di atas), jadi `perms` di sini adalah akumulasi SELURUH permintaan divisi
+    // sejak awal sistem - begitu itu tembus cap default Supabase 1000 baris, permintaan LAMA
+    // ke-cut diam-diam, dan hutang lama yang permintaan_id-nya udah gak ada di permMap ikut
+    // ke-filter habis di bawah (.filter(it=>it.perm)) - hutang outstanding hilang dari tampilan
+    // operator tanpa pesan error apa pun.
+    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("divisi",divisi).range(from,to));
+    if(perms.length===0){setHutangList([]);setHutangCount(0);setLoadingHutang(false);return;}
     const permMap:Record<number,any>={};
     perms.forEach((p:any)=>{permMap[p.id]=p;});
     // order by id (bukan updated_at) - row hutang BARU (belum pernah diproses lagi) punya
     // updated_at NULL, bakal nyasar ke bawah list padahal itu yang paling perlu diperhatikan.
     // id selalu terisi & mencerminkan urutan pembuatan akurat, gak ada masalah null-ordering.
-    const{data:items}=await supabase.from("permintaan_item").select("*").in("permintaan_id",perms.map((p:any)=>p.id)).eq("is_hutang",true).order("id",{ascending:false});
-    const merged=(items||[]).map((it:any)=>({...it,perm:permMap[it.permintaan_id]})).filter((it:any)=>it.perm);
+    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").in("permintaan_id",perms.map((p:any)=>p.id)).eq("is_hutang",true).order("id",{ascending:false}).range(from,to));
+    const merged=items.map((it:any)=>({...it,perm:permMap[it.permintaan_id]})).filter((it:any)=>it.perm);
     setHutangList(merged);
     setHutangCount(merged.filter((it:any)=>it.status==="pending").length);
     setLoadingHutang(false);
