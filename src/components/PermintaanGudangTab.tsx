@@ -222,29 +222,35 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
   const[submittingId,setSubmittingId]=useState<number|null>(null);
   const[qtyTarget,setQtyTarget]=useState<any|null>(null); // fitur Hutang, 5 Sep 2026
 
-  const fetchData=async()=>{
-    setLoading(true);
+  // silent (5 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - fetchData dipicu ulang oleh
+  // realtime SETIAP kali ada perubahan permintaan_item, TERMASUK aksi submit/reject admin
+  // gudang sendiri (yang udah manggil fetchData() langsung juga - lihat handleQtyConfirm/
+  // setItemStatus di bawah). Tanpa ini, tiap 1 klik submit/reject bikin list "berkedip" DUA
+  // KALI (sekali dari panggilan langsung, sekali lagi dari realtime echo) - admin gudang yang
+  // proses banyak item berturut-turut bakal ngerasa keganggu banget.
+  const fetchData=async(silent=false)=>{
+    if(!silent)setLoading(true);
     // Discope ke tanggal permintaan DIBUAT (bukan tanggal item-nya diproses) - fetch perms dulu
     // (di-filter tanggal+jenis), baru ambil item punya perm-perm itu.
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
     const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis",jenis)
       .gte("created_at",startIso).lte("created_at",endIso).order("created_at",{ascending:false}).range(from,to));
-    if(perms.length===0){setPermMap({});setItemsByPerm({});setLoading(false);return;}
+    if(perms.length===0){setPermMap({});setItemsByPerm({});if(!silent)setLoading(false);return;}
     const permIds=perms.map((p:any)=>p.id);
     const allItems=await fetchItemsByPermintaanIds(permIds);
     const pMap:Record<number,any>={};
     perms.forEach((p:any)=>{pMap[p.id]=p;});
     setPermMap(pMap);
     setItemsByPerm(groupItemsByPermintaan(allItems));
-    setLoading(false);
+    if(!silent)setLoading(false);
   };
 
   useEffect(()=>{
     fetchData();
     const ch=supabase.channel(`realtime-gudang-masuk-${jenis}`)
-      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},fetchData)
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"permintaan"},fetchData)
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},()=>fetchData(true))
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"permintaan"},()=>fetchData(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -395,23 +401,25 @@ function HutangList({adminName}:{adminName:string}){
   const[qtyTarget,setQtyTarget]=useState<any|null>(null);
   const[submittingId,setSubmittingId]=useState<number|null>(null);
 
-  const fetchData=async()=>{
-    setLoading(true);
+  // silent - sama fix RiwayatGudangTab.tsx/PermintaanList di atas, biar list gak "berkedip"
+  // dobel tiap submit/reject/cicil hutang.
+  const fetchData=async(silent=false)=>{
+    if(!silent)setLoading(true);
     const hutangItems=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").eq("is_hutang",true).eq("status","pending").range(from,to));
-    if(hutangItems.length===0){setPermMap({});setItemsByPerm({});setLoading(false);return;}
+    if(hutangItems.length===0){setPermMap({});setItemsByPerm({});if(!silent)setLoading(false);return;}
     const permIds=[...new Set(hutangItems.map((it:any)=>it.permintaan_id))];
     const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").in("id",permIds).range(from,to));
     const pMap:Record<number,any>={};
     perms.forEach((p:any)=>{pMap[p.id]=p;});
     setPermMap(pMap);
     setItemsByPerm(groupItemsByPermintaan(hutangItems));
-    setLoading(false);
+    if(!silent)setLoading(false);
   };
 
   useEffect(()=>{
     fetchData();
     const ch=supabase.channel("realtime-gudang-hutang-list")
-      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},fetchData)
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},()=>fetchData(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps

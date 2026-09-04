@@ -46,8 +46,11 @@ export function TrackingKomponenView({user}:any){
     setPanelList(prev=>prev.map((p:any)=>p.id===panelId?{...p,komponen_status:newAll}:p));
   };
 
-  const fetchRiwayat=async(panelId:number)=>{
-    setLoadingRiwayat(true);
+  // silent (4 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - dipakai listener realtime di bawah
+  // (tabel fcs_tracking_komponen tanpa filter panel_id) biar riwayat gak "berkedip" tiap ada
+  // tracking baru di panel LAIN sekalipun.
+  const fetchRiwayat=async(panelId:number,silent=false)=>{
+    if(!silent)setLoadingRiwayat(true);
     const{data:tr}=await supabase.from("fcs_tracking_komponen").select("*").eq("panel_id",panelId).order("created_at",{ascending:false});
     setRiwayat(tr??[]);
     if(tr&&tr.length>0){
@@ -62,7 +65,7 @@ export function TrackingKomponenView({user}:any){
     } else {
       setFotoMap({});
     }
-    setLoadingRiwayat(false);
+    if(!silent)setLoadingRiwayat(false);
   };
 
   // Hapus foto riwayat serah terima - beda struktur dari view lain (baris tersendiri di
@@ -87,7 +90,7 @@ export function TrackingKomponenView({user}:any){
     if(!selectedPanelId){setRiwayat([]);return;}
     fetchRiwayat(selectedPanelId);
     const ch=supabase.channel("realtime-tracking-komponen")
-      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_tracking_komponen"},()=>{if(selectedPanelId)fetchRiwayat(selectedPanelId);})
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_tracking_komponen"},()=>{if(selectedPanelId)fetchRiwayat(selectedPanelId,true);})
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[selectedPanelId]);

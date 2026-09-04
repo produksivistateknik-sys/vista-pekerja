@@ -49,13 +49,17 @@ export function TarikGudangTab(){
   const[loading,setLoading]=useState(true);
   const[rows,setRows]=useState<any[]>([]); // item + permintaan header digabung flat
 
-  const fetchData=async()=>{
-    setLoading(true);
+  // silent (5 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - listener di bawah TANPA filter,
+  // dipicu perubahan permintaan_item dari divisi mana pun (termasuk operator klik "Konfirmasi
+  // Sudah Diambil" di tab lain) - tanpa ini, list yang sedang dilihat Gudang "berkedip" tiap
+  // ada aktivitas di mana pun, walau gak relevan sama sekali ke tampilan saat itu.
+  const fetchData=async(silent=false)=>{
+    if(!silent)setLoading(true);
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
     const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*")
       .gte("created_at",startIso).lte("created_at",endIso).range(from,to));
-    if(perms.length===0){setRows([]);setLoading(false);return;}
+    if(perms.length===0){setRows([]);if(!silent)setLoading(false);return;}
     const permMap:Record<number,any>={};
     perms.forEach((p:any)=>{permMap[p.id]=p;});
     const permIds=perms.map((p:any)=>p.id);
@@ -67,13 +71,13 @@ export function TarikGudangTab(){
       .filter((r:any)=>r.perm) // jaga-jaga kalau header udah gak ada
       .sort((a:any,b:any)=>(a.perm.created_at||"").localeCompare(b.perm.created_at||"")); // FIFO - antre paling lama duluan
     setRows(merged);
-    setLoading(false);
+    if(!silent)setLoading(false);
   };
 
   useEffect(()=>{
     fetchData();
     const ch=supabase.channel("realtime-gudang-tarik")
-      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},fetchData)
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},()=>fetchData(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps

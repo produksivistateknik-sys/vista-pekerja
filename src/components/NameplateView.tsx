@@ -123,8 +123,10 @@ export function NameplateView({user}:any){
 
   // Narrow select (audit egress Agu 2026) - panels punya ~13 kolom JSON lain (qc_checklist,
   // checklist proses, warehouse/qs/busbar dll) yang gak kepakai sama sekali di sini.
-  const fetchData=async()=>{
-    setLoading(true);
+  // silent (5 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - dipakai debouncedFetch (realtime,
+  // tanpa filter divisi) biar list gak "berkedip" tiap ada panel lain ke-update.
+  const fetchData=async(silent=false)=>{
+    if(!silent)setLoading(true);
     const panels=await fetchAllPanels("id,wo_id,nama,nameplate_progress,nameplate_photos,nameplate_history,nameplate_updated_by,nameplate_updated_at,yellowmark_progress,yellowmark_photos,yellowmark_history,yellowmark_updated_by,yellowmark_updated_at");
     const woIds=[...new Set((panels??[]).map((p:any)=>p.wo_id).filter(Boolean))];
     const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target,is_archived").in("id",woIds):{data:[]};
@@ -134,7 +136,7 @@ export function NameplateView({user}:any){
       .filter((p:any)=>!woMap[p.wo_id]?.is_archived)
       .map((p:any)=>({...p,_wo:woMap[p.wo_id]||{}}));
     setPanelsList(merged);
-    setLoading(false);
+    if(!silent)setLoading(false);
   };
 
   // Debounce trigger refetch (audit egress Agu 2026) - channel ini gak ada filter (panel
@@ -143,7 +145,7 @@ export function NameplateView({user}:any){
   const refetchTimer=useRef<any>(null);
   const debouncedFetch=()=>{
     if(refetchTimer.current)clearTimeout(refetchTimer.current);
-    refetchTimer.current=setTimeout(()=>{fetchData();},500);
+    refetchTimer.current=setTimeout(()=>{fetchData(true);},500);
   };
   useEffect(()=>{
     fetchData();

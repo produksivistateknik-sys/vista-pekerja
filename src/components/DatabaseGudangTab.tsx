@@ -95,10 +95,13 @@ export function DatabaseGudangTab(){
   const[addSubmitting,setAddSubmitting]=useState(false);
   const[addError,setAddError]=useState("");
 
-  const fetchMasterList=async()=>{
+  // silent (4 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - dipakai listener realtime di bawah
+  // (tanpa filter kategori) biar list gak "berkedip" tiap ada perubahan komponen_master dari
+  // kategori manapun/siapapun, sementara toggle kategori manual & aksi upload/tambah tetap non-silent.
+  const fetchMasterList=async(silent=false)=>{
     const kategoriDiminta=kategoriAktif;
     latestKategoriRef.current=kategoriDiminta;
-    setLoadingList(true);
+    if(!silent)setLoadingList(true);
     // Paginasi penuh (2 Sep 2026, ketemu pas verifikasi) - BBMU sendirian 1.424 baris, lebih dari
     // cap default PostgREST 1000 baris tanpa .range() - tanpa ini list BBMU kepotong diam-diam.
     let all:any[]=[];
@@ -115,13 +118,13 @@ export function DatabaseGudangTab(){
     // lebih baru dengan data basi.
     if(latestKategoriRef.current!==kategoriDiminta)return;
     setMasterList(all);
-    setLoadingList(false);
+    if(!silent)setLoadingList(false);
   };
 
   useEffect(()=>{
     fetchMasterList();
     const ch=supabase.channel("realtime-gudang-master-komponen")
-      .on("postgres_changes",{event:"*",schema:"public",table:"komponen_master"},fetchMasterList)
+      .on("postgres_changes",{event:"*",schema:"public",table:"komponen_master"},()=>fetchMasterList(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps

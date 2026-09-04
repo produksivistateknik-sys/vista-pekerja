@@ -28,8 +28,11 @@ export function MomFatView({user}:{user:any}){
   const[progressMap,setProgressMap]=useState<Record<number,{done:number,total:number}>>({});
   const[search,setSearch]=useState("");
 
-  const fetchList=async()=>{
-    setLoading(true);
+  // silent (4 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - dipakai listener realtime di bawah
+  // (tanpa filter, semua QC pakai dokumen yang sama) biar list gak "berkedip" tiap ada QC lain
+  // yang upload/centang poin dokumen manapun.
+  const fetchList=async(silent=false)=>{
+    if(!silent)setLoading(true);
     const{data}=await supabase.from("mom_fat" as any).select("*").order("created_at",{ascending:false}).limit(200);
     setList(data||[]);
     const{data:poinAll}=await supabase.from("mom_fat_poin" as any).select("mom_fat_id,selesai");
@@ -40,13 +43,13 @@ export function MomFatView({user}:{user:any}){
       if(p.selesai)map[p.mom_fat_id].done++;
     });
     setProgressMap(map);
-    setLoading(false);
+    if(!silent)setLoading(false);
   };
   useEffect(()=>{
     fetchList();
     const ch=supabase.channel("realtime-mom-fat-list")
-      .on("postgres_changes",{event:"*",schema:"public",table:"mom_fat"},fetchList)
-      .on("postgres_changes",{event:"*",schema:"public",table:"mom_fat_poin"},fetchList)
+      .on("postgres_changes",{event:"*",schema:"public",table:"mom_fat"},()=>fetchList(true))
+      .on("postgres_changes",{event:"*",schema:"public",table:"mom_fat_poin"},()=>fetchList(true))
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
   },[]);

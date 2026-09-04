@@ -87,8 +87,12 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     return()=>{supabase.removeChannel(ch);};
   },[tugas.seksi]);
 
-  const fetchData=async()=>{
-    setLoading(true);
+  // silent (5 Sep 2026, fix pola sama RiwayatGudangTab.tsx) - listener panels di bawah dipicu
+  // progress SEMUA divisi (paling sering berubah di seluruh sistem), termasuk aksi "Simpan
+  // Progress" milik sendiri - tanpa ini, list berkedip tiap kali ada progress masuk dari mana
+  // pun.
+  const fetchData=async(silent=false)=>{
+    if(!silent)setLoading(true);
     const[panels,{data:bomRows},{data:relevanRows}]=await Promise.all([
       // Narrow select (audit egress Agu 2026) - checklist WAJIB full (ini core data view ini),
       // tapi ~12 kolom JSON histori divisi lain (qc_checklist, nameplate/yellowmark/qs/
@@ -113,7 +117,7 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     setKodeNamaMap(kMap);
     setRelevanSet(rSet);
     setHasMappingSet(hSet);
-    setLoading(false);
+    if(!silent)setLoading(false);
   };
 
   // Debounce trigger refetch (audit egress Agu 2026) - lihat komentar sama di NameplateView.tsx.
@@ -123,7 +127,7 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     const ch=supabase.channel(`realtime-komponen-pasang-${tugas.seksi}`)
       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},()=>{
         if(refetchTimer.current)clearTimeout(refetchTimer.current);
-        refetchTimer.current=setTimeout(()=>{fetchData();},500);
+        refetchTimer.current=setTimeout(()=>{fetchData(true);},500);
       })
       .subscribe();
     return()=>{supabase.removeChannel(ch);if(refetchTimer.current)clearTimeout(refetchTimer.current);};
