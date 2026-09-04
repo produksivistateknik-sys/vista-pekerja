@@ -1439,7 +1439,12 @@ export function OperatorView({user,viewMode}:any){
               history:{...(cl.history||{}),[pr]:[...prevHist,newEntry]}
             };
             touchedKode.add(kode);
-            newLocked[`${panelId}_${kode}_${pr}_${viewDate}_${shift}`]=true;
+            // FIX (5 Sep 2026): dulu entri PERTAMA di tanggal/shift ini otomatis di-lock (baris ini
+            // yang di-hapus dulu set newLocked[...]=true) - beda sama tombol "Simpan Progress"
+            // (lockSingleKomponen) yang sengaja TIDAK lock. Gak ada cara unlock/hapus/koreksi sama
+            // sekali di UI, jadi operator kejebak gak bisa benerin typo di entri pertama. Sekarang
+            // konsisten - field qty progress TETAP bisa diedit terus, gak pernah dikunci otomatis
+            // (floor lintas-tanggal via getLockedFloor TETAP jalan, gak kesentuh perubahan ini).
             processed.add(cellKey);
             count++;
             {
