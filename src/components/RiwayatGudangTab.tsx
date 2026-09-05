@@ -121,7 +121,9 @@ export function RiwayatGudangTab(){
   // (sudah_diinput=false), TERPISAH TOTAL dari dot di tab Permintaan (kondisi/sumber data beda,
   // cuma komponen visualnya yang dipakai bareng). Query SEKALI per bulan yang lagi keliatan -
   // sama pola 2-sumber-event (updated_at ATAU diambil_at) kayak fetchData() di atas, cuma
-  // discope ke rentang bulan (bukan 1 hari) dan di-filter sudah_diinput=false.
+  // discope ke rentang bulan (bukan 1 hari) dan di-filter sudah_diinput=false. status='submit'
+  // SENGAJA disaring (6 Sep 2026, permintaan user) - item DITOLAK gak pernah ada barang keluar,
+  // gak ada yang perlu dicatat ke pembukuan, jadi gak boleh ikut nyalain dot "belum diinput".
   const[dotDates,setDotDates]=useState<Set<string>>(new Set());
   const dotMonthRef=useRef<{year:number,month:number}|null>(null);
   const fetchDotDates=async(year:number,month:number)=>{
@@ -129,8 +131,8 @@ export function RiwayatGudangTab(){
     const start=`${year}-${String(month+1).padStart(2,"0")}-01T00:00:00`;
     const end=`${year}-${String(month+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}T23:59:59.999`;
     const [byUpdated,byDiambil]=await Promise.all([
-      fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("id,updated_at,diambil_at,sudah_diinput").not("updated_at","is",null).gte("updated_at",start).lte("updated_at",end).eq("sudah_diinput",false).range(from,to)),
-      fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("id,updated_at,diambil_at,sudah_diinput").not("diambil_at","is",null).gte("diambil_at",start).lte("diambil_at",end).eq("sudah_diinput",false).range(from,to)),
+      fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("id,updated_at,diambil_at,sudah_diinput").eq("status","submit").not("updated_at","is",null).gte("updated_at",start).lte("updated_at",end).eq("sudah_diinput",false).range(from,to)),
+      fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("id,updated_at,diambil_at,sudah_diinput").eq("status","submit").not("diambil_at","is",null).gte("diambil_at",start).lte("diambil_at",end).eq("sudah_diinput",false).range(from,to)),
     ]);
     const dates=new Set<string>();
     [...byUpdated,...byDiambil].forEach((it:any)=>{
@@ -221,13 +223,18 @@ export function RiwayatGudangTab(){
                   )}
                 </div>
                 {r.status==="reject"&&r.catatan_reject&&<div style={{fontSize:11,color:"#dc2626",marginTop:6}}>⚠ {r.catatan_reject}</div>}
-                <label style={{display:"flex",alignItems:"center",gap:6,marginTop:8,paddingTop:8,borderTop:"1px solid #f1f5f9",cursor:"pointer"}}>
-                  <input type="checkbox" checked={!!r.sudah_diinput} onChange={()=>toggleSudahDiinput(r)}
-                    style={{width:14,height:14,cursor:"pointer",accentColor:"#16a34a"}}/>
-                  <span style={{fontSize:10.5,fontWeight:600,color:r.sudah_diinput?"#16a34a":"#94a3b8"}}>
-                    {r.sudah_diinput?"✓ Sudah Diinput":"Sudah Diinput?"}
-                  </span>
-                </label>
+                {/* Item DITOLAK gak pernah ada barang keluar - gak ada yang perlu dicatat ke
+                    pembukuan (6 Sep 2026, permintaan user) - checklist "Sudah Diinput" cuma
+                    relevan buat item yang beneran diproses (status submit). */}
+                {r.status!=="reject"&&(
+                  <label style={{display:"flex",alignItems:"center",gap:6,marginTop:8,paddingTop:8,borderTop:"1px solid #f1f5f9",cursor:"pointer"}}>
+                    <input type="checkbox" checked={!!r.sudah_diinput} onChange={()=>toggleSudahDiinput(r)}
+                      style={{width:14,height:14,cursor:"pointer",accentColor:"#16a34a"}}/>
+                    <span style={{fontSize:10.5,fontWeight:600,color:r.sudah_diinput?"#16a34a":"#94a3b8"}}>
+                      {r.sudah_diinput?"✓ Sudah Diinput":"Sudah Diinput?"}
+                    </span>
+                  </label>
+                )}
               </div>
             );
           })}
