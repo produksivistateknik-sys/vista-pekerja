@@ -123,14 +123,22 @@ export function WoDigitalView(){
     return`${names.slice(0,2).join(", ")}, +${names.length-2} lainnya`;
   };
 
-  // Dokumen (work_instructions) milik 1 WO, dikelompokkan buat Level 2 - dokumen level-WO
-  // (panel_id null, "Dokumen Umum") ditaruh PALING ATAS, sisanya per-panel diurut no_pnl.
+  // Dokumen (work_instructions) milik 1 WO, dikelompokkan buat Level 2. Label sub-header:
+  // kalau panel_id masih nunjuk panel yang MASIH ADA, pakai nama panel LIVE (paling akurat,
+  // ikut kalau panel di-rename). Kalau panel_id null, JANGAN asumsikan itu "dokumen umum"
+  // yang sengaja diupload gitu - work_instructions.panel_id punya FK "ON DELETE SET NULL" ke
+  // panels (migrasi 20260904060000): begitu panel yang py dokumen di-arsip/dihapus, panel_id
+  // otomatis jadi null, TAPI dokumen+revisinya tetap ada (gak ikut kehapus). Kalau digeneralisir
+  // "Dokumen Umum" di sini, konteks panel aslinya (mis. "Panel MCC TR 4") HILANG dari operator
+  // padahal cuma panelnya yang udah gak ada, bukan berarti dokumennya level-WO. Makanya fallback
+  // ke wi.judul (teks bebas yang diisi admin pas upload, mis. "Gambar Teknik - Panel 1 - MCC TR
+  // 4" - independen dari panel_id, gak ikut hilang) - jauh lebih informatif drpd label generik.
   const dokumenOfWo=(woId:number)=>{
     const wis=wiList.filter((w:any)=>w.wo_id===woId);
     const withMeta=wis.map((wi:any)=>{
       const panel=wi.panel_id?panelsAll.find(p=>p.id===wi.panel_id):null;
       const revisions=revList.filter((r:any)=>r.work_instruction_id===wi.id).sort((a:any,b:any)=>b.revision_number-a.revision_number);
-      return{wi,label:panel?`Panel: ${panel.nama}`:"Dokumen Umum",sortKey:panel?(Number(panel.no_pnl)||0)+1:0,revisions};
+      return{wi,label:panel?`Panel: ${panel.nama}`:(wi.judul||"Dokumen"),sortKey:panel?(Number(panel.no_pnl)||0)+1:0,revisions};
     }).filter(d=>d.revisions.length>0);
     return withMeta.sort((a,b)=>a.sortKey-b.sortKey);
   };
