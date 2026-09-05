@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useKoneksiStatus } from "../../lib/koneksi";
 import { isPushSupported, subscribeToPush, unsubscribeFromPush, getPushStatus, type PushStatus } from "../../lib/pushNotif";
 
@@ -295,10 +295,21 @@ export function NotifikasiPushToggle({divisi}:{divisi:string}){
 // onMouseDown preventDefault di isi popover biar klik di dalam gak nutup duluan lewat onBlur).
 const WEEKDAYS_ID=["Min","Sen","Sel","Rab","Kam","Jum","Sab"];
 const BULAN_ID=["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
-export function DatePickerField({value,onChange,style={}}:{value:string;onChange:(v:string)=>void;style?:any}){
+// markedDates/onVisibleMonthChange (6 Sep 2026) - OPSIONAL, dot merah kecil di tanggal tertentu.
+// Dipakai bareng oleh beberapa tab Gudang (Permintaan, Riwayat) yang masing-masing punya
+// KONDISI & SUMBER DATA SENDIRI (belum disubmit vs belum diinput) - komponen ini SENGAJA gak
+// tahu apa-apa soal itu, cuma nerima Set tanggal jadi dari pemanggil + kasih tau bulan mana yang
+// lagi keliatan (biar pemanggil query SEKALI per bulan, bukan per tanggal). Pemanggil lama yang
+// gak pakai 2 prop ini (TarikGudangTab.tsx) TETAP jalan sama persis, gak ada dot sama sekali.
+export function DatePickerField({value,onChange,style={},markedDates,onVisibleMonthChange}:{
+  value:string;onChange:(v:string)=>void;style?:any;
+  markedDates?:Set<string>|string[];
+  onVisibleMonthChange?:(year:number,month:number)=>void;
+}){
   const[open,setOpen]=useState(false);
   const parseVal=(v:string)=>{const d=v?new Date(v+"T00:00:00"):new Date();return isNaN(d.getTime())?new Date():d;};
   const[viewMonth,setViewMonth]=useState(()=>{const d=parseVal(value);return new Date(d.getFullYear(),d.getMonth(),1);});
+  const markedSet=useMemo(()=>markedDates instanceof Set?markedDates:new Set(markedDates||[]),[markedDates]);
 
   // Sinkronkan bulan yang ditampilkan kalau `value` berubah dari luar (mis. reset form).
   useEffect(()=>{
@@ -306,6 +317,12 @@ export function DatePickerField({value,onChange,style={}}:{value:string;onChange
     setViewMonth(new Date(d.getFullYear(),d.getMonth(),1));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[value]);
+
+  // Kasih tau pemanggil bulan yang lagi keliatan - sekali pas mount, lalu tiap ganti bulan.
+  useEffect(()=>{
+    onVisibleMonthChange?.(viewMonth.getFullYear(),viewMonth.getMonth());
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[viewMonth]);
 
   const todayStr=new Date().toISOString().slice(0,10);
   const fmtLabel=value?parseVal(value).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}):"Pilih tanggal";
@@ -349,12 +366,15 @@ export function DatePickerField({value,onChange,style={}}:{value:string;onChange
               const dateStr=`${year}-${String(month+1).padStart(2,"0")}-${String(day).padStart(2,"0")}`;
               const isSelected=dateStr===value;
               const isToday=dateStr===todayStr;
+              const isMarked=markedSet.has(dateStr);
               return(
                 <button key={i} type="button" onClick={()=>pick(day)}
-                  style={{aspectRatio:"1",border:isToday&&!isSelected?"1.5px solid #0369a1":"1.5px solid transparent",
+                  style={{position:"relative" as const,aspectRatio:"1",border:isToday&&!isSelected?"1.5px solid #0369a1":"1.5px solid transparent",
                     borderRadius:8,cursor:"pointer",fontSize:12.5,fontWeight:isSelected?800:600,fontFamily:"inherit",
                     background:isSelected?"#0369a1":"transparent",color:isSelected?"#fff":"#334155"}}>
                   {day}
+                  {isMarked&&<span style={{position:"absolute" as const,bottom:3,left:"50%",transform:"translateX(-50%)",
+                    width:4,height:4,borderRadius:"50%",background:isSelected?"#fff":"#dc2626"}}/>}
                 </button>
               );
             })}

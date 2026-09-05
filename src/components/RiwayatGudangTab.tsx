@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
 
@@ -117,6 +117,39 @@ export function RiwayatGudangTab(){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tanggal]);
 
+  // Dot merah di date picker (6 Sep 2026) - tanggal yang punya item riwayat BELUM DIINPUT
+  // (sudah_diinput=false), TERPISAH TOTAL dari dot di tab Permintaan (kondisi/sumber data beda,
+  // cuma komponen visualnya yang dipakai bareng). Query SEKALI per bulan yang lagi keliatan -
+  // sama pola 2-sumber-event (updated_at ATAU diambil_at) kayak fetchData() di atas, cuma
+  // discope ke rentang bulan (bukan 1 hari) dan di-filter sudah_diinput=false.
+  const[dotDates,setDotDates]=useState<Set<string>>(new Set());
+  const dotMonthRef=useRef<{year:number,month:number}|null>(null);
+  const fetchDotDates=async(year:number,month:number)=>{
+    const lastDay=new Date(year,month+1,0).getDate();
+    const start=`${year}-${String(month+1).padStart(2,"0")}-01T00:00:00`;
+    const end=`${year}-${String(month+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}T23:59:59.999`;
+    const [byUpdated,byDiambil]=await Promise.all([
+      fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("id,updated_at,diambil_at,sudah_diinput").not("updated_at","is",null).gte("updated_at",start).lte("updated_at",end).eq("sudah_diinput",false).range(from,to)),
+      fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("id,updated_at,diambil_at,sudah_diinput").not("diambil_at","is",null).gte("diambil_at",start).lte("diambil_at",end).eq("sudah_diinput",false).range(from,to)),
+    ]);
+    const dates=new Set<string>();
+    [...byUpdated,...byDiambil].forEach((it:any)=>{
+      if(it.diambil_at&&it.diambil_at>=start&&it.diambil_at<=end)dates.add(it.diambil_at.slice(0,10));
+      if(it.updated_at&&it.updated_at>=start&&it.updated_at<=end)dates.add(it.updated_at.slice(0,10));
+    });
+    setDotDates(dates);
+  };
+  const handleVisibleMonthChange=(year:number,month:number)=>{
+    dotMonthRef.current={year,month};
+    fetchDotDates(year,month);
+  };
+  useEffect(()=>{
+    const ch=supabase.channel("realtime-gudang-riwayat-dots")
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},()=>{if(dotMonthRef.current)fetchDotDates(dotMonthRef.current.year,dotMonthRef.current.month);})
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+  },[]);
+
   const q=search.trim().toLowerCase();
   const filteredRows=rows
     .filter((r:any)=>!q||[
@@ -137,7 +170,7 @@ export function RiwayatGudangTab(){
   return(
     <div style={{padding:16}} className="fi">
       <SectionCard icon="🕒" title="Riwayat Harian" subtitle="Aksi submit/reject/status/tarik yang sudah diproses">
-      <div style={{marginBottom:10}}><DatePickerField value={tanggal} onChange={setTanggal}/></div>
+      <div style={{marginBottom:10}}><DatePickerField value={tanggal} onChange={setTanggal} markedDates={dotDates} onVisibleMonthChange={handleVisibleMonthChange}/></div>
       <input type="text" value={search} onChange={(e:any)=>setSearch(e.target.value)}
         placeholder="Cari nama komponen, peminta/penyiap/pengambil, panel, atau WO..."
         style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:13.5,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:10}}/>

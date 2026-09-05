@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, SegmentedControl, EmptyState, DatePickerField } from "./gudang/GudangUI";
 
@@ -172,6 +172,31 @@ export function PermintaanGudangTab({user}:{user:any}){
     setHutangCount(count||0);
   };
 
+  // Dot merah di date picker (6 Sep 2026) - tanggal yang punya permintaan BELUM DISUBMIT
+  // (status='pending', is_hutang=false, gabungan BBMB+BBMU krn date picker-nya SATU dipakai
+  // bareng kedua sub-tab). Query SEKALI per bulan yang lagi keliatan di kalender (bukan per
+  // tanggal) - dipicu DatePickerField.onVisibleMonthChange, hasil bulan-nya disimpan di ref
+  // biar bisa di-refetch dari listener realtime tanpa closure basi.
+  const[dotDates,setDotDates]=useState<Set<string>>(new Set());
+  const dotMonthRef=useRef<{year:number,month:number}|null>(null);
+  const fetchDotDates=async(year:number,month:number)=>{
+    const lastDay=new Date(year,month+1,0).getDate();
+    const start=`${year}-${String(month+1).padStart(2,"0")}-01T00:00:00`;
+    const end=`${year}-${String(month+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}T23:59:59.999`;
+    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("id,created_at").in("jenis",["BBMB","BBMU"]).gte("created_at",start).lte("created_at",end).range(from,to));
+    if(perms.length===0){setDotDates(new Set());return;}
+    const permMap:Record<number,string>={};
+    perms.forEach((p:any)=>{permMap[p.id]=p.created_at;});
+    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("permintaan_id").in("permintaan_id",perms.map((p:any)=>p.id)).eq("status","pending").eq("is_hutang",false).range(from,to));
+    const dates=new Set<string>();
+    items.forEach((it:any)=>{const created=permMap[it.permintaan_id];if(created)dates.add(created.slice(0,10));});
+    setDotDates(dates);
+  };
+  const handleVisibleMonthChange=(year:number,month:number)=>{
+    dotMonthRef.current={year,month};
+    fetchDotDates(year,month);
+  };
+
   useEffect(()=>{
     checkUnread();
     markRead("BBMB"); // tab default (BBMB) ke-mark dibaca begitu layar ini dibuka
@@ -182,7 +207,11 @@ export function PermintaanGudangTab({user}:{user:any}){
     const chHutang=supabase.channel("realtime-gudang-hutang-count")
       .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},fetchHutangCount)
       .subscribe();
-    return()=>{supabase.removeChannel(ch);supabase.removeChannel(chHutang);};
+    const chDots=supabase.channel("realtime-gudang-permintaan-dots")
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},()=>{if(dotMonthRef.current)fetchDotDates(dotMonthRef.current.year,dotMonthRef.current.month);})
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"permintaan"},()=>{if(dotMonthRef.current)fetchDotDates(dotMonthRef.current.year,dotMonthRef.current.month);})
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);supabase.removeChannel(chHutang);supabase.removeChannel(chDots);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[]);
 
@@ -203,7 +232,7 @@ export function PermintaanGudangTab({user}:{user:any}){
           <HutangList adminName={adminName}/>
         ):(
           <>
-            <div style={{marginBottom:14}}><DatePickerField value={tanggal} onChange={setTanggal}/></div>
+            <div style={{marginBottom:14}}><DatePickerField value={tanggal} onChange={setTanggal} markedDates={dotDates} onVisibleMonthChange={handleVisibleMonthChange}/></div>
             <PermintaanList jenis={jenisTab} adminName={adminName} tanggal={tanggal}/>
           </>
         )}
