@@ -47,6 +47,21 @@ const statusTerkini=(item:any):{label:string,color:string}=>{
   if(item.status==="reject")return{label:"✕ Ditolak",color:"#dc2626"};
   return{label:item.status,color:"#94a3b8"};
 };
+// Key status buat filter (6 Sep 2026) - HARUS ikut urutan prioritas SAMA PERSIS kayak
+// statusTerkini() di atas, biar filter selalu konsisten sama badge yang beneran tampil.
+type StatusFilterKey="ALL"|"SIAP"|"DIAMBIL"|"DITOLAK";
+const statusKeyOf=(item:any):StatusFilterKey|"LAIN"=>{
+  if(item.sudah_diambil)return"DIAMBIL";
+  if(item.status==="submit")return"SIAP";
+  if(item.status==="reject")return"DITOLAK";
+  return"LAIN";
+};
+const STATUS_FILTER_OPTIONS:{key:StatusFilterKey,label:string,color:string}[]=[
+  {key:"ALL",label:"Semua",color:"#475569"},
+  {key:"SIAP",label:"✓ Sudah Siap",color:"#16a34a"},
+  {key:"DIAMBIL",label:"✓ Sudah Diambil",color:"#0369a1"},
+  {key:"DITOLAK",label:"✕ Ditolak",color:"#dc2626"},
+];
 
 export function RiwayatGudangTab(){
   const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
@@ -57,6 +72,7 @@ export function RiwayatGudangTab(){
   // (data 1 hari sudah di-fetch semua), jadi update real-time tanpa query baru tiap ketikan -
   // dipakai BARENGAN sama filter tanggal (search cuma nyaring lebih lanjut dari situ).
   const[search,setSearch]=useState("");
+  const[statusFilter,setStatusFilter]=useState<StatusFilterKey>("ALL");
 
   // FIX (5 Sep 2026, ketemu pas nambah checkbox "Sudah Diinput") - fetchData dipicu ulang oleh
   // realtime SETIAP kali ada row permintaan_item ke-update (termasuk toggle checkbox itu
@@ -102,9 +118,11 @@ export function RiwayatGudangTab(){
   },[tanggal]);
 
   const q=search.trim().toLowerCase();
-  const filteredRows=q?rows.filter((r:any)=>[
-    r.perm.operator_nama,r.updated_by,r.diambil_oleh,r.perm.panel_nama,r.perm.proyek,r.perm.wo_number,
-  ].some(v=>(v||"").toLowerCase().includes(q))):rows;
+  const filteredRows=rows
+    .filter((r:any)=>!q||[
+      r.perm.operator_nama,r.updated_by,r.diambil_oleh,r.perm.panel_nama,r.perm.proyek,r.perm.wo_number,r.nama_komponen,
+    ].some(v=>(v||"").toLowerCase().includes(q)))
+    .filter((r:any)=>statusFilter==="ALL"||statusKeyOf(r)===statusFilter);
 
   // Checklist manual "Sudah Diinput" (5 Sep 2026) - penanda internal MURNI (gak terhubung
   // sistem/proses lain apa pun), gudang tandai transaksi yang udah dicatat ke pembukuan/laporan
@@ -121,14 +139,28 @@ export function RiwayatGudangTab(){
       <SectionCard icon="🕒" title="Riwayat Harian" subtitle="Aksi submit/reject/status/tarik yang sudah diproses">
       <div style={{marginBottom:10}}><DatePickerField value={tanggal} onChange={setTanggal}/></div>
       <input type="text" value={search} onChange={(e:any)=>setSearch(e.target.value)}
-        placeholder="Cari nama peminta/penyiap/pengambil, panel, atau WO..."
-        style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:13.5,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:14}}/>
+        placeholder="Cari nama komponen, peminta/penyiap/pengambil, panel, atau WO..."
+        style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:13.5,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:10}}/>
+
+      <div style={{display:"flex",gap:6,flexWrap:"wrap" as const,marginBottom:14}}>
+        {STATUS_FILTER_OPTIONS.map(o=>{
+          const active=statusFilter===o.key;
+          return(
+            <button key={o.key} onClick={()=>setStatusFilter(o.key)}
+              style={{padding:"5px 12px",borderRadius:20,border:`1.5px solid ${active?o.color:"#e2e8f0"}`,
+                background:active?o.color+"18":"#fff",color:active?o.color:"#64748b",
+                cursor:"pointer",fontSize:11,fontWeight:700,fontFamily:"inherit"}}>
+              {o.label}
+            </button>
+          );
+        })}
+      </div>
 
       {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
       ):filteredRows.length===0?(
         <EmptyState title="Belum ada aksi"
-          description={q?"Tidak ada hasil yang cocok dengan pencarian.":"Belum ada aksi submit/reject/ambil yang tercatat di tanggal ini."}/>
+          description={q||statusFilter!=="ALL"?"Tidak ada hasil yang cocok dengan pencarian/filter.":"Belum ada aksi submit/reject/ambil yang tercatat di tanggal ini."}/>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {filteredRows.map((r:any)=>{
