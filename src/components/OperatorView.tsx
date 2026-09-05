@@ -694,9 +694,14 @@ export function OperatorView({user,viewMode}:any){
   const pekerjaPerKomponenQueue=useRef<Record<number,Promise<any>>>({});
 
   // Update qty proses ke local state (instan) + Supabase (di-debounce di background)
-  const updateQtyProses=(panelId:number,kode:string,proses:string,val:number)=>{
+  // skipFloor (6 Sep 2026) - dipakai saat operator MENGETIK (onChange), biar angka yang lagi
+  // diketik gak "snap back" ke floor tiap huruf/digit (UX buruk, kerasa kayak field gak bisa
+  // diketik). Floor tetap ditegakkan cuma pas SELESAI mengetik (onBlur, lihat JSX di bawah) -
+  // lewat confirm() kalau nilai akhirnya di bawah floor, biar operator bisa SENGAJA mengoreksi
+  // entri lama yang salah (bukan cuma kena "gak bisa dikoreksi" tanpa jalan keluar).
+  const updateQtyProses=(panelId:number,kode:string,proses:string,val:number,opts?:{skipFloor?:boolean})=>{
     if(isCellLocked(panelId,kode,proses))return;
-    const floor=getLockedFloor(panelId,kode,proses);
+    const floor=opts?.skipFloor?0:getLockedFloor(panelId,kode,proses);
     const panel=panelsMap[panelId];
     if(!panel)return;
     const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{},qtyProsesByDate:{}};
@@ -742,6 +747,19 @@ export function OperatorView({user,viewMode}:any){
         });
       }
     },600);
+  };
+
+  // Ditegakkan pas SELESAI mengetik (onBlur qty input, 6 Sep 2026) - floor dari
+  // getLockedFloor() DIBIARKAN dulu selagi ngetik (skipFloor:true di onChange), baru dicek di
+  // sini sekali di akhir. Kalau nilai akhir di bawah floor, operator BISA sengaja mengoreksi
+  // (mis. entri lama yang salah input) lewat confirm() eksplisit - bukan cuma "gak bisa apa-apa"
+  // kayak sebelumnya. Batal -> nilai dikembalikan ke floor (perilaku lama, aman by default).
+  const commitQtyFloorCheck=(panelId:number,kode:string,proses:string,typedVal:number)=>{
+    const floor=getLockedFloor(panelId,kode,proses);
+    if(typedVal<floor){
+      const ok=window.confirm(`Nilai ${typedVal} lebih rendah dari progress ${proses} yang sudah tercatat sebelumnya (${floor}). Ini akan MENGOREKSI progress ke bawah - yakin?`);
+      if(!ok){updateQtyProses(panelId,kode,proses,floor);return;}
+    }
   };
 
   const isWiringProses=(pr:string)=>pr==="WIRING CONTROL"||pr==="WIRING POWER";
@@ -2988,8 +3006,9 @@ export function OperatorView({user,viewMode}:any){
                                   if(PROSES_AUTO_ASSIGN_SAAT_QTY.includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
                                     startUntukUserSendiri(proses,[r]);
                                   }
-                                  updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value));
+                                  updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value),{skipFloor:true});
                                 }}
+                                onBlur={(e:any)=>commitQtyFloorCheck(r.panelId,r.kode,proses,Number(e.target.value)||0)}
                                 disabled={r.qtyKomp===0||qtyLocked}
                                 placeholder={qtyLocked?"–":undefined}
                                 style={{width:78,minHeight:44,padding:"8px",borderRadius:8,
@@ -3193,8 +3212,9 @@ export function OperatorView({user,viewMode}:any){
                                               if(PROSES_AUTO_ASSIGN_SAAT_QTY.includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
                                                 startUntukUserSendiri(proses,[r]);
                                               }
-                                              updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value));
+                                              updateQtyProses(r.panelId,r.kode,proses,Number(e.target.value),{skipFloor:true});
                                             }}
+                                            onBlur={e=>commitQtyFloorCheck(r.panelId,r.kode,proses,Number(e.target.value)||0)}
                                             disabled={r.qtyKomp===0||qtyLocked}
                                             placeholder={qtyLocked?"–":undefined}
                                             style={{width:60,padding:"4px 6px",borderRadius:7,
