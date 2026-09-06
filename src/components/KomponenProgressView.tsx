@@ -149,12 +149,18 @@ export function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,
   };
   useEffect(()=>{
     fetchData();
+  },[tugas.field]);
+  // Filter server-side UPDATE by id=in.(...) (audit egress 6 Sep 2026) - lihat komentar sama
+  // di QCChecklistTab.tsx. INSERT tetap tanpa filter (panel baru belum ada di panelIdsKey).
+  const panelIdsKey=useMemo(()=>[...new Set(panelsList.map((p:any)=>p.id))].sort((a,b)=>a-b).join(","),[panelsList]);
+  useEffect(()=>{
+    if(!panelIdsKey)return;
     const ch=supabase.channel(`realtime-panels-${tugas.field}`)
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},debouncedFetch)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels",filter:`id=in.(${panelIdsKey})`},debouncedFetch)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"panels"},debouncedFetch)
       .subscribe();
     return()=>{supabase.removeChannel(ch);if(refetchTimer.current)clearTimeout(refetchTimer.current);};
-  },[tugas.field]);
+  },[tugas.field,panelIdsKey]);
 
   const[lockLoading,setLockLoading]=useState(false);
 

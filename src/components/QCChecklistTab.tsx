@@ -47,12 +47,20 @@ export function QCChecklistTab({user}:any){
   };
   useEffect(()=>{
     fetchData();
+  },[]);
+  // Filter server-side UPDATE by id=in.(...) (audit egress 6 Sep 2026) - dulu TANPA filter,
+  // panel APAPUN berubah di seluruh sistem trigger refetch semua panel. INSERT TETAP tanpa
+  // filter (panel baru belum ada di panelIdsKey, gak bisa difilter berdasarkan ID yang belum
+  // ada - tapi INSERT jauh lebih jarang drpd UPDATE qty/pct tiap keystroke, jadi biayanya kecil).
+  const panelIdsKey=useMemo(()=>[...new Set(panelsList.map((p:any)=>p.id))].sort((a,b)=>a-b).join(","),[panelsList]);
+  useEffect(()=>{
+    if(!panelIdsKey)return;
     const ch=supabase.channel("realtime-panels-qc")
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},debouncedFetch)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels",filter:`id=in.(${panelIdsKey})`},debouncedFetch)
       .on("postgres_changes",{event:"INSERT",schema:"public",table:"panels"},debouncedFetch)
       .subscribe();
     return()=>{supabase.removeChannel(ch);if(refetchTimer.current)clearTimeout(refetchTimer.current);};
-  },[]);
+  },[panelIdsKey]);
 
   const updateGlobalStatus=async(panelId:number,status:string)=>{
     const panel=panelsList.find((p:any)=>p.id===panelId);

@@ -634,8 +634,16 @@ export function OperatorView({user,viewMode}:any){
     const panelIds=[...new Set(renhar.map((t:any)=>t.panel_id||t.panelId).filter(Boolean))];
     if(!panelIds.length) return;
 
+    // Filter server-side by id=in.(...) (audit egress 6 Sep 2026) - dulu subscribe TANPA
+    // filter, jadi panel APAPUN berubah di seluruh pabrik (bukan cuma yang jadi tugas operator
+    // ini hari ini) bikin Postgres broadcast SELURUH row (checklist bisa puluhan KB) ke device
+    // ini - dikali banyak operator yang tabnya dibiarkan terbuka seharian, ini kontributor
+    // egress besar (ditemukan saat audit downgrade plan Supabase). Realtime filter in.() capped
+    // 100 nilai - fallback ke tanpa filter kalau kebetulan lebih (jarang terjadi, tugas 1
+    // operator per hari biasanya jauh di bawah itu) drpd filter invalid/gagal subscribe.
+    const filterClause=panelIds.length<=100?`id=in.(${panelIds.join(",")})`:undefined;
     const channel=supabase.channel('realtime-panels-pekerja')
-      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'panels'},
+      .on('postgres_changes',filterClause?{event:'UPDATE',schema:'public',table:'panels',filter:filterClause}:{event:'UPDATE',schema:'public',table:'panels'},
         (payload:any)=>{
           const updated=payload.new;
           if(!panelIds.includes(updated.id)) return;

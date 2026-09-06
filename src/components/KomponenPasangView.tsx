@@ -120,18 +120,30 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     if(!silent)setLoading(false);
   };
 
-  // Debounce trigger refetch (audit egress Agu 2026) - lihat komentar sama di NameplateView.tsx.
-  const refetchTimer=useRef<any>(null);
   useEffect(()=>{
     fetchData();
+  },[tugas.seksi]);
+
+  // Filter server-side by id=in.(...) (audit egress 6 Sep 2026) - dulu subscribe TANPA filter,
+  // jadi PANEL APAPUN berubah di SELURUH sistem (bukan cuma yang relevan ke seksi ini) bikin
+  // Postgres broadcast SELURUH row (termasuk checklist, bisa puluhan KB) ke client ini, lanjut
+  // refetch SEMUA panel (query checklist lagi) - dikali banyak operator yang buka tab ini
+  // sepanjang hari, ini kontributor egress terbesar yang ketemu (audit egress 6 Sep 2026).
+  // Filter di-scope ke panel yang LAGI TAMPIL di panelsRaw, channel di-buat ULANG tiap daftar
+  // panel itu berubah (bukan tiap checklist-nya berubah - panelIdsKey cuma berubah kalau ada
+  // panel baru/hilang dari daftar, jauh lebih jarang drpd tiap keystroke qty).
+  const panelIdsKey=useMemo(()=>[...new Set(panelsRaw.map((p:any)=>p.id))].sort((a,b)=>a-b).join(","),[panelsRaw]);
+  const refetchTimer=useRef<any>(null);
+  useEffect(()=>{
+    if(!panelIdsKey)return;
     const ch=supabase.channel(`realtime-komponen-pasang-${tugas.seksi}`)
-      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels"},()=>{
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"panels",filter:`id=in.(${panelIdsKey})`},()=>{
         if(refetchTimer.current)clearTimeout(refetchTimer.current);
         refetchTimer.current=setTimeout(()=>{fetchData(true);},500);
       })
       .subscribe();
     return()=>{supabase.removeChannel(ch);if(refetchTimer.current)clearTimeout(refetchTimer.current);};
-  },[tugas.seksi]);
+  },[tugas.seksi,panelIdsKey]);
 
   // Komponen relevan buat seksi ini di 1 panel: qty>0, relevan ke proses "PASANG KOMPONEN", dan
   // (khusus wiring_control) cuma Box Control/Pintu - Wiring Control cuma kontribusi ke komponen
