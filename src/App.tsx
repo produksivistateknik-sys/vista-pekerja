@@ -304,9 +304,13 @@ export default function App(){
       let items:any[]=[];
       let from=0;
       const PAGE=1000;
+      // "pending"/"menunggu_admin" (7 Sep 2026, fitur approval admin) SAMA-SAMA dikecualikan -
+      // keduanya cuma antre (Gudang/admin belum proses), belum ada apa pun yang operator perlu
+      // tindak lanjuti. Kalau cuma exclude "pending" doang, item menunggu_admin lolos filter dan
+      // salah kena tandai "butuh perhatian" padahal cuma antre giliran admin.
       while(true){
         const{data}=await supabase.from("permintaan_item").select("permintaan_id,status,dilihat_operator,sudah_diambil,is_hutang")
-          .neq("status","pending").in("permintaan_id",permIds).range(from,from+PAGE-1);
+          .not("status","in","(pending,menunggu_admin)").in("permintaan_id",permIds).range(from,from+PAGE-1);
         items=items.concat(data??[]);
         if(!data||data.length<PAGE)break;
         from+=PAGE;

@@ -37,8 +37,10 @@ type ItemRow={value:string;namaKomponen:string;qty:number;satuanList:string[];sa
 
 // Status SAMA PERSIS buat BBMB & BBMU (REVISI 3 Sep 2026) - dulu Record<Jenis,...> per jenis
 // (vocab beda), sekarang cuma 1 mapping generik dipakai keduanya.
-const STATUS_LABEL:Record<string,string>={pending:"Menunggu",submit:"✓ Sudah Siap",reject:"✕ Ditolak"};
-const STATUS_COLOR:Record<string,string>={pending:"#94a3b8",submit:"#16a34a",reject:"#dc2626"};
+// menunggu_admin/ditolak_admin (7 Sep 2026, fitur approval admin) - SENGAJA beda dari
+// pending/reject yang tetap berarti tahap Gudang, biar gak ambigu di tampilan.
+const STATUS_LABEL:Record<string,string>={menunggu_admin:"⏳ Menunggu Admin",ditolak_admin:"✕ Ditolak Admin",pending:"Menunggu",submit:"✓ Sudah Siap",reject:"✕ Ditolak"};
+const STATUS_COLOR:Record<string,string>={menunggu_admin:"#d97706",ditolak_admin:"#b91c1c",pending:"#94a3b8",submit:"#16a34a",reject:"#dc2626"};
 
 const emptyItem=():ItemRow=>({value:"",namaKomponen:"",qty:1,satuanList:[],satuanDipilih:""});
 
@@ -395,6 +397,9 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
     // REVISI (2 Sep 2026) - BBMB & BBMU sekarang SAMA PERSIS strukturnya, satu bentuk row buat
     // keduanya (dulu 2 cabang beda FK/sumber satuan). komponen_bbmb_master_id (kolom lama) gak
     // pernah ditulis lagi - kedua jenis sekarang eksklusif referensi komponen_master_id.
+    // status="menunggu_admin" (7 Sep 2026, fitur approval admin) - GANTI dari "pending" langsung.
+    // Item baru muncul di alur Gudang setelah admin (Vista Teknik) setuju - lihat
+    // PermintaanAdminTab.tsx, geser status jadi "pending" biasa begitu disetujui.
     const rows=itemsValid.map(it=>({
       permintaan_id:perm.id,
       komponen_master_id:it.value?Number(it.value):null,
@@ -402,7 +407,7 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
       qty:Number(it.qty),
       satuan:it.satuanDipilih||null,
       satuan_dipilih:it.satuanDipilih||null,
-      status:"pending",
+      status:"menunggu_admin",
     }));
     const{error:itemErr}=await supabase.from("permintaan_item").insert(rows);
     if(itemErr){
@@ -410,7 +415,9 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
       setSubmitting(false);
       return;
     }
-    // Push notif ke Gudang - fitur tambahan, GAGAL DI SINI TIDAK BOLEH gagalin permintaan yang
+    // Push notif ke ADMIN (REVISI 7 Sep 2026 - dulu langsung ke Gudang, sekarang Gudang belum
+    // boleh tau apa-apa sampai admin setuju, server-side notify-permintaan yang nentuin target
+    // 'baru'->admin sekarang). Fitur tambahan, GAGAL DI SINI TIDAK BOLEH gagalin permintaan yang
     // udah tersimpan di atas, makanya dibungkus try/catch sendiri & gak di-await sebagai kondisi.
     try{
       await supabase.functions.invoke("notify-permintaan",{body:{
@@ -621,9 +628,9 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
                     )}
                   </div>
                 ))}
-                {(r.items||[]).some((it:any)=>it.status==="reject"&&it.catatan_reject)&&(
+                {(r.items||[]).some((it:any)=>(it.status==="reject"||it.status==="ditolak_admin")&&it.catatan_reject)&&(
                   <div style={{fontSize:11,color:"#dc2626",marginTop:2}}>
-                    {(r.items||[]).filter((it:any)=>it.status==="reject"&&it.catatan_reject).map((it:any)=>(
+                    {(r.items||[]).filter((it:any)=>(it.status==="reject"||it.status==="ditolak_admin")&&it.catatan_reject).map((it:any)=>(
                       <div key={it.id}>⚠ {it.nama_komponen}: {it.catatan_reject}</div>
                     ))}
                   </div>

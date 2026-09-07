@@ -154,8 +154,13 @@ export function PermintaanGudangTab({user}:{user:any}){
   // Titik merah "belum dibaca" per sub-tab (REVISI 2 Sep 2026) - Gudang cuma 1 login SHARED
   // (operator_users gak punya baris per-individu buat divisi gudang), jadi status "sudah dibaca"
   // gak bisa disimpan di localStorage (beda device/sesi = beda status) - harus di tabel DB
-  // (gudang_read_state) biar konsisten buat siapapun yang pakai login itu. Titik nyala kalau ada
-  // permintaan.created_at LEBIH BARU dari last_read_at tab itu.
+  // (gudang_read_state) biar konsisten buat siapapun yang pakai login itu.
+  // REVISI (7 Sep 2026, fitur approval admin) - dulu sumbernya permintaan.created_at (kapan
+  // OPERATOR submit). Sekarang item baru gak langsung nongol ke Gudang - harus disetujui admin
+  // dulu (status jadi 'pending', disetujui_admin_at keisi). Dot ini harus nyala pas item BENAR-
+  // BENAR baru muncul ke Gudang (disetujui_admin_at), bukan pas operator submit - kalau tetap
+  // pakai created_at, dot bisa nyala buat permintaan yang itemnya masih 'menunggu_admin' (Gudang
+  // buka tab tapi gak ada apa-apa buat diproses, membingungkan).
   const[unread,setUnread]=useState<Record<"BBMB"|"BBMU",boolean>>({BBMB:false,BBMU:false});
 
   const checkUnread=async()=>{
@@ -165,7 +170,11 @@ export function PermintaanGudangTab({user}:{user:any}){
     const results:Record<"BBMB"|"BBMU",boolean>={BBMB:false,BBMU:false};
     for(const t of["BBMB","BBMU"] as const){
       const lastRead=readMap[t]||"1970-01-01T00:00:00Z";
-      const{count}=await supabase.from("permintaan").select("id",{count:"exact",head:true}).eq("jenis",t).gt("created_at",lastRead);
+      const{data:perms}=await supabase.from("permintaan").select("id").eq("jenis",t);
+      const permIds=(perms||[]).map((p:any)=>p.id);
+      if(permIds.length===0){results[t]=false;continue;}
+      const{count}=await supabase.from("permintaan_item").select("id",{count:"exact",head:true})
+        .in("permintaan_id",permIds).eq("status","pending").gt("disetujui_admin_at",lastRead);
       results[t]=(count||0)>0;
     }
     setUnread(results);
@@ -193,17 +202,19 @@ export function PermintaanGudangTab({user}:{user:any}){
   // biar bisa di-refetch dari listener realtime tanpa closure basi.
   const[dotDates,setDotDates]=useState<Set<string>>(new Set());
   const dotMonthRef=useRef<{year:number,month:number}|null>(null);
+  // REVISI (7 Sep 2026, fitur approval admin) - dulu tanggal dot dari permintaan.created_at
+  // (kapan operator submit). Sekarang dari disetujui_admin_at item (kapan BENAR-BENAR muncul ke
+  // Gudang) - sama alasan checkUnread di atas. Gak perlu lookup permintaan.jenis lagi sama sekali
+  // (permintaan_item gak punya jenis lain selain lewat permintaan BBMB/BBMU, cukup filter item
+  // langsung - lebih simpel & sekali query drpd 2-step kayak sebelumnya).
   const fetchDotDates=async(year:number,month:number)=>{
     const lastDay=new Date(year,month+1,0).getDate();
     const start=`${year}-${String(month+1).padStart(2,"0")}-01T00:00:00`;
     const end=`${year}-${String(month+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}T23:59:59.999`;
-    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("id,created_at").in("jenis",["BBMB","BBMU"]).gte("created_at",start).lte("created_at",end).range(from,to));
-    if(perms.length===0){setDotDates(new Set());return;}
-    const permMap:Record<number,string>={};
-    perms.forEach((p:any)=>{permMap[p.id]=p.created_at;});
-    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("permintaan_id").in("permintaan_id",perms.map((p:any)=>p.id)).eq("status","pending").eq("is_hutang",false).range(from,to));
+    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("disetujui_admin_at")
+      .eq("status","pending").eq("is_hutang",false).gte("disetujui_admin_at",start).lte("disetujui_admin_at",end).range(from,to));
     const dates=new Set<string>();
-    items.forEach((it:any)=>{const created=permMap[it.permintaan_id];if(created)dates.add(created.slice(0,10));});
+    items.forEach((it:any)=>{if(it.disetujui_admin_at)dates.add(it.disetujui_admin_at.slice(0,10));});
     setDotDates(dates);
   };
   const handleVisibleMonthChange=(year:number,month:number)=>{
@@ -216,7 +227,7 @@ export function PermintaanGudangTab({user}:{user:any}){
     markRead("BBMB"); // tab default (BBMB) ke-mark dibaca begitu layar ini dibuka
     fetchHutangCount();
     const ch=supabase.channel("realtime-gudang-unread")
-      .on("postgres_changes",{event:"INSERT",schema:"public",table:"permintaan"},checkUnread)
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"permintaan_item"},checkUnread)
       .subscribe();
     const chHutang=supabase.channel("realtime-gudang-hutang-count")
       .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item"},fetchHutangCount)
