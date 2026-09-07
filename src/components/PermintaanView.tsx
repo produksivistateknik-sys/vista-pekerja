@@ -32,7 +32,7 @@ import { DIVISI_CONFIG } from "../lib/panelTypes";
 // App.tsx render ini tanpa cek user.divisi.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type Jenis="BBMB"|"BBMU"|"HUTANG";
+type Jenis="BBMB"|"BBMU"|"HUTANG"|"KOREKSI";
 type ItemRow={value:string;namaKomponen:string;qty:number;satuanList:string[];satuanDipilih:string};
 
 // Status SAMA PERSIS buat BBMB & BBMU (REVISI 3 Sep 2026) - dulu Record<Jenis,...> per jenis
@@ -143,9 +143,9 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
   },[]);
 
   useEffect(()=>{
-    // HUTANG bukan kategori komponen_master asli (cuma BBMB/BBMU) - skip fetch, gak ada form
-    // pengajuan buat mode Hutang sama sekali (lihat render di bawah).
-    if(jenisTab==="HUTANG"){setMasterList([]);return;}
+    // HUTANG/KOREKSI bukan kategori komponen_master asli (cuma BBMB/BBMU) - skip fetch, gak ada
+    // form pengajuan buat mode ini sama sekali (lihat render di bawah).
+    if(jenisTab==="HUTANG"||jenisTab==="KOREKSI"){setMasterList([]);return;}
     const jenisDiminta=jenisTab;
     latestJenisRef.current=jenisDiminta;
     fetchAllPaged((from,to)=>supabase.from("komponen_master").select("id,nama,satuan_utama,satuan_list").eq("kategori",jenisDiminta).order("nama",{ascending:true}).range(from,to))
@@ -174,7 +174,7 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
   // (BBMB) sudah disiapkan tapi belum dikonfirmasi diambil - dipakai buat ngurutin (yang butuh
   // perhatian naik ke atas) DAN nentuin mana yang ditandai "sudah dibaca" begitu list ini tampil.
   const fetchRiwayat=async()=>{
-    if(jenisTab==="HUTANG")return; // HUTANG punya fetch+state sendiri (fetchHutang di bawah)
+    if(jenisTab==="HUTANG"||jenisTab==="KOREKSI")return; // masing-masing punya fetch+state sendiri
     setLoadingRiwayat(true);
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
@@ -291,6 +291,55 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[jenisTab,hutangList]);
 
+  // ── KOREKSI (7 Sep 2026) - pengajuan koreksi qty dari Gudang, cuma yang MENUNGGU buat divisi
+  // ini yang tampil (sudah disetujui/ditolak gak perlu dipajang lagi - hasilnya udah keliatan di
+  // qty item + notifikasi ke Gudang). TANPA filter tanggal, sama alasan kayak Hutang (bisa lintas
+  // hari). Badge counter = jumlah pengajuan menunggu, sama pola hutangCount. ──
+  const[koreksiList,setKoreksiList]=useState<any[]>([]);
+  const[loadingKoreksi,setLoadingKoreksi]=useState(true);
+  const[decidingKoreksiId,setDecidingKoreksiId]=useState<number|null>(null);
+  const fetchKoreksi=async()=>{
+    setLoadingKoreksi(true);
+    const koreksiRows=await fetchAllPaged((from,to)=>supabase.from("permintaan_item_koreksi").select("*").eq("target_divisi",divisi).eq("status","menunggu").order("diajukan_at",{ascending:false}).range(from,to));
+    if(koreksiRows.length===0){setKoreksiList([]);setLoadingKoreksi(false);return;}
+    const itemIds=[...new Set(koreksiRows.map((k:any)=>k.permintaan_item_id))];
+    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").in("id",itemIds).range(from,to));
+    const itemMap:Record<number,any>={};
+    items.forEach((it:any)=>{itemMap[it.id]=it;});
+    setKoreksiList(koreksiRows.map((k:any)=>({...k,item:itemMap[k.permintaan_item_id]})).filter((k:any)=>k.item));
+    setLoadingKoreksi(false);
+  };
+  useEffect(()=>{
+    fetchKoreksi();
+    const ch=supabase.channel(`realtime-permintaan-koreksi-${divisi}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item_koreksi"},fetchKoreksi)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[divisi]);
+
+  // Setujui: qty item berubah ke nilai diusulkan (updated_at/updated_by SENGAJA TIDAK disentuh -
+  // itu jejak aksi Gudang submit/reject asli, bukan aksi persetujuan ini), sudah_diinput direset
+  // biar Gudang tau perlu input ulang angka yang benar ke pembukuan. Ditolak: qty item TIDAK
+  // berubah sama sekali. Siapapun yang login di divisi ini boleh memutuskan (konsisten pola
+  // konfirmasiDiambil - gak dibatasi harus operator yang sama persis, lihat investigasi di
+  // laporan fitur ini soal notifikasi/approval yang emang per-divisi bukan per-orang).
+  const putuskanKoreksi=async(k:any,disetujui:boolean)=>{
+    setDecidingKoreksiId(k.id);
+    if(disetujui){
+      await supabase.from("permintaan_item").update({qty:k.qty_diusulkan,sudah_diinput:false}).eq("id",k.permintaan_item_id);
+    }
+    await supabase.from("permintaan_item_koreksi").update({
+      status:disetujui?"disetujui":"ditolak",disetujui_oleh:namaOperator,diputuskan_at:new Date().toISOString(),
+    }).eq("id",k.id);
+    try{
+      await supabase.functions.invoke("notify-permintaan",{body:{
+        trigger:"koreksi_keputusan",namaKomponen:k.item?.nama_komponen,disetujui,qtyDiusulkan:k.qty_diusulkan,satuan:k.item?.satuan,
+      }});
+    }catch{/* notifikasi gagal - diabaikan, keputusan tetap tersimpan */}
+    setDecidingKoreksiId(null);
+  };
+
   // Konfirmasi pengambilan fisik - SEKARANG dari sisi operator (bukan Gudang lagi, lihat
   // TarikGudangTab.tsx yang sudah jadi read-only). Siapapun yang login saat ini yang
   // mengonfirmasi (dicatat di diambil_oleh), gak harus operator yang sama dengan operator_nama
@@ -385,6 +434,7 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
           {key:"BBMB",label:"BBMB (Bantu)",icon:"🧰"},
           {key:"BBMU",label:"BBMU (Utama)",icon:"⚙️"},
           {key:"HUTANG",label:"Hutang",icon:"🧾",badge:hutangCount},
+          {key:"KOREKSI",label:"Koreksi",icon:"✏️",badge:koreksiList.length},
         ]} value={jenisTab} onChange={setJenisTab} color={accent}/>
       </SectionCard>
 
@@ -402,9 +452,10 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
         </span>
       </div>
 
-      {/* HUTANG (5 Sep 2026) - subtab terpisah, read-only, gak ada form pengajuan sama sekali
-          (hutang muncul otomatis dari Gudang, operator gak "minta" hutang secara manual). */}
-      {jenisTab==="HUTANG"?null:(
+      {/* HUTANG (5 Sep 2026)/KOREKSI (7 Sep 2026) - subtab terpisah, read-only+approval, gak ada
+          form pengajuan sama sekali (hutang muncul otomatis dari Gudang, koreksi diajukan Gudang
+          dari Riwayat Gudang - operator gak "minta" keduanya secara manual di sini). */}
+      {jenisTab==="HUTANG"||jenisTab==="KOREKSI"?null:(
       <>
       {/* Lock permintaan (2 Sep 2026) - Gudang bisa "tutup" penerimaan baru, form WO/Panel/Komponen
           diganti catatan ini. Riwayat di bawah TETAP tampil apa adanya - cuma form kirim yang diblokir. */}
@@ -500,6 +551,13 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
           <Lbl>Hutang Divisi ({divisi})</Lbl>
           <div style={{fontSize:11.5,color:"#94a3b8",marginBottom:12}}>Sisa permintaan yang belum sepenuhnya dipenuhi Gudang - dicicil otomatis sampai lunas.</div>
           <HutangBlock hutangList={hutangList} loading={loadingHutang} accent={accent} confirmingId={confirmingId} konfirmasiDiambil={konfirmasiDiambil} fmtDateTime={fmtDateTime}/>
+        </>
+      ):jenisTab==="KOREKSI"?(
+        <>
+          <div style={{height:1,background:"#f1f5f9",margin:"4px 0 16px"}}/>
+          <Lbl>Pengajuan Koreksi Qty ({divisi})</Lbl>
+          <div style={{fontSize:11.5,color:"#94a3b8",marginBottom:12}}>Gudang mengajukan koreksi qty yang salah input - qty ASLI baru berubah setelah Anda setujui.</div>
+          <KoreksiBlock koreksiList={koreksiList} loading={loadingKoreksi} accent={accent} decidingId={decidingKoreksiId} putuskan={putuskanKoreksi} fmtDateTime={fmtDateTime}/>
         </>
       ):(
       <>
@@ -628,6 +686,48 @@ function HutangBlock({hutangList,loading,accent,confirmingId,konfirmasiDiambil,f
               {it.status==="reject"&&it.catatan_reject&&(
                 <div style={{marginTop:6,fontSize:11,color:"#dc2626"}}>⚠ {it.catatan_reject}</div>
               )}
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+function KoreksiBlock({koreksiList,loading,accent,decidingId,putuskan,fmtDateTime}:{
+  koreksiList:any[];loading:boolean;accent:string;decidingId:number|null;
+  putuskan:(k:any,disetujui:boolean)=>void;fmtDateTime:(d:string)=>string;
+}){
+  if(loading)return<div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
+  if(koreksiList.length===0)return<EmptyState variant="box-paper" title="Tidak ada pengajuan koreksi"
+    description="Pengajuan koreksi qty dari Gudang (kalau ada salah input) akan muncul di sini, menunggu persetujuan Anda."/>;
+  return(
+    <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
+      {koreksiList.map((k:any)=>{
+        const isDeciding=decidingId===k.id;
+        return(
+          <Card key={k.id} style={{padding:"14px 16px",borderColor:"#fde68a"}}>
+            <div style={{marginBottom:8}}>
+              <div style={{fontWeight:800,fontSize:13,color:"#0f172a"}}>{k.item?.nama_komponen||"-"}</div>
+              <div style={{fontSize:10.5,color:"#94a3b8"}}>Diajukan oleh {k.diajukan_oleh} — {fmtDateTime(k.diajukan_at)}</div>
+            </div>
+            <div style={{background:"#fffbeb",borderRadius:8,padding:"8px 10px",marginBottom:8}}>
+              <div style={{display:"flex",alignItems:"center",gap:6,fontSize:13,fontWeight:700}}>
+                <span style={{color:"#94a3b8",textDecoration:"line-through" as const}}>{k.qty_lama}{k.item?.satuan?` ${k.item.satuan}`:""}</span>
+                <span style={{color:"#d97706"}}>→</span>
+                <span style={{color:"#16a34a"}}>{k.qty_diusulkan}{k.item?.satuan?` ${k.item.satuan}`:""}</span>
+              </div>
+              <div style={{fontSize:11.5,color:"#92400e",marginTop:6,lineHeight:1.5}}>💬 {k.alasan}</div>
+            </div>
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={()=>putuskan(k,false)} disabled={isDeciding}
+                style={{flex:1,padding:"9px",borderRadius:8,border:"1px solid #fecaca",background:"#fff",color:"#dc2626",fontWeight:700,fontSize:12,cursor:isDeciding?"default":"pointer",fontFamily:"inherit"}}>
+                ✕ Tolak
+              </button>
+              <button onClick={()=>putuskan(k,true)} disabled={isDeciding}
+                style={{flex:1,padding:"9px",borderRadius:8,border:"none",background:isDeciding?"#94a3b8":accent,color:"#fff",fontWeight:700,fontSize:12,cursor:isDeciding?"default":"pointer",fontFamily:"inherit"}}>
+                {isDeciding?"Menyimpan...":"✓ Setujui"}
+              </button>
             </div>
           </Card>
         );

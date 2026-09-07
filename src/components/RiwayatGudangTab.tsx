@@ -63,7 +63,7 @@ const STATUS_FILTER_OPTIONS:{key:StatusFilterKey,label:string,color:string}[]=[
   {key:"DITOLAK",label:"✕ Ditolak",color:"#dc2626"},
 ];
 
-export function RiwayatGudangTab(){
+export function RiwayatGudangTab({adminName}:{adminName:string}){
   const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
   const[loading,setLoading]=useState(true);
   const[rows,setRows]=useState<any[]>([]);
@@ -169,6 +169,77 @@ export function RiwayatGudangTab(){
     await supabase.from("permintaan_item").update({sudah_diinput:next}).eq("id",item.id);
   };
 
+  // Fitur Pengajuan Koreksi Qty (7 Sep 2026) - Gudang TIDAK bisa langsung ubah qty sendiri,
+  // harus diajukan & disetujui divisi peminta dulu (lihat migration permintaan_item_koreksi.sql
+  // buat konteks lengkap). pendingKoreksiMap dipakai buat tau item mana yang lagi "Menunggu
+  // Persetujuan" (sembunyiin tombol ajukan, cegah dobel pengajuan buat item yang sama).
+  const[pendingKoreksiMap,setPendingKoreksiMap]=useState<Record<number,any>>({});
+  useEffect(()=>{
+    if(rows.length===0){setPendingKoreksiMap({});return;}
+    let cancelled=false;
+    const fetchPending=async()=>{
+      const ids=rows.map((r:any)=>r.id);
+      const{data}=await supabase.from("permintaan_item_koreksi").select("*").in("permintaan_item_id",ids).eq("status","menunggu");
+      if(!cancelled){
+        const map:Record<number,any>={};
+        (data||[]).forEach((k:any)=>{map[k.permintaan_item_id]=k;});
+        setPendingKoreksiMap(map);
+      }
+    };
+    fetchPending();
+    const ch=supabase.channel("realtime-gudang-riwayat-koreksi")
+      .on("postgres_changes",{event:"*",schema:"public",table:"permintaan_item_koreksi"},fetchPending)
+      .subscribe();
+    return()=>{cancelled=true;supabase.removeChannel(ch);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[rows]);
+
+  const[koreksiTarget,setKoreksiTarget]=useState<any|null>(null);
+  const[koreksiQty,setKoreksiQty]=useState("");
+  const[koreksiAlasan,setKoreksiAlasan]=useState("");
+  const[koreksiSubmitting,setKoreksiSubmitting]=useState(false);
+  const[koreksiError,setKoreksiError]=useState("");
+  // Peringatan hutang (informatif, TIDAK blokir) - item yang dikoreksi punya kaitan hutang kalau
+  // dia SENDIRI hasil cicilan (induk_item_id keisi) ATAU pernah jadi asal cicilan buat row lain
+  // (ada row lain yang induk_item_id-nya nunjuk ke sini). Dicek pas modal dibuka.
+  const[koreksiHutangWarning,setKoreksiHutangWarning]=useState(false);
+
+  const bukaKoreksi=async(item:any)=>{
+    setKoreksiTarget(item);
+    setKoreksiQty(String(item.qty));
+    setKoreksiAlasan("");
+    setKoreksiError("");
+    setKoreksiHutangWarning(false);
+    const{data}=await supabase.from("permintaan_item").select("id").or(`id.eq.${item.induk_item_id||0},induk_item_id.eq.${item.id}`).limit(1);
+    if(item.induk_item_id||(data&&data.length>0))setKoreksiHutangWarning(true);
+  };
+  const tutupKoreksi=()=>{setKoreksiTarget(null);setKoreksiError("");};
+  const submitKoreksi=async()=>{
+    if(!koreksiTarget)return;
+    const qtyBaru=Number(koreksiQty);
+    if(!koreksiQty||isNaN(qtyBaru)||qtyBaru<0){setKoreksiError("Qty baru wajib diisi, angka >= 0");return;}
+    if(!koreksiAlasan.trim()){setKoreksiError("Alasan koreksi wajib diisi");return;}
+    setKoreksiSubmitting(true);
+    setKoreksiError("");
+    const{error:insErr}=await supabase.from("permintaan_item_koreksi").insert({
+      permintaan_item_id:koreksiTarget.id,
+      qty_lama:koreksiTarget.qty,
+      qty_diusulkan:qtyBaru,
+      alasan:koreksiAlasan.trim(),
+      diajukan_oleh:adminName,
+      target_divisi:koreksiTarget.perm.divisi,
+    });
+    if(insErr){setKoreksiError("Gagal ajukan: "+insErr.message);setKoreksiSubmitting(false);return;}
+    try{
+      await supabase.functions.invoke("notify-permintaan",{body:{
+        trigger:"koreksi_baru",targetDivisi:koreksiTarget.perm.divisi,
+        namaKomponen:koreksiTarget.nama_komponen,qtyLama:koreksiTarget.qty,qtyDiusulkan:qtyBaru,satuan:koreksiTarget.satuan,
+      }});
+    }catch{/* notifikasi gagal - diabaikan, pengajuan tetap tersimpan */}
+    setKoreksiSubmitting(false);
+    tutupKoreksi();
+  };
+
   return(
     <div style={{padding:16}} className="fi">
       <SectionCard icon="🕒" title="Riwayat Harian" subtitle="Aksi submit/reject/status/tarik yang sudah diproses">
@@ -235,12 +306,60 @@ export function RiwayatGudangTab(){
                     </span>
                   </label>
                 )}
+                {/* Pengajuan Koreksi Qty (7 Sep 2026) - berlaku SEMUA status (Sudah Siap/Diambil/
+                    Ditolak), qty ASLI baru berubah kalau divisi peminta setuju (PermintaanView.tsx). */}
+                {pendingKoreksiMap[r.id]?(
+                  <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #f1f5f9",fontSize:10.5,color:"#d97706",fontWeight:700,display:"flex",alignItems:"center",gap:5}}>
+                    ⏳ Koreksi qty ke {pendingKoreksiMap[r.id].qty_diusulkan} - Menunggu Persetujuan
+                  </div>
+                ):(
+                  <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #f1f5f9"}}>
+                    <button onClick={()=>bukaKoreksi(r)}
+                      style={{fontSize:10.5,fontWeight:700,color:"#0369a1",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>
+                      ✏️ Ajukan Koreksi Qty
+                    </button>
+                  </div>
+                )}
               </div>
             );
           })}
         </div>
       )}
       </SectionCard>
+
+      {koreksiTarget&&(
+        <div onClick={tutupKoreksi} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:20,width:"100%",maxWidth:360}}>
+            <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:4}}>Ajukan Koreksi Qty</div>
+            <div style={{fontSize:12,color:"#64748b",marginBottom:12}}>{koreksiTarget.nama_komponen} - qty saat ini {koreksiTarget.qty}{koreksiTarget.satuan?` ${koreksiTarget.satuan}`:""}</div>
+            {koreksiHutangWarning&&(
+              <div style={{background:"#fffbeb",border:"1px solid #fde68a",color:"#92400e",borderRadius:9,padding:"9px 11px",fontSize:11,marginBottom:12,lineHeight:1.5}}>
+                ⚠ Item ini punya kaitan dengan sistem Hutang (cicilan/dicicil). Koreksi qty di sini TIDAK otomatis menyesuaikan baris Hutang terkait - cek manual kalau perlu.
+              </div>
+            )}
+            <div style={{marginBottom:6,fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Qty yang seharusnya</div>
+            <input type="number" min="0" autoFocus value={koreksiQty} onChange={(e:any)=>setKoreksiQty(e.target.value)}
+              style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:16,fontWeight:700,color:"#0f172a",fontFamily:"inherit",marginBottom:10,boxSizing:"border-box" as const}}/>
+            <div style={{marginBottom:6,fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Alasan koreksi (wajib)</div>
+            <textarea value={koreksiAlasan} onChange={(e:any)=>setKoreksiAlasan(e.target.value)} rows={3}
+              placeholder="Contoh: salah input qty, seharusnya 5400 CM bukan 540 CM"
+              style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:13,color:"#0f172a",fontFamily:"inherit",marginBottom:10,boxSizing:"border-box" as const,resize:"vertical" as const}}/>
+            {koreksiError&&<div style={{fontSize:11.5,color:"#dc2626",marginBottom:10,fontWeight:600}}>{koreksiError}</div>}
+            <div style={{display:"flex",gap:8}}>
+              <button onClick={tutupKoreksi} disabled={koreksiSubmitting}
+                style={{flex:1,padding:"10px",borderRadius:9,border:"1px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+                Batal
+              </button>
+              <button onClick={submitKoreksi} disabled={koreksiSubmitting}
+                style={{flex:1,padding:"10px",borderRadius:9,border:"none",
+                  background:koreksiSubmitting?"#94a3b8":"#0369a1",color:"#fff",fontWeight:700,fontSize:13,
+                  cursor:koreksiSubmitting?"default":"pointer",fontFamily:"inherit"}}>
+                {koreksiSubmitting?"Mengajukan...":"Ajukan"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -79,7 +79,7 @@ export function GudangHome({user,onLogout}:{user:any;onLogout:()=>void}){
         {tab==="tarik"&&<TarikGudangTab/>}
         {tab==="database"&&<DatabaseGudangTab/>}
         {tab==="progress"&&<KomponenProgressView user={user} tugas={TUGAS_WAREHOUSE_GUDANG}/>}
-        {tab==="riwayat"&&<RiwayatGudangTab/>}
+        {tab==="riwayat"&&<RiwayatGudangTab adminName={user?.nama||user?.name||"Gudang"}/>}
       </div>
       {/* position:fixed (bukan sticky) - sengaja anchor ke VIEWPORT asli, bukan ke containing
           block terdekat di rantai parent (GudangHome dinest 1 level lebih dalam dari nav bawah
