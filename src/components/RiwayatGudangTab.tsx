@@ -284,6 +284,14 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
                 </div>
                 <div style={{display:"flex",flexDirection:"column",gap:2,fontSize:10.5,color:"#64748b"}}>
                   <span>📝 Diminta oleh {r.perm.operator_nama||"-"} — {fmtDateTime(r.perm.created_at)}</span>
+                  {/* Disetujui Admin (7 Sep 2026, fitur approval admin) - urutan kronologis
+                      ditaruh SEBELUM "Sudah Siap/Ditolak oleh" Gudang, karena tahap ini memang
+                      terjadi lebih dulu (admin setuju -> baru status jadi 'pending' -> baru
+                      Gudang bisa proses). Item lama (sebelum fitur ini ada) gak punya kolom ini
+                      terisi - baris ini otomatis gak muncul buat mereka. */}
+                  {r.disetujui_admin_oleh&&(
+                    <span>✅ Disetujui Admin oleh {r.disetujui_admin_oleh} — {fmtDateTime(r.disetujui_admin_at)}</span>
+                  )}
                   {r.updated_at&&(
                     <span>{r.status==="reject"?"✕ Ditolak":"✓ Sudah Siap"} oleh {r.updated_by||"-"} — {fmtDateTime(r.updated_at)}</span>
                   )}
