@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
+import { withRetry } from "../lib/koneksi";
 import { SectionCard, EmptyState } from "./ui/Primitives";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -8,14 +9,20 @@ import { SectionCard, EmptyState } from "./ui/Primitives";
 // relevan untuk divisi yang pakai timer (mekanik/painting/assembling/
 // wiring_ctrl/wiring_pwr - lihat OperatorView.tsx) - App.tsx yang tentukan
 // kapan komponen ini dirender (disembunyikan total utk qc/nameplate/QS).
-// READ-ONLY - aksi selesaikan timer tetap lewat UI existing di OperatorView,
-// TIDAK diduplikasi di sini biar gak ada 2 jalur tulis ke tabel yang sama.
+// FORCE CLOSE (7 Sep 2026) - satu-satunya jalur tulis di komponen ini, dipakai
+// untuk timer yang nyangkut/kelupaan (contoh nyata: 74j+ jalan terus). Operasi-
+// nya SAMA PERSIS dengan selesaikanDariReminder()/stopTimer() di OperatorView.tsx
+// (update `selesai` by id timer, progress/qty yang sudah tersimpan di tempat lain
+// - checklist/pekerja_per_komponen - TIDAK disentuh sama sekali) - sengaja gak
+// reuse fungsi itu langsung karena beda instance komponen (gak share state
+// timerAktif), tapi query-nya identik.
 // ─────────────────────────────────────────────────────────────────────────────
 export function ProsesAktifView({user}:{user:any}){
   const[loading,setLoading]=useState(true);
   const[timers,setTimers]=useState<any[]>([]);
   const[panelsMap,setPanelsMap]=useState<Record<number,any>>({});
   const[now,setNow]=useState(()=>Date.now());
+  const[closingId,setClosingId]=useState<number|null>(null);
 
   useEffect(()=>{
     const t=setInterval(()=>setNow(Date.now()),1000);
@@ -58,6 +65,23 @@ export function ProsesAktifView({user}:{user:any}){
     return j>0?`${j}j ${m}m`:`${m}m ${s}d`;
   };
 
+  const forceClose=async(timerId:number)=>{
+    if(!window.confirm("Yakin mau tutup paksa proses ini? Progress saat ini akan disimpan dan proses dianggap selesai."))return;
+    setClosingId(timerId);
+    try{
+      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timerId).is("selesai",null));
+      if(error){
+        alert("Gagal tutup paksa: "+error.message);
+        return;
+      }
+      setTimers(prev=>prev.filter(t=>t.id!==timerId));
+    }catch(err:any){
+      alert("Gagal tutup paksa - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+    }finally{
+      setClosingId(null);
+    }
+  };
+
   return(
     <div style={{padding:16}}>
       <SectionCard icon="⏱" title="Proses Aktif" subtitle={loading?"Memuat...":`${timers.length} proses sedang berjalan`}>
@@ -79,6 +103,11 @@ export function ProsesAktifView({user}:{user:any}){
                   <div style={{fontSize:9,color:"#94a3b8"}}>berjalan</div>
                 </div>
               </div>
+              <button disabled={closingId===t.id} onClick={()=>forceClose(t.id)}
+                style={{marginTop:8,width:"100%",fontSize:11,fontWeight:700,border:"1px solid #fbcfe8",borderRadius:8,
+                  padding:"7px 10px",background:"#fff",color:"#db2777",cursor:closingId===t.id?"not-allowed":"pointer"}}>
+                {closingId===t.id?"Menutup...":"⏹ Force Close"}
+              </button>
             </div>
           );
         })}
