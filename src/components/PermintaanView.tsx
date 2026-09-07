@@ -62,7 +62,7 @@ const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
 const selStyle:any={width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
 const inpStyle:any={width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:13,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
 
-export function PermintaanView({user,registerBackHandler}:{user:any,registerBackHandler?:(fn:(()=>boolean)|null)=>void}){
+export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetConsumed}:{user:any,registerBackHandler?:(fn:(()=>boolean)|null)=>void,navTarget?:{id:number,jenis:string,tanggal:string}[]|null,onNavTargetConsumed?:()=>void}){
   const namaOperator=user?.nama||user?.name||"Operator";
   const divisi:string=user?.divisi||"";
   const subBagian:string|null=user?.sub_bagian||null;
@@ -100,6 +100,26 @@ export function PermintaanView({user,registerBackHandler}:{user:any,registerBack
   // Filter tanggal per hari (REVISI 2 Sep 2026, pola sama persis kayak RiwayatGudangTab.tsx sisi
   // Gudang) - Riwayat Permintaan operator dulu cuma nampilin 30 terakhir tanpa filter waktu.
   const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
+
+  // Navigasi spesifik dari kartu notifikasi "X permintaan butuh perhatian" di Akun (7 Sep 2026) -
+  // dulu tap kartu itu cuma pindah ke tab ini secara umum, operator harus cari sendiri. navTarget
+  // dari App.tsx berisi {id,jenis,tanggal} tiap permintaan yang jadi alasan notifikasi. Kalau
+  // target-nya tersebar di jenis/tanggal BEDA (BBMB vs BBMU, atau lintas hari), gak mungkin
+  // "mendarat" di semua sekaligus (Riwayat di sini di-scope 1 jenisTab + 1 tanggal) - dipilih yang
+  // PALING BARU (index 0, notifTargets sumbernya sudah urut created_at desc), sisanya tetap bisa
+  // dicari manual (gak lebih buruk dari kondisi sebelum fitur ini ada).
+  const[highlightIds,setHighlightIds]=useState<Set<number>>(new Set());
+  const highlightScrolledRef=useRef(false);
+  useEffect(()=>{
+    if(!navTarget||navTarget.length===0)return;
+    const target=navTarget[0];
+    if(target.jenis==="BBMB"||target.jenis==="BBMU")setJenisTab(target.jenis as Jenis);
+    if(target.tanggal)setTanggal(target.tanggal);
+    setHighlightIds(new Set(navTarget.filter(t=>t.jenis===target.jenis).map(t=>t.id)));
+    highlightScrolledRef.current=false;
+    onNavTargetConsumed?.();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[navTarget]);
 
   // Lock permintaan dari Gudang (2 Sep 2026) - gudang_lock_status (1 baris, id=1). Realtime supaya
   // begitu Gudang kunci, form kirim langsung ke-block di semua device operator tanpa perlu refresh.
@@ -201,6 +221,19 @@ export function PermintaanView({user,registerBackHandler}:{user:any,registerBack
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[jenisTab,divisi,tanggal]);
+
+  // Auto-scroll SEKALI ke Card permintaan pertama yang di-highlight, begitu riwayat (di jenisTab+
+  // tanggal yang sudah dipindah otomatis di atas) selesai di-fetch. Guard highlightScrolledRef -
+  // biar gak scroll ULANG tiap kali riwayat refetch normal (realtime update dari operator lain).
+  const cardRefs=useRef<Record<number,HTMLDivElement|null>>({});
+  useEffect(()=>{
+    if(highlightIds.size===0||highlightScrolledRef.current||loadingRiwayat)return;
+    const firstMatch=riwayat.find((r:any)=>highlightIds.has(r.id));
+    if(firstMatch&&cardRefs.current[firstMatch.id]){
+      cardRefs.current[firstMatch.id]!.scrollIntoView({behavior:"smooth",block:"center"});
+      highlightScrolledRef.current=true;
+    }
+  },[riwayat,loadingRiwayat,highlightIds]);
 
   // ── HUTANG (5 Sep 2026) - subtab terpisah, read-only (operator gak mengajukan hutang, itu
   // muncul otomatis dari Gudang yang cuma bisa penuhi sebagian). TANPA filter tanggal - hutang
@@ -483,7 +516,8 @@ export function PermintaanView({user,registerBackHandler}:{user:any,registerBack
       ):(
         <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
           {riwayat.map((r:any)=>(
-            <Card key={r.id} style={{padding:"14px 16px"}}>
+            <div key={r.id} ref={el=>{cardRefs.current[r.id]=el;}}>
+            <Card style={{padding:"14px 16px",...(highlightIds.has(r.id)?{border:"2px solid #f97316",boxShadow:"0 0 0 3px #fed7aa66"}:{})}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                 <div>
                   <div style={{fontWeight:800,fontSize:13,color:"#0f172a"}}>{r.proyek||"-"} · {r.panel_nama||"-"}</div>
@@ -538,6 +572,7 @@ export function PermintaanView({user,registerBackHandler}:{user:any,registerBack
                 )}
               </div>
             </Card>
+            </div>
           ))}
         </div>
       )}

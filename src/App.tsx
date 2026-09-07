@@ -279,15 +279,24 @@ export default function App(){
   // penyatuan ini), BBMB baca permintaan_item per-item. Sekarang BBMB & BBMU PERSIS SAMA
   // strukturnya, jadi 1 logic item-based generik buat keduanya (gak ada split bbmuIds/bbmbIds lagi).
   const [notifCount,setNotifCount]=useState(0);
+  // Target navigasi spesifik (7 Sep 2026) - dulu tap kartu notifikasi cuma pindah tab Permintaan
+  // secara umum, gak bawa info permintaan mana yang jadi alasan notifikasi. Sekarang sekalian
+  // simpan {id,jenis,tanggal} tiap permintaan yang "butuh perhatian" (bukan cuma count-nya) - jenis
+  // & tanggal dibutuhkan PermintaanView buat auto-pindah tab BBMB/BBMU + filter tanggal yang benar
+  // sebelum bisa highlight, karena Riwayat Permintaan di sana di-scope ke situ.
+  const [notifTargets,setNotifTargets]=useState<{id:number,jenis:string,tanggal:string}[]>([]);
+  const [permintaanNavTarget,setPermintaanNavTarget]=useState<{id:number,jenis:string,tanggal:string}[]|null>(null);
   useEffect(()=>{
     if(!user||user.divisi==="gudang")return;
     let cancelled=false;
     const fetchNotifCount=async()=>{
-      const{data:perms}=await supabase.from("permintaan").select("id,dilihat_operator")
+      const{data:perms}=await supabase.from("permintaan").select("id,dilihat_operator,jenis,created_at")
         .eq("divisi",user.divisi)
         .order("created_at",{ascending:false}).limit(100);
-      if(!perms||perms.length===0){if(!cancelled)setNotifCount(0);return;}
+      if(!perms||perms.length===0){if(!cancelled){setNotifCount(0);setNotifTargets([]);}return;}
       const permIds=perms.map((p:any)=>p.id);
+      const permMap:Record<number,any>={};
+      perms.forEach((p:any)=>{permMap[p.id]=p;});
       // Paginasi (2 Sep 2026, ketemu pas audit) - permIds bisa sampai 100 permintaan (limit di
       // atas), kalau tiap permintaan punya banyak item total bisa >1000 baris & kepotong diam-diam
       // tanpa .range() (persis bug renhar/komponen_master yang sudah kejadian sebelumnya di app
@@ -303,7 +312,11 @@ export default function App(){
         from+=PAGE;
       }
       const needsAttention=items.filter((it:any)=>!it.dilihat_operator||(it.status==="submit"&&!it.sudah_diambil));
-      if(!cancelled)setNotifCount(new Set(needsAttention.map((it:any)=>it.permintaan_id)).size);
+      const targetIds=[...new Set(needsAttention.map((it:any)=>it.permintaan_id))];
+      if(!cancelled){
+        setNotifCount(targetIds.length);
+        setNotifTargets(targetIds.map(id=>({id,jenis:permMap[id]?.jenis,tanggal:String(permMap[id]?.created_at||"").slice(0,10)})));
+      }
     };
     fetchNotifCount();
     const ch=supabase.channel("realtime-operator-notif-"+user.id)
@@ -470,7 +483,7 @@ export default function App(){
             :activeBottomTab==="proses"?<ProsesAktifView user={user}/>
             :activeBottomTab==="jadwal"?<JadwalPengirimanView/>
             :activeBottomTab==="akun"?<AkunView user={user} isTimerDivisi={!!isOperatorDivisi} proses={prosesRiwayat} onLogout={doLogout}
-              notifCount={notifCount} onBukaPermintaan={()=>{setActiveBottomTab("beranda");setSelectedMenu("permintaan");}}/>
+              notifCount={notifCount} onBukaPermintaan={()=>{setActiveBottomTab("beranda");setSelectedMenu("permintaan");setPermintaanNavTarget(notifTargets);}}/>
             :isOperatorDivisi&&!gateShiftSet?(
               <div style={{padding:20,maxWidth:420,margin:"0 auto"}} className="fi">
                 <div style={{background:"#fff",borderRadius:18,padding:20,boxShadow:"0 4px 14px #00000014"}}>
@@ -520,7 +533,8 @@ export default function App(){
                     <i className="ti ti-arrow-left" style={{fontSize:14}}/> Kembali
                   </button>
                 </div>
-                {selectedMenu==="permintaan"?<PermintaanView user={user} registerBackHandler={registerBackHandler}/>
+                {selectedMenu==="permintaan"?<PermintaanView user={user} registerBackHandler={registerBackHandler}
+                  navTarget={permintaanNavTarget} onNavTargetConsumed={()=>setPermintaanNavTarget(null)}/>
                   :selectedMenu==="arsip"&&arsipSeksi==="qc"?<ArsipQCView/>
                   :selectedMenu==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
                   :selectedMenu==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas} registerBackHandler={registerBackHandler}/>
