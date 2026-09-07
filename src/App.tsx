@@ -305,13 +305,17 @@ export default function App(){
       let from=0;
       const PAGE=1000;
       while(true){
-        const{data}=await supabase.from("permintaan_item").select("permintaan_id,status,dilihat_operator,sudah_diambil")
+        const{data}=await supabase.from("permintaan_item").select("permintaan_id,status,dilihat_operator,sudah_diambil,is_hutang")
           .neq("status","pending").in("permintaan_id",permIds).range(from,from+PAGE-1);
         items=items.concat(data??[]);
         if(!data||data.length<PAGE)break;
         from+=PAGE;
       }
-      const needsAttention=items.filter((it:any)=>!it.dilihat_operator||(it.status==="submit"&&!it.sudah_diambil));
+      // is_hutang dikecualikan (7 Sep 2026) - item hutang punya tab & render terpisah
+      // (PermintaanView.tsx fetchRiwayat juga eq is_hutang=false), kalau item hutang ikut jadi
+      // alasan notifikasi, card yang di-highlight jadi kelihatan kosong/gak ada yang perlu
+      // dikonfirmasi di dalamnya (item-nya render di tab Hutang, bukan di card yang di-highlight).
+      const needsAttention=items.filter((it:any)=>!it.is_hutang&&(!it.dilihat_operator||(it.status==="submit"&&!it.sudah_diambil)));
       const targetIds=[...new Set(needsAttention.map((it:any)=>it.permintaan_id))];
       if(!cancelled){
         setNotifCount(targetIds.length);
