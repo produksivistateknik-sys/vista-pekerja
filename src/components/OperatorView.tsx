@@ -2315,10 +2315,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                           const targetRow=panelRows.find((r:any)=>r.kode===targetKode);
                           setSelectedKomponen((prev:any)=>({...prev,[panelKeyKonfirmasi]:tempSelectedKomponen}));
                           setKomponenPopup(null);
-                          // Reset filter status - komponen yang baru dicollect bisa aja statusnya beda
-                          // dari filter yang lagi aktif, jangan sampai langsung "ilang" dari layar begitu
-                          // dikonfirmasi.
-                          setStatusFilter("ALL");
+                          // Reset filter status ke "ALL" DIHAPUS (7 Sep 2026) - dulu dibutuhkan karena
+                          // komponen yang baru dicollect bisa "ilang" dari layar kalau filter masih aktif,
+                          // tapi itu sudah gak relevan lagi sejak SCOPE FIX 6 Agu 2026 (visibleRows/area
+                          // kartu yang udah di-collect memang udah independen dari statusFilter - lihat
+                          // komentar di definisi visibleRows). Operator sekarang tetap di filter yang
+                          // sama (mis. "To Do") biar gak perlu klik filter ulang tiap habis pilih komponen.
                           if(targetRow)scrollDanHighlightGroup(proses,targetRow.item?.nama||targetRow.kode);
                         }}
                         style={{padding:"8px 14px",borderRadius:8,border:"none",background:"#4f46e5",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
@@ -2426,7 +2428,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                             return next;
                           });
                           setKomponenPopupJenis(null);
-                          setStatusFilter("ALL");
+                          // Reset filter status DIHAPUS (7 Sep 2026) - lihat komentar sama di tombol
+                          // Konfirmasi popup per-panel di atas.
                           scrollDanHighlightGroup(proses,komponenPopupJenis.namaKomponen);
                         }}
                         style={{padding:"8px 14px",borderRadius:8,border:"none",background:"#4f46e5",fontSize:12,fontWeight:700,color:"#fff",cursor:"pointer"}}>
