@@ -61,10 +61,22 @@ const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric
 const prosesSubmitDenganQty=async(item:any,qtyDipenuhi:number,adminName:string,targetDivisi?:string)=>{
   const qtyLama=Number(item.qty);
   const lunasPenuh=qtyDipenuhi>=qtyLama;
-  await supabase.from("permintaan_item").update({
-    status:"submit",qty:qtyDipenuhi,
-    updated_by:adminName,updated_at:new Date().toISOString(),dilihat_operator:false,
-  }).eq("id",item.id);
+  // qtyDipenuhi=0 (7 Sep 2026, min qty diturunkan dari 1 ke 0) - gudang BENAR-BENAR gak ada
+  // stok sama sekali saat ini, BUKAN cuma "dipenuhi sebagian". Row asli DIHAPUS (bukan di-update
+  // jadi status submit+qty:0) - kalau tetap di-update, operator bakal lihat badge palsu "✓ Sudah
+  // Siap x0" plus tombol "Konfirmasi Sudah Diambil" buat barang yang gak pernah diserahkan sama
+  // sekali. Row hutang baru di bawah tetap dibuat qty PENUH seperti biasa - itu satu-satunya
+  // jejak yang tersisa, cukup buat merepresentasikan "seluruh jumlah jadi hutang".
+  // induk_item_id sengaja TIDAK diisi di kasus ini (item.id sudah dihapus, gak ada row "asal
+  // pemenuhan" buat dilacak - field ini murni jejak DB, gak pernah dibaca UI manapun).
+  if(qtyDipenuhi>0){
+    await supabase.from("permintaan_item").update({
+      status:"submit",qty:qtyDipenuhi,
+      updated_by:adminName,updated_at:new Date().toISOString(),dilihat_operator:false,
+    }).eq("id",item.id);
+  } else {
+    await supabase.from("permintaan_item").delete().eq("id",item.id);
+  }
   let sisaQty=0;
   if(!lunasPenuh){
     sisaQty=qtyLama-qtyDipenuhi;
@@ -80,7 +92,7 @@ const prosesSubmitDenganQty=async(item:any,qtyDipenuhi:number,adminName:string,t
       qty_diminta_awal:qtyLama,
       status:"pending",
       is_hutang:true,
-      induk_item_id:item.id,
+      ...(qtyDipenuhi>0?{induk_item_id:item.id}:{}),
     });
   }
   // Fitur tambahan, GAGAL DI SINI TIDAK BOLEH gagalin update status yang udah beres di atas.
@@ -89,7 +101,7 @@ const prosesSubmitDenganQty=async(item:any,qtyDipenuhi:number,adminName:string,t
       await supabase.functions.invoke("notify-permintaan",{body:{
         trigger:"status",targetDivisi,
         namaKomponen:item.nama_komponen,qty:qtyDipenuhi,satuan:item.satuan,
-        statusLabel:lunasPenuh?"Sudah Siap":`Dipenuhi Sebagian (Sisa ${sisaQty} jadi Hutang)`,
+        statusLabel:lunasPenuh?"Sudah Siap":qtyDipenuhi>0?`Dipenuhi Sebagian (Sisa ${sisaQty} jadi Hutang)`:`Belum Bisa Dipenuhi (Semua ${sisaQty} jadi Hutang)`,
       }});
     }catch{/* notifikasi gagal - diabaikan, status tetap tersimpan */}
   }
@@ -97,11 +109,13 @@ const prosesSubmitDenganQty=async(item:any,qtyDipenuhi:number,adminName:string,t
 
 // Modal konfirmasi qty saat submit - default qty = qty diminta (paling umum: dipenuhi penuh,
 // gudang tinggal klik Konfirmasi tanpa ubah apa-apa), gudang cek stok fisik MANUAL sendiri lalu
-// turunkan angkanya kalau stok gak cukup. Validasi: 0 < qty <= qty saat ini di row.
+// turunkan angkanya kalau stok gak cukup. Validasi: 0 <= qty <= qty saat ini di row - qty=0
+// (7 Sep 2026, sebelumnya minimal 1) dipakai kalau gudang BENAR-BENAR gak ada stok sama sekali
+// saat ini, seluruh jumlah otomatis jadi Hutang (lihat prosesSubmitDenganQty di atas).
 function QtyEditModal({item,onConfirm,onCancel,submitting}:{item:any;onConfirm:(qty:number)=>void;onCancel:()=>void;submitting:boolean}){
   const[qtyInput,setQtyInput]=useState(String(item.qty));
   const qtyNum=Number(qtyInput)||0;
-  const valid=qtyNum>0&&qtyNum<=item.qty;
+  const valid=qtyNum>=0&&qtyNum<=item.qty;
   return(
     <div onClick={onCancel} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
       <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:20,width:"100%",maxWidth:340}}>
@@ -110,13 +124,13 @@ function QtyEditModal({item,onConfirm,onCancel,submitting}:{item:any;onConfirm:(
         <div style={{marginBottom:6,fontSize:11,fontWeight:700,color:"#64748b",textTransform:"uppercase" as const,letterSpacing:.4}}>Qty yang benar-benar dikeluarkan</div>
         <input type="number" min="0" max={item.qty} autoFocus value={qtyInput} onChange={(e:any)=>setQtyInput(e.target.value)}
           style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:16,fontWeight:700,color:"#0f172a",fontFamily:"inherit",marginBottom:6,boxSizing:"border-box" as const}}/>
-        {qtyNum>0&&qtyNum<item.qty&&(
+        {qtyNum>=0&&qtyNum<item.qty&&(
           <div style={{fontSize:11.5,color:"#d97706",marginBottom:8,fontWeight:600}}>
-            ⚠ Sisa {item.qty-qtyNum}{item.satuan?` ${item.satuan}`:""} akan jadi Hutang.
+            ⚠ {qtyNum===0?`Belum bisa dipenuhi - seluruh ${item.qty}${item.satuan?` ${item.satuan}`:""} akan jadi Hutang.`:`Sisa ${item.qty-qtyNum}${item.satuan?` ${item.satuan}`:""} akan jadi Hutang.`}
           </div>
         )}
         {!valid&&qtyInput!==""&&(
-          <div style={{fontSize:11.5,color:"#dc2626",marginBottom:8,fontWeight:600}}>Qty harus lebih dari 0 dan tidak boleh melebihi {item.qty}.</div>
+          <div style={{fontSize:11.5,color:"#dc2626",marginBottom:8,fontWeight:600}}>Qty tidak boleh negatif dan tidak boleh melebihi {item.qty}.</div>
         )}
         <div style={{display:"flex",gap:8,marginTop:10}}>
           <button onClick={onCancel} disabled={submitting} style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>Batal</button>
