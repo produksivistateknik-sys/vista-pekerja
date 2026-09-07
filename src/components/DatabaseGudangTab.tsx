@@ -83,6 +83,14 @@ const buildSatuan=(satuanRaw:string,satuanAltRaw:string):{satuan_utama:string|nu
   return{satuan_utama:alt||satuan||null,satuan_list:[alt||satuan].filter(Boolean) as string[]};
 };
 
+// Duplikat = nama SAMA DAN kode_barang SAMA (atau sama-sama kosong) - BUKAN nama doang (7 Sep
+// 2026, bukti nyata dari database: "SKUN BESI 10-6" punya 2 baris SAH sejak import awal, kode
+// barang beda SKB10-6TML vs SKB10-6PM - varian/SKU fisik berbeda yang kebetulan dikasih nama
+// generik sama di source data. Cek nama doang salah nge-flag ini sebagai duplikat, di Edit
+// (blokir simpan), Tambah, DAN Upload (skip diam-diam - ini akar bug "SKUN ter-skip" yang
+// ditemukan sebelumnya). Dipakai bareng ketiganya biar definisi duplikat konsisten.
+const normKode=(k:string|null|undefined):string=>(k||"").trim().toLowerCase();
+
 // Sub-komponen mode Tabel (7 Sep 2026) - dipisah dari DatabaseGudangTab biar gak numpuk di 1
 // fungsi raksasa, tapi tetap 1 file (fitur ini murni bagian dari tab Database ini).
 function KomponenTabelView({rows,totalRows,sortCol,sortDir,onSort,columnFilters,openFilterCol,onOpenFilterCol,
@@ -293,13 +301,16 @@ export function DatabaseGudangTab(){
     // Pakai masterList yang udah di state (fetchMasterList paginasi penuh) - JANGAN .select() baru
     // tanpa .range() di sini, kategori BBMU >1000 baris jadi kepotong diam-diam kalau query ulang
     // (bug nyata ketemu 2 Sep 2026, sama persis kasus renhar - lihat komentar fetchMasterList).
-    const existingSet=new Set(masterList.map((r:any)=>r.nama.trim().toLowerCase()));
+    // Kunci dedup nama+kode_barang (7 Sep 2026) - dulu nama doang, bikin varian sah dengan nama
+    // sama tapi kode_barang beda (mis. SKUN BESI 10-6 SKB10-6TML vs SKB10-6PM) ke-skip diam-diam
+    // dianggap "sudah ada" - lihat komentar normKode.
+    const existingSet=new Set(masterList.map((r:any)=>r.nama.trim().toLowerCase()+"|"+normKode(r.kode_barang)));
     const seenInFile=new Set<string>();
     const toInsert:any[]=[];
     let skipDuplikat=0,skipKosong=0;
     for(const row of parsed){
       if(!row.nama){skipKosong++;continue;}
-      const key=row.nama.toLowerCase();
+      const key=row.nama.toLowerCase()+"|"+normKode(row.kodeBarang);
       if(existingSet.has(key)||seenInFile.has(key)){skipDuplikat++;continue;}
       seenInFile.add(key);
       const{satuan_utama,satuan_list}=buildSatuan(row.satuan,row.satuanAlt);
@@ -330,9 +341,10 @@ export function DatabaseGudangTab(){
     if(!nama){setAddError("Nama wajib diisi");return;}
     setAddSubmitting(true);
     setAddError("");
-    const{data:existing}=await supabase.from("komponen_master").select("id").eq("kategori",kategoriAktif).ilike("nama",nama).limit(1);
-    if(existing&&existing.length>0){
-      setAddError(`Komponen dengan nama ini sudah ada di ${kategoriAktif}`);
+    const kodeBaru=normKode(addKodeBarang);
+    const{data:candidates}=await supabase.from("komponen_master").select("id,kode_barang").eq("kategori",kategoriAktif).ilike("nama",nama);
+    if((candidates||[]).some((r:any)=>normKode(r.kode_barang)===kodeBaru)){
+      setAddError(`Komponen dengan nama & kode barang ini sudah ada di ${kategoriAktif}`);
       setAddSubmitting(false);
       return;
     }
@@ -415,9 +427,10 @@ export function DatabaseGudangTab(){
     if(!nama){setEditError("Nama wajib diisi");return;}
     setEditSubmitting(true);
     setEditError("");
-    const{data:existing}=await supabase.from("komponen_master").select("id").eq("kategori",editTarget.kategori).ilike("nama",nama).neq("id",editTarget.id).limit(1);
-    if(existing&&existing.length>0){
-      setEditError(`Komponen dengan nama ini sudah ada di ${editTarget.kategori}`);
+    const kodeBaru=normKode(editKodeBarang);
+    const{data:candidates}=await supabase.from("komponen_master").select("id,kode_barang").eq("kategori",editTarget.kategori).ilike("nama",nama).neq("id",editTarget.id);
+    if((candidates||[]).some((r:any)=>normKode(r.kode_barang)===kodeBaru)){
+      setEditError(`Komponen dengan nama & kode barang ini sudah ada di ${editTarget.kategori}`);
       setEditSubmitting(false);
       return;
     }
