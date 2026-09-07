@@ -177,15 +177,23 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
     const{data:freshRow}=await supabase.from("panels").select("checklist").eq("id",panel.id).single();
     const freshChecklist=freshRow?.checklist||panel.checklist;
     const cl=freshChecklist[kode]||{qty:0,progress:{},progressByDate:{}};
+    // Siapa yang klik step ini (7 Sep 2026) - dulu updatePctLive sama sekali gak nyimpen identitas
+    // operator, cuma progress polos. Kolom "Operator" di Rencana Harian jadi gak pernah punya data
+    // buat komponen yang progressnya cuma disentuh lewat klik step (belum sempat "Simpan Progress"
+    // yang baru nulis ke progress_checkpoint_log). lastOperator per-tahap (bukan 1 field global per
+    // kode) - WIRING & ASSEMBLING bisa dikerjakan orang berbeda, progress-nya sendiri emang udah
+    // dipecah per tahap (pasangKomponenTahap), jadi identitasnya ikut dipecah sama.
+    const lastOperator={nama:user.nama,ts:new Date().toISOString()};
     let newCl:any;
     if(isTahap){
       const tahapState=cl.pasangKomponenTahap||{};
-      const newTahap={...tahapState,[tugas.tahap]:{...tahapState[tugas.tahap],progress:pct}};
+      const newTahap={...tahapState,[tugas.tahap]:{...tahapState[tugas.tahap],progress:pct,lastOperator}};
       const combined=hitungProgressBusbarGabungan(newTahap,PASANG_KOMPONEN_URUTAN_TAHAP);
       newCl={...cl,pasangKomponenTahap:newTahap,progress:{...(cl.progress||{}),"PASANG KOMPONEN":combined},
         progressByDate:{...(cl.progressByDate||{}),"PASANG KOMPONEN":{...((cl.progressByDate||{})["PASANG KOMPONEN"]||{}),[TODAY]:combined}}};
     } else {
       newCl={...cl,progress:{...(cl.progress||{}),"PASANG KOMPONEN":pct},
+        pasangKomponenLastOperator:lastOperator,
         progressByDate:{...(cl.progressByDate||{}),"PASANG KOMPONEN":{...((cl.progressByDate||{})["PASANG KOMPONEN"]||{}),[TODAY]:pct}}};
     }
     const newChecklist={...freshChecklist,[kode]:newCl};
