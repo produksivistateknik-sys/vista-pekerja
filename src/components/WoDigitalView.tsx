@@ -59,7 +59,7 @@ const fmtTgl=(iso?:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"n
 // TIDAK PERNAH ada/berhasil di Vista Pekerja, cuma ada di Vista Teknik/Admin (repo terpisah) -
 // window.open() dipertahankan di sini, dikonfirmasi ke user.)
 // ─────────────────────────────────────────────────────────────────────────────
-export function WoDigitalView(){
+export function WoDigitalView({registerBackHandler}:{registerBackHandler?:(fn:(()=>boolean)|null)=>void}={}){
   const[loading,setLoading]=useState(true);
   const[woList,setWoList]=useState<any[]>([]);
   const[panelsAll,setPanelsAll]=useState<any[]>([]);
@@ -68,6 +68,14 @@ export function WoDigitalView(){
   const[search,setSearch]=useState("");
   const[viewMode,setViewMode]=useState<"aktif"|"arsip">("aktif");
   const[selectedWo,setSelectedWo]=useState<any|null>(null);
+  // Navigasi Kembali per-level (7 Sep 2026) - lihat komentar sama di KomponenPasangView.tsx.
+  useEffect(()=>{
+    registerBackHandler?.(()=>{
+      if(selectedWo){setSelectedWo(null);return true;}
+      return false;
+    });
+    return()=>registerBackHandler?.(null);
+  },[selectedWo]);
 
   const fetchAll=async()=>{
     setLoading(true);

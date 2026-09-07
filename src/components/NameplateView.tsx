@@ -23,11 +23,19 @@ const TUGAS_NP=[
 // ─────────────────────────────────────────────────────────────────────────────
 // NAMEPLATE VIEW - dipisah dari App.tsx (Sprint 7)
 // ─────────────────────────────────────────────────────────────────────────────
-export function NameplateView({user}:any){
+export function NameplateView({user,registerBackHandler}:any){
   const[panelsList,setPanelsList]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
   const[search,setSearch]=useState("");
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
+  // Navigasi Kembali per-level (7 Sep 2026) - lihat komentar sama di KomponenPasangView.tsx.
+  useEffect(()=>{
+    registerBackHandler?.(()=>{
+      if(selectedWoId){setSelectedWoId(null);return true;}
+      return false;
+    });
+    return()=>registerBackHandler?.(null);
+  },[selectedWoId]);
   const[expandedTugas,setExpandedTugas]=useState<Set<string>>(new Set());
   const toggleTugas=(panelId:number,field:string)=>{
     const key=`${panelId}_${field}`;

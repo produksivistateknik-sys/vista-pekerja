@@ -19,7 +19,7 @@ import { Lbl, Inp } from "./ui/Primitives";
 // BUSBAR (gak punya qty, progress gabungan dari tahap FABRIKASI/PLATING/
 // HEATSHRINK/PASANG - lihat hitungProgressBusbarGabungan di panelHelpers.tsx).
 // ─────────────────────────────────────────────────────────────────────────────
-export function RiwayatKerjaView({proses,label,icon,color}:{proses:string[],label:string,icon:string,color:string}){
+export function RiwayatKerjaView({proses,label,icon,color,registerBackHandler}:{proses:string[],label:string,icon:string,color:string,registerBackHandler?:(fn:(()=>boolean)|null)=>void}){
   const isBusbar=proses.includes("BUSBAR");
 
   const[kodeNamaMap,setKodeNamaMap]=useState<Record<string,string>>({});
@@ -70,6 +70,15 @@ export function RiwayatKerjaView({proses,label,icon,color}:{proses:string[],labe
 
   const[searchPanel,setSearchPanel]=useState("");
   const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
+  // Navigasi Kembali per-level (7 Sep 2026) - lihat komentar sama di KomponenPasangView.tsx.
+  useEffect(()=>{
+    registerBackHandler?.(()=>{
+      if(selectedPanelId){setSelectedPanelId(null);return true;}
+      if(selectedWoId){setSelectedWoId(null);return true;}
+      return false;
+    });
+    return()=>registerBackHandler?.(null);
+  },[selectedWoId,selectedPanelId]);
   const filteredPanelList=useMemo(()=>{
     const q=searchPanel.trim().toLowerCase();
     if(!q)return panelList;

@@ -30,7 +30,7 @@ const STATUS_PIPELINE_LABEL:Record<ProsesStatus,string>={
 // ─────────────────────────────────────────────────────────────────────────────
 // OPERATOR VIEW - dipisah dari App.tsx (Sprint 6, komponen terbesar ~3700 baris)
 // ─────────────────────────────────────────────────────────────────────────────
-export function OperatorView({user,viewMode}:any){
+export function OperatorView({user,viewMode,registerBackHandler}:any){
   void viewMode; // dipake nanti buat render mobile vs desktop
   const wsKey=`vista_pekerja_ws_${user.divisi}_${user.sub_bagian||""}_${user.id||user.username||user.nama||""}`;
   // Kalau app dibuka/reload jam 00:00-06:59 DAN sesi kerja sebelumnya (localStorage) tercatat
@@ -230,6 +230,14 @@ export function OperatorView({user,viewMode}:any){
   // sini, dipilih SEBELUM masuk ke layar filter/grid-tipe-komponen (yang jadi Level 2, discope
   // ke tahap ini), baru Level 3 (kartu komponen) langsung ke detail 1 tahap tanpa grid lagi.
   const [selectedBusbarTahap,setSelectedBusbarTahap]=useState<string|null>(null);
+  // Navigasi Kembali per-level (7 Sep 2026) - lihat komentar sama di KomponenPasangView.tsx.
+  useEffect(()=>{
+    registerBackHandler?.(()=>{
+      if(selectedBusbarTahap){setSelectedBusbarTahap(null);return true;}
+      return false;
+    });
+    return()=>registerBackHandler?.(null);
+  },[selectedBusbarTahap]);
   const PROSES_FLASH_TERSIMPAN=["FINISHING","RENDAM","PAINTING","WIRING CONTROL","WIRING POWER","RAKIT","PASANG KOMPONEN","BUSBAR"];
 
   // Auto-scroll + highlight kartu accordion begitu popup Konfirmasi ditutup, biar operator

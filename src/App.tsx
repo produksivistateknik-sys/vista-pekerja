@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useRef, lazy, Suspense } from "react";
 import { supabase } from "./lib/supabase";
 import { isPushSupported, getPushPermissionState, subscribeToPush } from "./lib/pushNotif";
 import { TODAY, addDays } from "./lib/dateHelpers";
@@ -171,6 +171,19 @@ export default function App(){
   const [selectedMenu,setSelectedMenu]=useState<string|null>(()=>{
     try{return localStorage.getItem("vista_pekerja_selected_menu")||null;}catch{return null;}
   });
+  // NAVIGASI KEMBALI PER-LEVEL (7 Sep 2026) - dulu header "Kembali" ini SELALU setSelectedMenu(null)
+  // gak peduli view di dalamnya lagi di level berapa (banyak view punya level sendiri, misal
+  // Daftar Proyek -> Detail Panel) - user yang lagi 2-3 level dalam langsung ke-lempar balik ke
+  // grid menu, skip semua level di antaranya. View yang punya level internal "lapor" cara mundur
+  // 1 langkahnya sendiri ke sini lewat registerBackHandler (dipanggil dari useEffect view itu) -
+  // header cuma jalanin handler itu DULU, baru fallback ke exit grid kalau viewnya bilang "gak ada
+  // level lagi buat dimundurin" (return false / handler-nya null).
+  const backHandlerRef=useRef<(()=>boolean)|null>(null);
+  const registerBackHandler=(fn:(()=>boolean)|null)=>{backHandlerRef.current=fn;};
+  // Jaga-jaga (safety net) - kalau view ganti (selectedMenu berubah) tapi handler lama entah
+  // kenapa gak sempat unregister sendiri (harusnya sudah via cleanup useEffect di tiap view),
+  // reset paksa di sini biar gak ada handler basi milik view LAMA nyangkut kepakai buat view BARU.
+  useEffect(()=>{backHandlerRef.current=null;},[selectedMenu]);
   const bisaReviewPotong=user?.divisi==="mekanik"&&user?.sub_bagian==="Potong";
   const bisaReviewPainting=user?.divisi==="painting";
   const prosesRiwayat:string[]=cfg?.subBagianProses?.[user?.sub_bagian]||cfg?.proses||[];
@@ -498,26 +511,29 @@ export default function App(){
             ):(
               <>
                 <div style={{padding:"12px 16px 0"}}>
-                  <button onClick={()=>setSelectedMenu(null)} style={{display:"flex",alignItems:"center",gap:6,
+                  <button onClick={()=>{
+                    const handled=backHandlerRef.current?.();
+                    if(!handled)setSelectedMenu(null);
+                  }} style={{display:"flex",alignItems:"center",gap:6,
                     background:"#fff",border:`1px solid ${cfg?.color||"#1d4ed8"}30`,borderRadius:10,padding:"8px 14px",
                     fontSize:12,fontWeight:700,color:cfg?.color||"#1d4ed8",cursor:"pointer",boxShadow:"0 2px 8px #0000000f",fontFamily:"inherit"}}>
                     <i className="ti ti-arrow-left" style={{fontSize:14}}/> Kembali
                   </button>
                 </div>
-                {selectedMenu==="permintaan"?<PermintaanView user={user}/>
+                {selectedMenu==="permintaan"?<PermintaanView user={user} registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="arsip"&&arsipSeksi==="qc"?<ArsipQCView/>
                   :selectedMenu==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
-                  :selectedMenu==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas}/>
-                  :selectedMenu==="riwayat"?<RiwayatKerjaView proses={prosesRiwayat} label={cfg?.label||user.divisi} icon={cfg?.icon||"🕘"} color={cfg?.color||"#d97706"}/>
+                  :selectedMenu==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas} registerBackHandler={registerBackHandler}/>
+                  :selectedMenu==="riwayat"?<RiwayatKerjaView proses={prosesRiwayat} label={cfg?.label||user.divisi} icon={cfg?.icon||"🕘"} color={cfg?.color||"#d97706"} registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="review"?(bisaReviewPainting?<ReviewPaintingView/>:<ReviewPotongView/>)
-                  :selectedMenu==="tambahan"?<KomponenTambahanView user={user}/>
+                  :selectedMenu==="tambahan"?<KomponenTambahanView user={user} registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="proyekluar"?<ProyekLuarView user={user}/>
-                  :selectedMenu==="momfat"?<ErrorBoundary label="MOM FAT"><Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat...</div>}><MomFatView user={user}/></Suspense></ErrorBoundary>
-                  :selectedMenu==="wodigital"?<WoDigitalView/>
-                  :user.divisi==="nameplate"?<NameplateView user={user}/>
-                  :user.divisi==="qc"?<QCChecklistTab user={user}/>
-                  :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS}/>
-                  :<OperatorView user={user} viewMode={viewMode}/>}
+                  :selectedMenu==="momfat"?<ErrorBoundary label="MOM FAT"><Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat...</div>}><MomFatView user={user} registerBackHandler={registerBackHandler}/></Suspense></ErrorBoundary>
+                  :selectedMenu==="wodigital"?<WoDigitalView registerBackHandler={registerBackHandler}/>
+                  :user.divisi==="nameplate"?<NameplateView user={user} registerBackHandler={registerBackHandler}/>
+                  :user.divisi==="qc"?<QCChecklistTab user={user} registerBackHandler={registerBackHandler}/>
+                  :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS} registerBackHandler={registerBackHandler}/>
+                  :<OperatorView user={user} viewMode={viewMode} registerBackHandler={registerBackHandler}/>}
               </>
             )}
         </div>

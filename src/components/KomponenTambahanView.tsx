@@ -10,7 +10,7 @@ import { TODAY } from "../lib/dateHelpers";
 // Gak ada cek kapasitas (memang buat kondisi darurat/di luar rencana).
 // Dipisah dari App.tsx (Sprint 7).
 // ─────────────────────────────────────────────────────────────────────────────
-export function KomponenTambahanView({user}:any){
+export function KomponenTambahanView({user,registerBackHandler}:any){
   const namaOperator=user?.nama||user?.name||"Operator";
   const wsKey=`vista_pekerja_ws_${user.divisi}_${user.sub_bagian||""}_${user.id||user.username||user.nama||""}`;
   const sesiKerja=(()=>{
@@ -25,6 +25,16 @@ export function KomponenTambahanView({user}:any){
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
   const[panelList,setPanelList]=useState<any[]>([]);
   const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
+  // Navigasi Kembali per-level (7 Sep 2026) - lihat komentar sama di KomponenPasangView.tsx.
+  // 3 level di sini: List WO -> Panel -> Form, jadi mundur Panel dulu baru WO.
+  useEffect(()=>{
+    registerBackHandler?.(()=>{
+      if(selectedPanelId){setSelectedPanelId(null);return true;}
+      if(selectedWoId){setSelectedWoId(null);return true;}
+      return false;
+    });
+    return()=>registerBackHandler?.(null);
+  },[selectedWoId,selectedPanelId]);
   const[namaKomponen,setNamaKomponen]=useState("");
   const[qty,setQty]=useState("");
   const[submitting,setSubmitting]=useState(false);

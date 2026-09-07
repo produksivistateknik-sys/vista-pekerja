@@ -16,11 +16,19 @@ const STATUS_3_NP=[{key:"todo",label:"To Do",pct:0},{key:"progress",label:"In Pr
 // Sama persis pola NameplateView, digenerikkan buat 1 tugas (Warehouse ATAU QS, bukan sepasang) -
 // dipakai via prop `tugas` (TUGAS_WAREHOUSE/TUGAS_QS), termasuk nama bucket foto sendiri-sendiri.
 // ─────────────────────────────────────────────────────────────────────────────
-export function KomponenProgressView({user,tugas}:{user:any,tugas:{field:string,label:string,icon:string,color:string,progressField:string,fotoField:string,historyField:string,updatedByField:string,updatedAtField:string,bucket:string}}){
+export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,tugas:{field:string,label:string,icon:string,color:string,progressField:string,fotoField:string,historyField:string,updatedByField:string,updatedAtField:string,bucket:string},registerBackHandler?:(fn:(()=>boolean)|null)=>void}){
   const[panelsList,setPanelsList]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
   const[search,setSearch]=useState("");
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
+  // Navigasi Kembali per-level (7 Sep 2026) - lihat komentar sama di KomponenPasangView.tsx.
+  useEffect(()=>{
+    registerBackHandler?.(()=>{
+      if(selectedWoId){setSelectedWoId(null);return true;}
+      return false;
+    });
+    return()=>registerBackHandler?.(null);
+  },[selectedWoId]);
   const[expandedPanel,setExpandedPanel]=useState<Set<number>>(new Set());
   const togglePanel=(panelId:number)=>{
     setExpandedPanel(prev=>{

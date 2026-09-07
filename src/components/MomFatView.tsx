@@ -21,8 +21,10 @@ import { SectionCard, EmptyState } from "./ui/Primitives";
 type MomFat={id:number,judul:string,file_url:string,file_type:string,status:string,operator_nama:string,created_at:string,is_archived:boolean};
 type Poin={id:number,mom_fat_id:number,urutan:number,teks:string,selesai:boolean,ocr_confidence:number|null,dicentang_oleh:string|null,foto:FotoViewerPekerja[]};
 
-export function MomFatView({user}:{user:any}){
+export function MomFatView({user,registerBackHandler}:{user:any,registerBackHandler?:(fn:(()=>boolean)|null)=>void}){
   const[mode,setMode]=useState<"list"|"upload"|"detail"|"arsip">("list");
+  // Navigasi Kembali per-level (7 Sep 2026) - lihat komentar sama di KomponenPasangView.tsx.
+  // "upload"/"arsip" itu TAB (peer), bukan level - cuma "detail" yang perlu mundur ke "list".
   const[loading,setLoading]=useState(true);
   const[list,setList]=useState<MomFat[]>([]);
   const[progressMap,setProgressMap]=useState<Record<number,{done:number,total:number}>>({});
@@ -122,6 +124,13 @@ export function MomFatView({user}:{user:any}){
 
   // ── Detail/checklist ──
   const[activeMomFat,setActiveMomFat]=useState<MomFat|null>(null);
+  useEffect(()=>{
+    registerBackHandler?.(()=>{
+      if(mode==="detail"){setMode("list");setActiveMomFat(null);return true;}
+      return false;
+    });
+    return()=>registerBackHandler?.(null);
+  },[mode]);
   const[poinList,setPoinList]=useState<Poin[]>([]);
   const[editingId,setEditingId]=useState<number|null>(null);
   const[editText,setEditText]=useState("");

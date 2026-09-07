@@ -62,7 +62,7 @@ const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
 const selStyle:any={width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
 const inpStyle:any={width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:13,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
 
-export function PermintaanView({user}:{user:any}){
+export function PermintaanView({user,registerBackHandler}:{user:any,registerBackHandler?:(fn:(()=>boolean)|null)=>void}){
   const namaOperator=user?.nama||user?.name||"Operator";
   const divisi:string=user?.divisi||"";
   const subBagian:string|null=user?.sub_bagian||null;
@@ -75,6 +75,15 @@ export function PermintaanView({user}:{user:any}){
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
   const[panelList,setPanelList]=useState<any[]>([]);
   const[selectedPanelId,setSelectedPanelId]=useState<number|null>(null);
+  // Navigasi Kembali per-level (7 Sep 2026) - lihat komentar sama di KomponenPasangView.tsx.
+  useEffect(()=>{
+    registerBackHandler?.(()=>{
+      if(selectedPanelId){setSelectedPanelId(null);return true;}
+      if(selectedWoId){setSelectedWoId(null);return true;}
+      return false;
+    });
+    return()=>registerBackHandler?.(null);
+  },[selectedWoId,selectedPanelId]);
 
   const[masterList,setMasterList]=useState<any[]>([]); // komponen_master, di-scope ke kategori=jenisTab
   // Guard race condition (2 Sep 2026, pola sama kayak DatabaseGudangTab.tsx - ketemu bug nyata di

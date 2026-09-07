@@ -12,11 +12,19 @@ import { isVideoFoto, isGenericFoto } from "../lib/mediaThumb";
 // ─────────────────────────────────────────────────────────────────────────────
 // QC CHECKLIST TAB - dipisah dari App.tsx (Sprint 7)
 // ─────────────────────────────────────────────────────────────────────────────
-export function QCChecklistTab({user}:any){
+export function QCChecklistTab({user,registerBackHandler}:any){
   const[panelsList,setPanelsList]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
   const[search,setSearch]=useState("");
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
+  // Navigasi Kembali per-level (7 Sep 2026) - lihat komentar sama di KomponenPasangView.tsx.
+  useEffect(()=>{
+    registerBackHandler?.(()=>{
+      if(selectedWoId){setSelectedWoId(null);return true;}
+      return false;
+    });
+    return()=>registerBackHandler?.(null);
+  },[selectedWoId]);
   const[searchPanel,setSearchPanel]=useState("");
   const[uploadingId,setUploadingId]=useState<string|null>(null);
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);

@@ -30,7 +30,7 @@ export type KomponenPasangTugas={
 // Progress, archive ke panel_seksi_archived (ON CONFLICT panel_id,seksi,kode - constraint yang
 // sama dipakai trigger panels_auto_archive_seksi()) langsung berapapun persennya.
 // ─────────────────────────────────────────────────────────────────────────────
-export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTugas}){
+export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tugas:KomponenPasangTugas,registerBackHandler?:(fn:(()=>boolean)|null)=>void}){
   // BUG FIX (14 Agu 2026): checklist[kode].fotoPemasangan itu 1 array yang dipakai BERSAMA
   // Assembling Luar & Wiring Control buat komponen tahap (Box Control/Pintu) - tapi masing-masing
   // nyimpen snapshot arsipnya sendiri (seksi=assembling_luar vs seksi=wiring_control), di WAKTU
@@ -48,6 +48,15 @@ export function KomponenPasangView({user,tugas}:{user:any,tugas:KomponenPasangTu
   const[loading,setLoading]=useState(true);
   const[search,setSearch]=useState("");
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
+  // Navigasi Kembali per-level (7 Sep 2026) - lapor ke App.tsx cara mundur 1 langkah dari sini
+  // (Detail -> Daftar Proyek), biar header "Kembali" di App.tsx gak langsung skip ke grid menu.
+  useEffect(()=>{
+    registerBackHandler?.(()=>{
+      if(selectedWoId){setSelectedWoId(null);return true;}
+      return false;
+    });
+    return()=>registerBackHandler?.(null);
+  },[selectedWoId]);
   const[expandedPanel,setExpandedPanel]=useState<Set<number>>(new Set());
   const togglePanel=(panelId:number)=>{
     setExpandedPanel(prev=>{
