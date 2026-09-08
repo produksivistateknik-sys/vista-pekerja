@@ -45,6 +45,10 @@ const statusTerkini=(item:any):{label:string,color:string}=>{
   if(item.sudah_diambil)return{label:"✓ Sudah Diambil",color:"#0369a1"};
   if(item.status==="submit")return{label:"✓ Sudah Siap",color:"#16a34a"};
   if(item.status==="reject")return{label:"✕ Ditolak",color:"#dc2626"};
+  // Jaring pengaman (8 Sep 2026) - ditolak_admin seharusnya udah gak pernah nyampe sini lagi
+  // (lihat exclude di fetchData), tapi tetap dikasih label rapi kalau suatu saat ke-trigger -
+  // jangan sampai nama status mentah ke-print ke user.
+  if(item.status==="ditolak_admin")return{label:"✕ Ditolak Admin",color:"#b91c1c"};
   return{label:item.status,color:"#94a3b8"};
 };
 // Key status buat filter (6 Sep 2026) - HARUS ikut urutan prioritas SAMA PERSIS kayak
@@ -86,9 +90,13 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
     const endIso=tanggal+"T23:59:59.999";
     // 2 sumber event per item - updated_at (aksi Gudang: submit/reject) dan diambil_at (aksi
     // operator: konfirmasi ambil) - query terpisah, tapi hasilnya di-dedup jadi 1 baris/item.
+    // BUG FIX (8 Sep 2026) - neq status='ditolak_admin' WAJIB di sini: fitur approval admin
+    // (PermintaanAdminTab.tsx) reuse kolom updated_at/updated_by buat aksi tolak admin (biar
+    // konsisten pola submit/reject Gudang) - tanpa exclude ini, item yang DITOLAK ADMIN (belum
+    // pernah sampai ke Gudang sama sekali) ikut "ketangkep" query ini seolah aksi Gudang.
     const [byUpdated,byDiambil]=await Promise.all([
       fetchAllPaged((from,to)=>
-        supabase.from("permintaan_item").select("*").not("updated_at","is",null)
+        supabase.from("permintaan_item").select("*").not("updated_at","is",null).neq("status","ditolak_admin")
           .gte("updated_at",startIso).lte("updated_at",endIso).range(from,to)),
       fetchAllPaged((from,to)=>
         supabase.from("permintaan_item").select("*").not("diambil_at","is",null)
