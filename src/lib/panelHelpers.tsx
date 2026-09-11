@@ -174,10 +174,14 @@ export function computeProsesStatus(progressMap:Record<string,number>|undefined|
 }
 // Status cascading ANTAR TAHAP di dalam BUSBAR sendiri (Fabrikasi->Plating->Heat-Shrink->Pasang) -
 // LEVEL BEDA dari computeProsesStatus() di atas (yang gating antar PROSES, dan BUSBAR di situ
-// sengaja gak digating - selalu TO DO dari 0%). Ini buat kartu grid per-tahap (REVISI 2 Sep 2026):
-// FABRIKASI (index 0) selalu minimal TO DO, gak pernah NOT YET. Tahap lain NOT YET (terkunci)
-// sampai tahap SEBELUMNYA tembus PROSES_STATUS_GATE_PCT (25%), pakai ambang yang sama kayak
-// gating antar-proses biar konsisten.
+// sengaja gak digating - selalu TO DO dari 0%). Ini buat BADGE/status label kartu grid per-tahap
+// (REVISI 2 Sep 2026): FABRIKASI (index 0) selalu minimal TO DO, gak pernah NOT YET. Tahap lain
+// NOT YET sampai tahap SEBELUMNYA tembus PROSES_STATUS_GATE_PCT (25%).
+// REVISI 11 Sep 2026 (audit bug "Heat-Shrink 100% padahal Plating 0%"): status "NOT YET" di sini
+// TIDAK LAGI dipakai buat ngunci seluruh kartu (pointerEvents:none) - cuma informasional/badge.
+// Pembatasan SEBENARNYA sekarang di getBusbarCapTahap() di bawah (cap dinamis per-tombol PCT_STEPS,
+// bukan gate biner locked/unlocked) - lihat OperatorView.tsx (PCT_STEPS render, isLocked bypass
+// khusus BUSBAR) dan trigger DB panels_validate_busbar_cap_progress (lapis kedua).
 export function computeBusbarTahapStatus(ti:number,urutan:string[],busbarTahapState:any):ProsesStatus{
   const progress=busbarTahapState?.[urutan[ti]]?.progress||0;
   if(progress>=100)return "DONE";
@@ -185,6 +189,18 @@ export function computeBusbarTahapStatus(ti:number,urutan:string[],busbarTahapSt
   if(ti===0)return "TO DO";
   const progressSebelumnya=busbarTahapState?.[urutan[ti-1]]?.progress||0;
   return progressSebelumnya>=PROSES_STATUS_GATE_PCT?"TO DO":"NOT YET";
+}
+// Cap progress BERTAHAP (11 Sep 2026, ganti model gate biner di atas) - progress tahap N TIDAK
+// BOLEH MELEBIHI progress tahap N-1 di titik manapun (bukan "harus 100% dulu baru boleh mulai").
+// Tahap pertama (index 0 di urutan - hasil getUrutanTahapBusbar(kode), sudah otomatis benar buat
+// versi 3-tahap COUPLER/GROUND yang skip HEATSHRINK) gak ada cap, bebas 0-100. Dipakai FE buat
+// disable per-tombol PCT_STEPS + guard simpan - versi SQL/plpgsql-nya (trigger DB
+// panels_validate_busbar_cap_progress) HARUS logika yang SAMA PERSIS biar FE & BE gak pernah beda
+// hasil (lihat migration terkait).
+export function getBusbarCapTahap(busbarTahapState:any,urutan:string[],tahap:string):number{
+  const idx=urutan.indexOf(tahap);
+  if(idx<=0)return 100;
+  return Number(busbarTahapState?.[urutan[idx-1]]?.progress)||0;
 }
 export function getFirstCompletionDate(cl:any, proses:string){
   const byDate=cl?.progressByDate?.[proses];

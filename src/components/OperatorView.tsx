@@ -8,7 +8,7 @@ import {
   timerKey, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_ICON, BUSBAR_URUTAN_TAHAP_LENGKAP,
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
-  computeProsesStatus, computeBusbarTahapStatus, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
+  computeProsesStatus, computeBusbarTahapStatus, getBusbarCapTahap, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
   PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA,
 } from "../lib/panelHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
@@ -1223,6 +1223,14 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{}};
     const urutan=getUrutanTahapBusbar(kode);
     const busbarTahapState=getBusbarTahapState(cl,kode);
+    // GUARD cap dinamis (11 Sep 2026) - dicek ULANG di sini (bukan cuma disable tombol di JSX),
+    // karena fungsi ini bisa dipanggil langsung (mis. devtools/RPC manual) lewat jalur lain di
+    // luar tombol PCT_STEPS. progress tahap ini gak boleh lebih dari tahap sebelumnya.
+    const capTahap=getBusbarCapTahap(busbarTahapState,urutan,tahap);
+    if(pct>capTahap){
+      alert(`Progress ${BUSBAR_TAHAP_LABEL[tahap]} gak boleh lebih dari ${capTahap}% dulu - selesaikan tahap sebelumnya lebih tinggi baru bisa naik lagi.`);
+      return;
+    }
     // FIX (audit "Simpan Fabrikasi diam tanpa reaksi", 1 Sep 2026) - dulu cuma progress yang
     // di-overwrite di sini, sudahDisimpan100 dibiarkan nempel dari state lama. Kalau operator
     // gak sengaja nge-tap step pertama pas udah 100% (progress jatuh ke 0 lewat toggle-turun di
@@ -1292,6 +1300,15 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     }
     const pctTahap=busbarTahapState[tahap]?.progress||0;
     if(pctTahap===0){alert('Progress tahap ini masih 0%, belum ada yang bisa disimpan.');return false;}
+    // GUARD cap dinamis (11 Sep 2026) - re-check di titik Simpan, bukan cuma pas PCT_STEPS diklik,
+    // buat jaga-jaga kalau tahap sebelumnya sempat TURUN progress-nya di antara PCT_STEPS diklik
+    // dan tombol Simpan ditekan (race/multi-device) - progress yang mau disimpan gak boleh lebih
+    // dari tahap sebelumnya SAAT INI.
+    const capTahapSimpan=getBusbarCapTahap(busbarTahapState,urutan,tahap);
+    if(pctTahap>capTahapSimpan){
+      alert(`Progress ${BUSBAR_TAHAP_LABEL[tahap]} (${pctTahap}%) melebihi batas tahap sebelumnya (${capTahapSimpan}%) - gak bisa disimpan. Turunkan dulu atau naikkan tahap sebelumnya.`);
+      return false;
+    }
 
     setSavingTahap(prev=>({...prev,[savingKey]:true}));
     try{
@@ -1983,8 +2000,20 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         // BOLEH ikut di-lock - dicek langsung ke data live: ada 8 timer aktif hari ini di komponen
         // yang kebaca NOT YET, kalau di-lock operator gak akan bisa STOP timer itu sama sekali
         // lewat card manapun. Prefix match ke timerAktif (bukan exact key) biar nangkep operator ID
-        // apapun/tahap apapun (BUSBAR/WIRING dual-tahap punya suffix tahap di timerKey-nya).
-        const rowHasActiveTimer=(r:any)=>Object.keys(timerAktif).some(k=>k.startsWith(`${r.panelId}_${r.kode}_${proses}_`));
+        // apapun.
+        // AUDIT FIX (11 Sep 2026, root cause bug "Heat-Shrink 100% padahal Plating 0%"): buat BUSBAR
+        // prefix-match di atas TANPA tahap salah nangkep timer TAHAP LAIN (timerKey formatnya
+        // panelId_kode_proses_pekerjaId_TAHAP - prefix panelId_kode_proses_ doang cocok ke tahap
+        // apapun) - akibatnya timer Fabrikasi yang masih jalan bisa bikin kartu Heat-Shrink kebaca
+        // "punya timer aktif" juga padahal timernya bukan punya Heat-Shrink. Sekarang scoped ke
+        // selectedBusbarTahap (tahap yang lagi dibuka operator) - HARUS exact match suffix tahap,
+        // bukan cuma prefix. Proses lain (non-BUSBAR, gak punya dimensi tahap) tetap prefix match
+        // apa adanya, gak berubah.
+        const rowHasActiveTimer=(r:any)=>{
+          const prefix=`${r.panelId}_${r.kode}_${proses}_`;
+          const tahapNow=proses==="BUSBAR"?selectedBusbarTahap:null;
+          return Object.keys(timerAktif).some(k=>k.startsWith(prefix)&&(!tahapNow||k.endsWith(`_${tahapNow}`)));
+        };
         // Target aksi massal (Mulai/Simpan Semua/dst) - NOT YET dikeluarkan, KECUALI yang udah
         // punya timer aktif (biar "Selesai Semua" bisa tetap jangkau & stop timer itu). Kartu NOT
         // YET udah di-disable (pointerEvents:none) individual dengan pengecualian yang sama, tapi
@@ -2767,7 +2796,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                 const workers=idsKomp.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
                 const busbarUrutan=isBusbarProses?getUrutanTahapBusbar(r.kode):[];
                 const busbarTahapState=isBusbarProses?getBusbarTahapState(panelsMap[r.panelId]?.checklist?.[r.kode],r.kode):null;
-                const isLocked=r.pipelineStatus==="NOT YET"&&!rowHasActiveTimer(r);
+                // REVISI 11 Sep 2026 (ganti model gate biner -> cap dinamis): BUSBAR gak lagi kena
+                // lock SELURUH kartu berdasarkan status NOT YET (25%) - kartu tetap bisa
+                // dibuka/dilihat, operator boleh mulai timer tahap manapun. Pembatasan sebenarnya
+                // sekarang di level tombol PCT_STEPS (getBusbarCapTahap, lihat di bawah) + trigger
+                // DB, bukan di kartu. Proses lain (WIRING dst) TIDAK berubah, tetap pakai gate lama.
+                const isLocked=!isBusbarProses&&r.pipelineStatus==="NOT YET"&&!rowHasActiveTimer(r);
                 return(
                   <div key={`${r.task.id}-${r.kode}-m`} style={{background:done?"#f0fdf4":"#fff",
                     border:`1.5px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:14,padding:"12px 14px",
@@ -2787,6 +2821,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                           const stTahap=busbarTahapState?.[t]||{progress:0,sudahDisimpan100:false};
                           const pctTahap=stTahap.progress||0;
                           const bisaEditTahap=canSimpanBusbarTahap(r.task,r.panelId,r.kode,t);
+                          // Cap dinamis (11 Sep 2026) - progress tahap ini gak boleh lebih dari tahap
+                          // sebelumnya (getBusbarCapTahap, 100 kalau ini tahap pertama). Tahap
+                          // sebelumnya buat label tooltip tombol yang ke-disable karena cap.
+                          const capTahap=getBusbarCapTahap(busbarTahapState,busbarUrutan,t);
+                          const tahapSebelumnyaLabel=ti>0?BUSBAR_TAHAP_LABEL[busbarUrutan[ti-1]]:null;
                           const timerKeysTahap=workersTahap.map((w:any)=>timerKey(r.panelId,r.kode,"BUSBAR",w.id,t));
                           const anyTimerRunningTahap=timerKeysTahap.some((k:string)=>!!timerAktif[k]);
                           const anyLoadingTahap=timerKeysTahap.some((k:string)=>timerLoading===k);
@@ -2846,20 +2885,31 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                                   {anyLoadingTahap?"...":anyTimerRunningTahap?`⏹ Selesai ${durasiLabelTahap}`:"▶ Mulai"}
                                 </button>
                               )}
+                              {tahapSebelumnyaLabel&&capTahap<100&&(
+                                <div style={{fontSize:10,color:"#b45309",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:6,padding:"4px 7px"}}>
+                                  ⚠️ Maks {capTahap}% dulu - selesaikan {tahapSebelumnyaLabel} sampai lebih tinggi buat buka step berikutnya
+                                </div>
+                              )}
                               <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
                                 {PCT_STEPS.map((s:number)=>{
                                   const reached=pctTahap>=s;
                                   const isNext=s===PCT_STEPS.find((x:number)=>x>pctTahap);
                                   const prevStep=PCT_STEPS[PCT_STEPS.indexOf(s)-1]||0;
+                                  // Cap dinamis (11 Sep 2026): step di atas progress tahap sebelumnya
+                                  // ikut didisable, TERLEPAS dari bisaEditTahap (operator+timer check).
+                                  const overCap=s>capTahap;
+                                  const stepDisabled=!bisaEditTahap||overCap;
+                                  const titleAttr=overCap?`Selesaikan ${tahapSebelumnyaLabel} dulu sampai ${s}% buat buka step ini (sekarang maks ${capTahap}%)`:undefined;
                                   return(
-                                    <button key={s} disabled={!bisaEditTahap}
-                                      onClick={()=>{if(bisaEditTahap)updatePctManualBusbarTahap(r.panelId,r.kode,t,reached?prevStep:s);}}
+                                    <button key={s} disabled={stepDisabled} title={titleAttr}
+                                      onClick={()=>{if(!stepDisabled)updatePctManualBusbarTahap(r.panelId,r.kode,t,reached?prevStep:s);}}
                                       style={{flex:1,minWidth:36,padding:"7px 3px",borderRadius:7,border:"none",
-                                        cursor:bisaEditTahap?"pointer":"not-allowed",
-                                        background:reached?pColor(s):isNext?"#eff6ff":"#f1f5f9",
-                                        color:reached?"#fff":isNext?pc:"#94a3b8",
-                                        fontWeight:700,fontSize:10,outline:isNext&&bisaEditTahap?`2px solid ${pc}`:"none"}}>
-                                      {reached?"✓":`${s}%`}
+                                        cursor:stepDisabled?"not-allowed":"pointer",
+                                        background:reached?pColor(s):overCap?"#f8fafc":isNext?"#eff6ff":"#f1f5f9",
+                                        color:reached?"#fff":overCap?"#cbd5e1":isNext?pc:"#94a3b8",
+                                        opacity:overCap?0.6:1,
+                                        fontWeight:700,fontSize:10,outline:isNext&&!stepDisabled?`2px solid ${pc}`:"none"}}>
+                                      {reached?"✓":overCap?`🔒${s}%`:`${s}%`}
                                     </button>
                                   );
                                 })}
