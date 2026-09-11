@@ -1328,6 +1328,29 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       alertGagalSimpanBusbar(err,'simpanProgressTahapBusbar');
       return false;
     }
+    // Catat snapshot persen ke fcs_timer_kerja (kolom `progress`, ditambah investigasi "histori
+    // persen busbar" - JANGAN dianggap pengganti checklist.busbarTahap di atas, itu tetap sumber
+    // progress TERKINI/gabungan, ini MURNI tambahan histori per-record). Diisi ke baris sesi
+    // TERBARU (mulai terbesar) per operator utk panel+komponen+tahap+tanggal ini - dicari lagi
+    // di sini (bukan pakai id dari timerAktif) karena operator boleh masih klik Simpan lagi
+    // SETELAH klik Selesai (canSimpanBusbarTahap juga izinin timerSelesaiHariIni), jadi baris
+    // yang relevan bisa aja udah tertutup (selesai != null). Best-effort & TIDAK BOLEH gagalin
+    // Simpan-nya sendiri (checkpoint + checklist di atas udah sukses) - kalau kolom belum ada
+    // atau update gagal, cukup ke-log, operator tetap lihat Simpan berhasil.
+    try{
+      for(const wid of idsKomp){
+        const{data:row,error:selErr}=await supabase.from('fcs_timer_kerja')
+          .select('id').eq('panel_id',panelId).eq('kode_komponen',kode).eq('tahap',tahap)
+          .eq('tanggal',viewDate).eq('pekerja_id',wid)
+          .order('mulai',{ascending:false}).limit(1).maybeSingle();
+        if(selErr){console.warn('[simpanProgressTahapBusbar] gagal cari baris fcs_timer_kerja utk progress (non-fatal)',selErr);continue;}
+        if(!row)continue;
+        const{error:updErr}=await supabase.from('fcs_timer_kerja').update({progress:pctTahap}).eq('id',row.id);
+        if(updErr)console.warn('[simpanProgressTahapBusbar] gagal update progress fcs_timer_kerja (non-fatal)',updErr);
+      }
+    }catch(err){
+      console.warn('[simpanProgressTahapBusbar] gagal catat progress ke fcs_timer_kerja (non-fatal)',err);
+    }
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     await autoStopTimerJikaSelesai(panelId,kode,"BUSBAR",pctTahap,idsKomp,tahap);
     return true;
