@@ -229,18 +229,27 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
     if(!koreksiAlasan.trim()){setKoreksiError("Alasan koreksi wajib diisi");return;}
     setKoreksiSubmitting(true);
     setKoreksiError("");
+    // REVISI (13 Sep 2026, "approval koreksi qty diarahkan ke Admin") - dulu target_divisi diisi
+    // divisi peminta asal (koreksiTarget.perm.divisi), disetujui siapa pun yang login di divisi
+    // itu (vista-pekerja PermintaanView.tsx tab "Koreksi", SEKARANG DIHAPUS). Sekarang SELALU
+    // 'admin' - pseudo-divisi (konsisten sama admins.divisi='admin' di Login.tsx vista-teknik),
+    // diputuskan lewat PermintaanAdminTab.tsx tab "Koreksi Qty", pola sama kayak approval BBMB/
+    // BBMU. Kolom target_divisi TETAP dipakai apa adanya (gak ganti skema) - cuma nilainya yang
+    // berubah, biar targeted edit bukan migrasi kolom.
     const{error:insErr}=await supabase.from("permintaan_item_koreksi").insert({
       permintaan_item_id:koreksiTarget.id,
       qty_lama:koreksiTarget.qty,
       qty_diusulkan:qtyBaru,
       alasan:koreksiAlasan.trim(),
       diajukan_oleh:adminName,
-      target_divisi:koreksiTarget.perm.divisi,
+      target_divisi:"admin",
     });
     if(insErr){setKoreksiError("Gagal ajukan: "+insErr.message);setKoreksiSubmitting(false);return;}
     try{
+      // targetAdmin (bukan targetDivisi lagi) - broadcast ke semua admin Vista Teknik yang
+      // subscribe, sama persis pola trigger 'baru' (permintaan BBMB/BBMU baru).
       await supabase.functions.invoke("notify-permintaan",{body:{
-        trigger:"koreksi_baru",targetDivisi:koreksiTarget.perm.divisi,
+        trigger:"koreksi_baru",targetAdmin:true,
         namaKomponen:koreksiTarget.nama_komponen,qtyLama:koreksiTarget.qty,qtyDiusulkan:qtyBaru,satuan:koreksiTarget.satuan,
       }});
     }catch{/* notifikasi gagal - diabaikan, pengajuan tetap tersimpan */}
