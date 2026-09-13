@@ -107,11 +107,19 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       // tapi ~12 kolom JSON histori divisi lain (qc_checklist, nameplate/yellowmark/qs/
       // warehouse/busbar dll) gak kepakai sama sekali di sini.
       fetchAllPanels("id,wo_id,nama,tipe,checklist,pasang_komponen_photos"),
-      supabase.from("bom_master").select("kode_komponen,nama_komponen"),
+      supabase.from("bom_master").select("kode_komponen,nama_komponen,tipe_panel"),
       supabase.from("bom_proses_relevan").select("*"),
     ]);
+    // AUDIT FIX (13 Sep 2026, "nama komponen salah/ketuker") - dulu kMap cuma di-key pakai
+    // kode_komponen doang, TANPA tipe_panel. bom_master itu SATU tabel BERISI SEMUA tipe panel
+    // sekaligus, dan kode yang SAMA (mis. "WM.7") berarti KOMPONEN FISIK BEDA TOTAL tergantung
+    // tipenya (WM_MS vs WM_POLY dst) - row terakhir yang kebetulan dikembalikan query "menang"
+    // menimpa row tipe lain, jadi nama yang tampil ke operator bisa acak/salah, ketuker dari tipe
+    // panel yang gak nyambung sama panel yang lagi dilihat. Dicek live 13 Sep 2026: 0 baris
+    // bom_master tanpa tipe_panel, 0 duplikat kombinasi (tipe_panel,kode_komponen) - key gabungan
+    // ini aman dipakai, gak ada celah row yang kehilangan nama.
     const kMap:Record<string,string>={};
-    (bomRows||[]).forEach((b:any)=>{kMap[b.kode_komponen]=b.nama_komponen;});
+    (bomRows||[]).forEach((b:any)=>{kMap[`${b.tipe_panel}|${b.kode_komponen}`]=b.nama_komponen;});
     const rSet=new Set<string>(),hSet=new Set<string>();
     (relevanRows||[]).forEach((r:any)=>{
       rSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
@@ -158,13 +166,16 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
   // (khusus wiring_control) cuma Box Control/Pintu - Wiring Control cuma kontribusi ke komponen
   // yang punya tahap WIRING, gak pernah ke komponen lain (Groundplate dst itu Assembling Luar aja).
   const komponenRelevanPanel=(panel:any):{kode:string,nama:string,isTahap:boolean}[]=>{
+    // Lookup nama WAJIB pakai key gabungan tipe_panel+kode (lihat komentar fetchData di atas) -
+    // panel.tipe SELALU ada di scope closure sini, jadi aman langsung dipakai per-panel.
+    const namaKode=(kode:string)=>kodeNamaMap[`${panel.tipe}|${kode}`]||kode;
     return Object.entries(panel.checklist||{}).filter(([kode,cl]:any)=>{
       if(!((cl?.qty||0)>0))return false;
       if(!isKomponenRelevant(kode,panel.tipe,"PASANG KOMPONEN",relevanSet,hasMappingSet))return false;
-      const nama=kodeNamaMap[kode]||kode;
+      const nama=namaKode(kode);
       if(tugas.seksi==="wiring_control")return PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(nama);
       return true;
-    }).map(([kode]:any)=>({kode,nama:kodeNamaMap[kode]||kode,isTahap:PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(kodeNamaMap[kode]||kode)}));
+    }).map(([kode]:any)=>({kode,nama:namaKode(kode),isTahap:PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(namaKode(kode))}));
   };
 
   const getProgress=(panel:any,kode:string,isTahap:boolean):number=>{
