@@ -220,8 +220,51 @@ export function DatabaseGudangTab(){
   const[editMerk,setEditMerk]=useState("");
   const[editSatuan,setEditSatuan]=useState("");
   const[editSatuanAlt,setEditSatuanAlt]=useState("");
+  const[editKategori,setEditKategori]=useState<Kategori>("BBMB"); // Ubah kategori BBMB<->BBMU (14 Sep 2026, fitur baru - lihat submitEditKomponen)
   const[editSubmitting,setEditSubmitting]=useState(false);
   const[editError,setEditError]=useState("");
+
+  // HAPUS PERMANEN (14 Sep 2026, fitur baru, BELUM DI-DEPLOY - lihat catatan investigasi data
+  // hilang Permintaan Barang yang masih berjalan terpisah, hapus ini SENGAJA disiapkan dulu tapi
+  // gak boleh dipakai produksi sampai investigasi itu kelar). Pengaman: SEBELUM DELETE, cek dulu
+  // apakah item ini PERNAH dipakai (ada baris permintaan_item yang nunjuk ke sini, satu-satunya
+  // FK ke komponen_master di seluruh skema - lihat laporan investigasi) - kalau pernah, TOLAK,
+  // gak peduli hasil hapusnya legal secara FK (FK saat ini "no action"/RESTRICT default Postgres,
+  // ini cek TAMBAHAN di level app biar pesannya jelas buat admin, bukan error Postgres mentah).
+  const[deleteTarget,setDeleteTarget]=useState<any|null>(null);
+  const[deleteConfirming,setDeleteConfirming]=useState(false);
+  const[deleteSubmitting,setDeleteSubmitting]=useState(false);
+  const[deleteError,setDeleteError]=useState("");
+  const openDeleteConfirm=(m:any)=>{setDeleteTarget(m);setDeleteConfirming(false);setDeleteError("");};
+  const closeDeleteConfirm=()=>{setDeleteTarget(null);setDeleteConfirming(false);setDeleteError("");};
+  const submitHapusKomponen=async()=>{
+    if(!deleteTarget)return;
+    setDeleteSubmitting(true);
+    setDeleteError("");
+    const{count,error:cntErr}=await supabase.from("permintaan_item").select("id",{count:"exact",head:true}).eq("komponen_master_id",deleteTarget.id);
+    if(cntErr){setDeleteError("Gagal cek riwayat pemakaian: "+cntErr.message);setDeleteSubmitting(false);return;}
+    if((count||0)>0){
+      setDeleteError(`Item ini tidak bisa dihapus karena sudah pernah dipakai di ${count} transaksi. Hapus hanya diperbolehkan untuk item yang belum pernah dipakai sama sekali.`);
+      setDeleteSubmitting(false);
+      return;
+    }
+    const{error:delErr}=await supabase.from("komponen_master").delete().eq("id",deleteTarget.id);
+    if(delErr){
+      // Jaring pengaman kedua - kalau ternyata FK Postgres yang nolak (race: baru dipakai PAS
+      // di antara cek count di atas & DELETE ini beneran jalan), tampilkan pesan yang sama
+      // jelasnya, bukan error Postgres mentah.
+      const msg=delErr.code==="23503"
+        ?"Item ini baru saja dipakai di transaksi lain (terdeteksi saat proses hapus) - hapus dibatalkan. Refresh dan coba lagi kalau memang belum pernah dipakai."
+        :"Gagal menghapus: "+delErr.message;
+      setDeleteError(msg);
+      setDeleteSubmitting(false);
+      return;
+    }
+    setDeleteSubmitting(false);
+    closeDeleteConfirm();
+    if(editTarget?.id===deleteTarget.id)closeEditModal();
+    fetchMasterList();
+  };
   // Guard race condition (2 Sep 2026, ketemu pas verifikasi) - toggle kategori cepat (atau fetch
   // yang telat balik gara-gara BBMU 1.424 baris lebih lambat dari BBMB) bisa bikin response LAMA
   // nyampe belakangan dan nimpa balik hasil fetch yang lebih baru (query-nya sendiri udah benar,
@@ -418,9 +461,18 @@ export function DatabaseGudangTab(){
     setEditMerk(m.merk||"");
     setEditSatuan(m.satuan_utama||"");
     setEditSatuanAlt((m.satuan_list&&m.satuan_list.length>1)?m.satuan_list.join(" ATAU "):"");
+    setEditKategori(m.kategori);
     setEditError("");
   };
   const closeEditModal=()=>{setEditTarget(null);setEditError("");};
+  // REVISI (14 Sep 2026, BELUM DI-DEPLOY) - kategori sekarang BISA diubah (dulu terkunci,
+  // "tidak bisa diubah dari sini"). Cek duplikat & payload update sekarang pakai `editKategori`
+  // (kategori BARU yang mau disimpan), BUKAN `editTarget.kategori` (kategori lama) - kalau
+  // dipindah ke kategori lain, yang relevan dicek adalah tabrakan nama+kode di kategori TUJUAN,
+  // bukan kategori asal. Histori transaksi lama TIDAK terpengaruh sama sekali oleh perubahan ini -
+  // permintaan.jenis (BBMB/BBMU) dicatat independen per transaksi saat submit (dipilih operator
+  // dari tab yang dia buka), BUKAN di-lookup ulang dari komponen_master.kategori - lihat laporan
+  // investigasi.
   const submitEditKomponen=async()=>{
     if(!editTarget)return;
     const nama=editNama.trim();
@@ -428,16 +480,16 @@ export function DatabaseGudangTab(){
     setEditSubmitting(true);
     setEditError("");
     const kodeBaru=normKode(editKodeBarang);
-    const{data:candidates}=await supabase.from("komponen_master").select("id,kode_barang").eq("kategori",editTarget.kategori).ilike("nama",nama).neq("id",editTarget.id);
+    const{data:candidates}=await supabase.from("komponen_master").select("id,kode_barang").eq("kategori",editKategori).ilike("nama",nama).neq("id",editTarget.id);
     if((candidates||[]).some((r:any)=>normKode(r.kode_barang)===kodeBaru)){
-      setEditError(`Komponen dengan nama & kode barang ini sudah ada di ${editTarget.kategori}`);
+      setEditError(`Komponen dengan nama & kode barang ini sudah ada di ${editKategori}`);
       setEditSubmitting(false);
       return;
     }
     const{satuan_utama,satuan_list}=buildSatuan(editSatuan,editSatuanAlt);
     const{error:updErr}=await supabase.from("komponen_master").update({
       nama,kode_barang:editKodeBarang.trim()||null,tipe:editTipe.trim()||null,merk:editMerk.trim()||null,
-      satuan_utama,satuan_list,
+      satuan_utama,satuan_list,kategori:editKategori,
     }).eq("id",editTarget.id);
     if(updErr){setEditError("Gagal simpan: "+updErr.message);setEditSubmitting(false);return;}
     setEditSubmitting(false);
@@ -624,9 +676,22 @@ export function DatabaseGudangTab(){
       {editTarget&&(
         <div onClick={closeEditModal} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:20,width:"100%",maxWidth:400,maxHeight:"90vh",overflowY:"auto" as const}}>
-            <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:2}}>Edit Komponen</div>
-            <div style={{fontSize:11.5,color:"#94a3b8",marginBottom:12}}>Kategori {editTarget.kategori} - tidak bisa diubah dari sini</div>
+            <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:12}}>Edit Komponen</div>
             <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+              {/* Kategori BISA diubah (14 Sep 2026, BELUM DI-DEPLOY) - dulu terkunci. Ubah dari
+                  sini gak mengubah histori transaksi lama sama sekali (lihat komentar
+                  submitEditKomponen) - cuma memindahkan komponen ini ke daftar kategori lain
+                  buat transaksi BARU ke depannya. */}
+              <div>
+                <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",letterSpacing:.3,marginBottom:4}}>KATEGORI</div>
+                <SegmentedControl options={[{key:"BBMB",label:"BBMB (Bantu)",icon:"🧰"},{key:"BBMU",label:"BBMU (Utama)",icon:"⚙️"}]}
+                  value={editKategori} onChange={(k:any)=>{setEditKategori(k);setEditError("");}}/>
+                {editKategori!==editTarget.kategori&&(
+                  <div style={{fontSize:10.5,color:"#d97706",marginTop:4,fontWeight:600}}>
+                    ⚠️ Akan dipindah dari {editTarget.kategori} ke {editKategori}. Histori transaksi lama TIDAK berubah.
+                  </div>
+                )}
+              </div>
               <input value={editNama} onChange={(e:any)=>{setEditNama(e.target.value);setEditError("");}} placeholder="Nama komponen (wajib)" style={inpStyle}/>
               <div style={{display:"flex",gap:8}}>
                 <input value={editKodeBarang} onChange={(e:any)=>setEditKodeBarang(e.target.value)} placeholder="Kode Barang" style={inpStyle}/>
@@ -639,7 +704,7 @@ export function DatabaseGudangTab(){
               </div>
             </div>
             {editError&&<div style={{fontSize:11.5,color:"#dc2626",marginBottom:10,fontWeight:600}}>{editError}</div>}
-            <div style={{display:"flex",gap:8}}>
+            <div style={{display:"flex",gap:8,marginBottom:8}}>
               <button onClick={closeEditModal} disabled={editSubmitting}
                 style={{flex:1,padding:"10px",borderRadius:9,border:"1px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
                 Batal
@@ -651,6 +716,61 @@ export function DatabaseGudangTab(){
                 {editSubmitting?"Menyimpan...":"Simpan Perubahan"}
               </button>
             </div>
+            {/* Hapus Permanen (14 Sep 2026, fitur baru, BELUM DI-DEPLOY) - dipisah dari tombol
+                Batal/Simpan di atas biar gak ketutupan gak sengaja, warna merah beda jelas. */}
+            <button onClick={()=>openDeleteConfirm(editTarget)} disabled={editSubmitting}
+              style={{width:"100%",padding:"9px",borderRadius:9,border:"1px solid #fecaca",background:"#fff",color:"#dc2626",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+              🗑️ Hapus Permanen
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal konfirmasi hapus (14 Sep 2026, BELUM DI-DEPLOY) - 2 langkah: klik "Hapus Permanen"
+          di atas buka modal ini, WAJIB klik "Ya, Hapus Permanen" sekali lagi di sini buat eksekusi
+          (bukan cuma 1 klik langsung dari list) - pengaman minimal sesuai permintaan. Cek
+          pemakaian (submitHapusKomponen) jalan SETELAH klik konfirmasi kedua ini, gak sebelum -
+          biar pesan penolakan (kalau ada) muncul di modal ini juga, bukan alert() terpisah. */}
+      {deleteTarget&&(
+        <div onClick={closeDeleteConfirm} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.6)",zIndex:10000,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
+          <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:20,width:"100%",maxWidth:380}}>
+            <div style={{fontWeight:800,fontSize:15,color:"#dc2626",marginBottom:8,display:"flex",alignItems:"center",gap:6}}>
+              <i className="ti ti-alert-triangle"/> Hapus Permanen?
+            </div>
+            <div style={{fontSize:13,color:"#334155",marginBottom:4,lineHeight:1.6}}>
+              <strong>{deleteTarget.nama}</strong>{deleteTarget.kode_barang?` (${deleteTarget.kode_barang})`:""} - kategori {deleteTarget.kategori}
+            </div>
+            <div style={{fontSize:12,color:"#94a3b8",marginBottom:14,lineHeight:1.6}}>
+              Item cuma bisa dihapus kalau BELUM PERNAH dipakai di permintaan barang manapun.
+              Kalau sudah pernah dipakai, penghapusan akan ditolak otomatis. Tindakan ini TIDAK
+              BISA dibatalkan kalau berhasil.
+            </div>
+            {deleteError&&<div style={{fontSize:11.5,color:"#dc2626",marginBottom:12,fontWeight:600,background:"#fef2f2",border:"1px solid #fecaca",borderRadius:9,padding:"9px 10px",lineHeight:1.6}}>{deleteError}</div>}
+            {!deleteConfirming?(
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={closeDeleteConfirm} disabled={deleteSubmitting}
+                  style={{flex:1,padding:"10px",borderRadius:9,border:"1px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+                  Batal
+                </button>
+                <button onClick={()=>setDeleteConfirming(true)} disabled={deleteSubmitting}
+                  style={{flex:1,padding:"10px",borderRadius:9,border:"none",background:"#fef2f2",color:"#dc2626",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+                  Lanjut Hapus
+                </button>
+              </div>
+            ):(
+              <div style={{display:"flex",gap:8}}>
+                <button onClick={closeDeleteConfirm} disabled={deleteSubmitting}
+                  style={{flex:1,padding:"10px",borderRadius:9,border:"1px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+                  Batal
+                </button>
+                <button onClick={submitHapusKomponen} disabled={deleteSubmitting}
+                  style={{flex:1,padding:"10px",borderRadius:9,border:"none",
+                    background:deleteSubmitting?"#94a3b8":"#dc2626",color:"#fff",fontWeight:700,fontSize:13,
+                    cursor:deleteSubmitting?"default":"pointer",fontFamily:"inherit"}}>
+                  {deleteSubmitting?"Menghapus...":"Ya, Hapus Permanen"}
+                </button>
+              </div>
+            )}
           </div>
         </div>
       )}
