@@ -223,14 +223,19 @@ export function DatabaseGudangTab(){
   const[editKategori,setEditKategori]=useState<Kategori>("BBMB"); // Ubah kategori BBMB<->BBMU (14 Sep 2026, fitur baru - lihat submitEditKomponen)
   const[editSubmitting,setEditSubmitting]=useState(false);
   const[editError,setEditError]=useState("");
+  // Pesan sukses pindah kategori (15 Sep 2026, audit) - kalau kategori BENERAN diubah, item itu
+  // langsung MENGHILANG dari list begitu modal ditutup (list difilter per kategoriAktif) - dulu
+  // gak ada penjelasan apa pun, bisa keliatan kayak "item-nya kok ilang tiba-tiba" ke Gudang.
+  // Sekarang modal TETAP TERBUKA sebentar nampilin pesan jelas + tombol "Tutup" manual (bukan
+  // auto-close) KHUSUS kalau kategori berubah - edit field biasa (nama/kode/dst) tanpa ganti
+  // kategori tetap auto-close seperti sebelumnya, gak nambah friksi buat kasus paling umum.
+  const[editSuccessKategoriPindah,setEditSuccessKategoriPindah]=useState<{dari:Kategori;ke:Kategori}|null>(null);
 
-  // HAPUS PERMANEN (14 Sep 2026, fitur baru, BELUM DI-DEPLOY - lihat catatan investigasi data
-  // hilang Permintaan Barang yang masih berjalan terpisah, hapus ini SENGAJA disiapkan dulu tapi
-  // gak boleh dipakai produksi sampai investigasi itu kelar). Pengaman: SEBELUM DELETE, cek dulu
-  // apakah item ini PERNAH dipakai (ada baris permintaan_item yang nunjuk ke sini, satu-satunya
-  // FK ke komponen_master di seluruh skema - lihat laporan investigasi) - kalau pernah, TOLAK,
-  // gak peduli hasil hapusnya legal secara FK (FK saat ini "no action"/RESTRICT default Postgres,
-  // ini cek TAMBAHAN di level app biar pesannya jelas buat admin, bukan error Postgres mentah).
+  // HAPUS PERMANEN (14 Sep 2026, live). Pengaman: SEBELUM DELETE, cek dulu apakah item ini PERNAH
+  // dipakai (ada baris permintaan_item yang nunjuk ke sini, satu-satunya FK ke komponen_master di
+  // seluruh skema - dikonfirmasi via introspeksi skema live) - kalau pernah, TOLAK, gak peduli
+  // hasil hapusnya legal secara FK (FK saat ini "no action"/RESTRICT default Postgres, ini cek
+  // TAMBAHAN di level app biar pesannya jelas buat admin, bukan error Postgres mentah).
   const[deleteTarget,setDeleteTarget]=useState<any|null>(null);
   const[deleteConfirming,setDeleteConfirming]=useState(false);
   const[deleteSubmitting,setDeleteSubmitting]=useState(false);
@@ -244,7 +249,11 @@ export function DatabaseGudangTab(){
     const{count,error:cntErr}=await supabase.from("permintaan_item").select("id",{count:"exact",head:true}).eq("komponen_master_id",deleteTarget.id);
     if(cntErr){setDeleteError("Gagal cek riwayat pemakaian: "+cntErr.message);setDeleteSubmitting(false);return;}
     if((count||0)>0){
-      setDeleteError(`Item ini tidak bisa dihapus karena sudah pernah dipakai di ${count} transaksi. Hapus hanya diperbolehkan untuk item yang belum pernah dipakai sama sekali.`);
+      // Wording (15 Sep 2026, audit): "X baris permintaan barang" bukan "X transaksi" - yang
+      // dihitung adalah baris permintaan_item, BUKAN jumlah pengajuan/submit terpisah (1 pengajuan
+      // bisa aja minta item yang sama lebih dari sekali, jadi >1 baris dari 1 transaksi) - biar gak
+      // menyesatkan, logika blokirnya sendiri (count>0) tetap sama persis, cuma redaksinya diperjelas.
+      setDeleteError(`Item ini tidak bisa dihapus karena sudah pernah dipakai di ${count} baris permintaan barang. Hapus hanya diperbolehkan untuk item yang belum pernah dipakai sama sekali.`);
       setDeleteSubmitting(false);
       return;
     }
@@ -463,9 +472,10 @@ export function DatabaseGudangTab(){
     setEditSatuanAlt((m.satuan_list&&m.satuan_list.length>1)?m.satuan_list.join(" ATAU "):"");
     setEditKategori(m.kategori);
     setEditError("");
+    setEditSuccessKategoriPindah(null);
   };
-  const closeEditModal=()=>{setEditTarget(null);setEditError("");};
-  // REVISI (14 Sep 2026, BELUM DI-DEPLOY) - kategori sekarang BISA diubah (dulu terkunci,
+  const closeEditModal=()=>{setEditTarget(null);setEditError("");setEditSuccessKategoriPindah(null);};
+  // REVISI (14 Sep 2026, live) - kategori sekarang BISA diubah (dulu terkunci,
   // "tidak bisa diubah dari sini"). Cek duplikat & payload update sekarang pakai `editKategori`
   // (kategori BARU yang mau disimpan), BUKAN `editTarget.kategori` (kategori lama) - kalau
   // dipindah ke kategori lain, yang relevan dicek adalah tabrakan nama+kode di kategori TUJUAN,
@@ -486,6 +496,8 @@ export function DatabaseGudangTab(){
       setEditSubmitting(false);
       return;
     }
+    const kategoriLama=editTarget.kategori;
+    const kategoriBerubah=editKategori!==kategoriLama;
     const{satuan_utama,satuan_list}=buildSatuan(editSatuan,editSatuanAlt);
     const{error:updErr}=await supabase.from("komponen_master").update({
       nama,kode_barang:editKodeBarang.trim()||null,tipe:editTipe.trim()||null,merk:editMerk.trim()||null,
@@ -493,8 +505,16 @@ export function DatabaseGudangTab(){
     }).eq("id",editTarget.id);
     if(updErr){setEditError("Gagal simpan: "+updErr.message);setEditSubmitting(false);return;}
     setEditSubmitting(false);
-    closeEditModal();
     fetchMasterList();
+    // Kalau kategori BENERAN dipindah, jangan auto-close - kasih pesan jelas dulu (item ini akan
+    // hilang dari list begitu modal ditutup, kalau kategoriAktif yang lagi dilihat beda dari
+    // kategori barunya) + tombol "Tutup" manual. Edit biasa (kategori gak berubah) tetap auto-close
+    // seperti sebelumnya, gak nambah friksi buat kasus paling umum.
+    if(kategoriBerubah){
+      setEditSuccessKategoriPindah({dari:kategoriLama,ke:editKategori});
+    } else {
+      closeEditModal();
+    }
   };
 
   // Kategori badge - warna beda per kategori biar gampang dibedain sekilas mata.
@@ -676,57 +696,77 @@ export function DatabaseGudangTab(){
       {editTarget&&(
         <div onClick={closeEditModal} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
           <div onClick={(e:any)=>e.stopPropagation()} style={{background:"#fff",borderRadius:16,padding:20,width:"100%",maxWidth:400,maxHeight:"90vh",overflowY:"auto" as const}}>
-            <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:12}}>Edit Komponen</div>
-            <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
-              {/* Kategori BISA diubah (14 Sep 2026, BELUM DI-DEPLOY) - dulu terkunci. Ubah dari
-                  sini gak mengubah histori transaksi lama sama sekali (lihat komentar
-                  submitEditKomponen) - cuma memindahkan komponen ini ke daftar kategori lain
-                  buat transaksi BARU ke depannya. */}
+            {editSuccessKategoriPindah?(
+              // Pesan sukses pindah kategori (15 Sep 2026, audit) - GANTI auto-close biasa, biar
+              // Gudang gak bingung item-nya "hilang" begitu aja dari list kalau kategoriAktif yang
+              // lagi dilihat beda dari kategori barunya (lihat komentar state editSuccessKategoriPindah).
               <div>
-                <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",letterSpacing:.3,marginBottom:4}}>KATEGORI</div>
-                <SegmentedControl options={[{key:"BBMB",label:"BBMB (Bantu)",icon:"🧰"},{key:"BBMU",label:"BBMU (Utama)",icon:"⚙️"}]}
-                  value={editKategori} onChange={(k:any)=>{setEditKategori(k);setEditError("");}}/>
-                {editKategori!==editTarget.kategori&&(
-                  <div style={{fontSize:10.5,color:"#d97706",marginTop:4,fontWeight:600}}>
-                    ⚠️ Akan dipindah dari {editTarget.kategori} ke {editKategori}. Histori transaksi lama TIDAK berubah.
+                <div style={{fontSize:32,textAlign:"center" as const,marginBottom:10}}>✅</div>
+                <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:6,textAlign:"center" as const}}>Kategori Dipindah</div>
+                <div style={{fontSize:13,color:"#475569",marginBottom:14,textAlign:"center" as const,lineHeight:1.6}}>
+                  <strong>{editNama}</strong> dipindah dari <strong>{editSuccessKategoriPindah.dari}</strong> ke <strong>{editSuccessKategoriPindah.ke}</strong>.
+                  {kategoriAktif!==editSuccessKategoriPindah.ke&&<> Item ini akan hilang dari daftar {kategoriAktif} begitu ditutup - cari di daftar {editSuccessKategoriPindah.ke}.</>}
+                </div>
+                <button onClick={closeEditModal}
+                  style={{width:"100%",padding:"10px",borderRadius:9,border:"none",background:"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+                  Tutup
+                </button>
+              </div>
+            ):(
+              <>
+                <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:12}}>Edit Komponen</div>
+                <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:10}}>
+                  {/* Kategori BISA diubah (14 Sep 2026) - dulu terkunci. Ubah dari
+                      sini gak mengubah histori transaksi lama sama sekali (lihat komentar
+                      submitEditKomponen) - cuma memindahkan komponen ini ke daftar kategori lain
+                      buat transaksi BARU ke depannya. */}
+                  <div>
+                    <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",letterSpacing:.3,marginBottom:4}}>KATEGORI</div>
+                    <SegmentedControl options={[{key:"BBMB",label:"BBMB (Bantu)",icon:"🧰"},{key:"BBMU",label:"BBMU (Utama)",icon:"⚙️"}]}
+                      value={editKategori} onChange={(k:any)=>{setEditKategori(k);setEditError("");}}/>
+                    {editKategori!==editTarget.kategori&&(
+                      <div style={{fontSize:10.5,color:"#d97706",marginTop:4,fontWeight:600}}>
+                        ⚠️ Akan dipindah dari {editTarget.kategori} ke {editKategori}. Histori transaksi lama TIDAK berubah.
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-              <input value={editNama} onChange={(e:any)=>{setEditNama(e.target.value);setEditError("");}} placeholder="Nama komponen (wajib)" style={inpStyle}/>
-              <div style={{display:"flex",gap:8}}>
-                <input value={editKodeBarang} onChange={(e:any)=>setEditKodeBarang(e.target.value)} placeholder="Kode Barang" style={inpStyle}/>
-                <input value={editMerk} onChange={(e:any)=>setEditMerk(e.target.value)} placeholder="Merk" style={inpStyle}/>
-              </div>
-              <input value={editTipe} onChange={(e:any)=>setEditTipe(e.target.value)} placeholder="Tipe / spesifikasi" style={inpStyle}/>
-              <div style={{display:"flex",gap:8}}>
-                <input value={editSatuan} onChange={(e:any)=>setEditSatuan(e.target.value)} placeholder="Satuan (mis. PCS, METER)" style={inpStyle}/>
-                <input value={editSatuanAlt} onChange={(e:any)=>setEditSatuanAlt(e.target.value)} placeholder="Satuan alternatif (mis. METER ATAU ROLL)" style={inpStyle}/>
-              </div>
-            </div>
-            {editError&&<div style={{fontSize:11.5,color:"#dc2626",marginBottom:10,fontWeight:600}}>{editError}</div>}
-            <div style={{display:"flex",gap:8,marginBottom:8}}>
-              <button onClick={closeEditModal} disabled={editSubmitting}
-                style={{flex:1,padding:"10px",borderRadius:9,border:"1px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
-                Batal
-              </button>
-              <button onClick={submitEditKomponen} disabled={editSubmitting}
-                style={{flex:1,padding:"10px",borderRadius:9,border:"none",
-                  background:editSubmitting?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
-                  cursor:editSubmitting?"default":"pointer",fontFamily:"inherit"}}>
-                {editSubmitting?"Menyimpan...":"Simpan Perubahan"}
-              </button>
-            </div>
-            {/* Hapus Permanen (14 Sep 2026, fitur baru, BELUM DI-DEPLOY) - dipisah dari tombol
-                Batal/Simpan di atas biar gak ketutupan gak sengaja, warna merah beda jelas. */}
-            <button onClick={()=>openDeleteConfirm(editTarget)} disabled={editSubmitting}
-              style={{width:"100%",padding:"9px",borderRadius:9,border:"1px solid #fecaca",background:"#fff",color:"#dc2626",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
-              🗑️ Hapus Permanen
-            </button>
+                  <input value={editNama} onChange={(e:any)=>{setEditNama(e.target.value);setEditError("");}} placeholder="Nama komponen (wajib)" style={inpStyle}/>
+                  <div style={{display:"flex",gap:8}}>
+                    <input value={editKodeBarang} onChange={(e:any)=>setEditKodeBarang(e.target.value)} placeholder="Kode Barang" style={inpStyle}/>
+                    <input value={editMerk} onChange={(e:any)=>setEditMerk(e.target.value)} placeholder="Merk" style={inpStyle}/>
+                  </div>
+                  <input value={editTipe} onChange={(e:any)=>setEditTipe(e.target.value)} placeholder="Tipe / spesifikasi" style={inpStyle}/>
+                  <div style={{display:"flex",gap:8}}>
+                    <input value={editSatuan} onChange={(e:any)=>setEditSatuan(e.target.value)} placeholder="Satuan (mis. PCS, METER)" style={inpStyle}/>
+                    <input value={editSatuanAlt} onChange={(e:any)=>setEditSatuanAlt(e.target.value)} placeholder="Satuan alternatif (mis. METER ATAU ROLL)" style={inpStyle}/>
+                  </div>
+                </div>
+                {editError&&<div style={{fontSize:11.5,color:"#dc2626",marginBottom:10,fontWeight:600}}>{editError}</div>}
+                <div style={{display:"flex",gap:8,marginBottom:8}}>
+                  <button onClick={closeEditModal} disabled={editSubmitting}
+                    style={{flex:1,padding:"10px",borderRadius:9,border:"1px solid #e2e8f0",background:"#fff",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer",fontFamily:"inherit"}}>
+                    Batal
+                  </button>
+                  <button onClick={submitEditKomponen} disabled={editSubmitting}
+                    style={{flex:1,padding:"10px",borderRadius:9,border:"none",
+                      background:editSubmitting?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
+                      cursor:editSubmitting?"default":"pointer",fontFamily:"inherit"}}>
+                    {editSubmitting?"Menyimpan...":"Simpan Perubahan"}
+                  </button>
+                </div>
+                {/* Hapus Permanen (14 Sep 2026, fitur baru) - dipisah dari tombol
+                    Batal/Simpan di atas biar gak ketutupan gak sengaja, warna merah beda jelas. */}
+                <button onClick={()=>openDeleteConfirm(editTarget)} disabled={editSubmitting}
+                  style={{width:"100%",padding:"9px",borderRadius:9,border:"1px solid #fecaca",background:"#fff",color:"#dc2626",fontWeight:700,fontSize:12,cursor:"pointer",fontFamily:"inherit"}}>
+                  🗑️ Hapus Permanen
+                </button>
+              </>
+            )}
           </div>
         </div>
       )}
 
-      {/* Modal konfirmasi hapus (14 Sep 2026, BELUM DI-DEPLOY) - 2 langkah: klik "Hapus Permanen"
+      {/* Modal konfirmasi hapus (14 Sep 2026) - 2 langkah: klik "Hapus Permanen"
           di atas buka modal ini, WAJIB klik "Ya, Hapus Permanen" sekali lagi di sini buat eksekusi
           (bukan cuma 1 klik langsung dari list) - pengaman minimal sesuai permintaan. Cek
           pemakaian (submitHapusKomponen) jalan SETELAH klik konfirmasi kedua ini, gak sebelum -
