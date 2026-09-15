@@ -4,6 +4,7 @@ import { PermintaanGudangTab } from "./PermintaanGudangTab";
 import { TarikGudangTab } from "./TarikGudangTab";
 import { DatabaseGudangTab } from "./DatabaseGudangTab";
 import { RiwayatGudangTab } from "./RiwayatGudangTab";
+import { RekapPermintaanTab } from "./RekapPermintaanTab";
 import { KomponenProgressView } from "./KomponenProgressView";
 import { GudangHeader } from "./gudang/GudangUI";
 import { NotifikasiPushToggle } from "./ui/Primitives";
@@ -27,14 +28,19 @@ const TUGAS_WAREHOUSE_GUDANG={field:"warehouse",label:"Warehouse",icon:"📦",co
 // divisi lain sama sekali.
 // ─────────────────────────────────────────────────────────────────────────────
 
-type GudangTab="permintaan"|"tarik"|"database"|"progress"|"riwayat";
+type GudangTab="permintaan"|"tarik"|"database"|"progress"|"riwayat"|"rekap";
 
+// Tab "Rekap" (16 Sep 2026) - duplikasi "Rekap per Panel" vista-teknik, lihat komentar
+// panjang di RekapPermintaanTab.tsx. Ditaruh PALING KANAN (setelah Riwayat) - tab-tab
+// sebelumnya semua "kerja aktif" (proses/lihat transaksi harian), ini "lihat rekap
+// ringkasan buat dicetak", urutan fungsionalnya paling akhir.
 const TABS:{key:GudangTab,label:string,icon:string}[]=[
   {key:"permintaan",label:"Permintaan",icon:"📋"},
   {key:"tarik",label:"Pengambilan",icon:"📦"},
   {key:"database",label:"Database",icon:"🗄️"},
   {key:"progress",label:"Progress",icon:"📊"},
   {key:"riwayat",label:"Riwayat",icon:"🕒"},
+  {key:"rekap",label:"Rekap",icon:"🧾"},
 ];
 
 const TAB_SUBTITLE:Record<GudangTab,string>={
@@ -43,6 +49,7 @@ const TAB_SUBTITLE:Record<GudangTab,string>={
   database:"Master komponen BBMB",
   progress:"Progress checklist gudang per panel",
   riwayat:"Riwayat aksi harian gudang",
+  rekap:"Rekap item yang sudah keluar dari Gudang per WO - siap cetak",
 };
 
 export function GudangHome({user,onLogout}:{user:any;onLogout:()=>void}){
@@ -80,6 +87,7 @@ export function GudangHome({user,onLogout}:{user:any;onLogout:()=>void}){
         {tab==="database"&&<DatabaseGudangTab/>}
         {tab==="progress"&&<KomponenProgressView user={user} tugas={TUGAS_WAREHOUSE_GUDANG}/>}
         {tab==="riwayat"&&<RiwayatGudangTab adminName={user?.nama||user?.name||"Gudang"}/>}
+        {tab==="rekap"&&<RekapPermintaanTab/>}
       </div>
       {/* position:fixed (bukan sticky) - sengaja anchor ke VIEWPORT asli, bukan ke containing
           block terdekat di rantai parent (GudangHome dinest 1 level lebih dalam dari nav bawah
@@ -92,12 +100,16 @@ export function GudangHome({user,onLogout}:{user:any;onLogout:()=>void}){
         {TABS.map(t=>{
           const active=tab===t.key;
           return(
-            <button key={t.key} onClick={()=>setTab(t.key)} style={{flex:1,border:"none",background:"none",cursor:"pointer",
+            // minWidth:0 (16 Sep 2026, WAJIB begitu nambah tab ke-6/"Rekap") - flex item defaultnya
+            // min-width:auto, nolak nyusut di bawah lebar konten instrinsiknya walau flex:1 - 6 tab
+            // di layar sempit (mis. "Pengambilan") kepotong/nongol di luar viewport tanpa ini.
+            <button key={t.key} onClick={()=>setTab(t.key)} style={{flex:1,minWidth:0,border:"none",background:"none",cursor:"pointer",
               display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:3}}>
-              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 14px",
-                borderRadius:12,background:active?"#eff6ff":"transparent"}}>
-                <span style={{fontSize:19,opacity:active?1:.65}}>{t.icon}</span>
-                <span style={{fontSize:9,fontWeight:800,letterSpacing:.3,color:active?"#0369a1":"#94a3b8"}}>{t.label}</span>
+              <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 6px",
+                borderRadius:12,background:active?"#eff6ff":"transparent",maxWidth:"100%",boxSizing:"border-box" as const}}>
+                <span style={{fontSize:18,opacity:active?1:.65}}>{t.icon}</span>
+                <span style={{fontSize:8.5,fontWeight:800,letterSpacing:.2,color:active?"#0369a1":"#94a3b8",
+                  whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%"}}>{t.label}</span>
               </div>
               <span style={{width:4,height:4,borderRadius:"50%",background:active?"#0369a1":"transparent"}}/>
             </button>
