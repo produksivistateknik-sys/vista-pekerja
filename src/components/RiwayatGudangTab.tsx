@@ -426,6 +426,19 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
                     <div style={{display:"flex",flexDirection:"column",gap:2,fontSize:10.5,color:"#64748b"}}>
                       <span>📝 Diajukan oleh {k.diajukan_oleh} — {fmtDateTime(k.diajukan_at)}</span>
                       <span>{disetujui?"✅":"✕"} {disetujui?"Disetujui":"Ditolak"} oleh {k.disetujui_oleh||"-"} — {fmtDateTime(k.diputuskan_at)}</span>
+                      {/* Status pengambilan fisik (16 Sep 2026) - k.item udah ke-fetch penuh dari
+                          fetchKoreksiDecided (bukan cuma id), diambil_oleh/diambil_at/sudah_diambil
+                          udah ada di situ, tinggal ditampilkan - user nanya "diambil siapa" gak
+                          kelihatan di section ini. Cuma relevan kalau item-nya status='submit'
+                          (approve_permintaan_koreksi gak pernah ngubah status jadi 'submit' - kalau
+                          koreksi disetujui buat item yang statusnya masih 'pending'/belum diproses
+                          Gudang, pengambilan emang belum relevan sama sekali, sama pola main list
+                          di atas r.status==="submit"). */}
+                      {k.item.status==="submit"&&(
+                        k.item.sudah_diambil
+                          ?<span>📦 Diambil oleh {k.item.diambil_oleh||"-"} — {fmtDateTime(k.item.diambil_at)}</span>
+                          :<span style={{color:"#94a3b8"}}>⏳ Menunggu diambil</span>
+                      )}
                     </div>
                     <div style={{fontSize:10.5,color:"#64748b",fontStyle:"italic" as const,marginTop:4}}>Alasan: {k.alasan}</div>
                     {!disetujui&&k.catatan_reject&&<div style={{fontSize:11,color:"#dc2626",marginTop:4}}>⚠ {k.catatan_reject}</div>}
