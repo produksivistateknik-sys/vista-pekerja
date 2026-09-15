@@ -202,6 +202,51 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[rows]);
 
+  // Riwayat Koreksi Qty DIPUTUSKAN (16 Sep 2026) - sebelumnya pengajuan koreksi yang sudah
+  // disetujui/ditolak HILANG TOTAL dari tampilan begitu diputuskan (cuma badge "Menunggu
+  // Persetujuan" pending di atas, gak pernah ada gantinya) - dilaporkan user lewat kasus nyata
+  // (STREP TEMBAGA, koreksi id 15, disetujui LUTVAN 15 Sep, tapi permintaan_item.updated_at-nya
+  // masih 12 Sep krn approve_permintaan_koreksi() RPC emang gak pernah nyentuh kolom itu -
+  // dicek langsung: BUKAN dibiarkan sengaja, approve_permintaan_koreksi() sengaja TIDAK diubah
+  // buat nulis ulang updated_at/updated_by - kolom itu jadi basis timeline "✓ Sudah Siap oleh
+  // X" di atas, kalau ditimpa tanggal keputusan koreksi malah bikin bug baru (seolah GUDANG yang
+  // proses barangnya hari itu, padahal itu ADMIN yang approve koreksi qty, orang & event beda).
+  // Solusi lebih aman: section riwayat TERPISAH, berbasis diputuskan_at sendiri (bukan nebeng ke
+  // updated_at item) - gak nyentuh sama sekali logic/tampilan/query section di atas.
+  const[koreksiDecided,setKoreksiDecided]=useState<any[]>([]);
+  const fetchKoreksiDecided=async()=>{
+    const startIso=tanggal+"T00:00:00";
+    const endIso=tanggal+"T23:59:59.999";
+    const decided=await fetchAllPaged((from,to)=>
+      supabase.from("permintaan_item_koreksi").select("*").in("status",["disetujui","ditolak"])
+        .gte("diputuskan_at",startIso).lte("diputuskan_at",endIso).range(from,to));
+    if(decided.length===0){setKoreksiDecided([]);return;}
+    const itemIds=[...new Set(decided.map((k:any)=>k.permintaan_item_id))];
+    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").in("id",itemIds).range(from,to));
+    const itemMap:Record<number,any>={};
+    items.forEach((it:any)=>{itemMap[it.id]=it;});
+    const permIds=[...new Set(items.map((it:any)=>it.permintaan_id))];
+    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").in("id",permIds).range(from,to));
+    const permMap:Record<number,any>={};
+    perms.forEach((p:any)=>{permMap[p.id]=p;});
+    const merged=decided
+      .map((k:any)=>({...k,item:itemMap[k.permintaan_item_id],perm:itemMap[k.permintaan_item_id]?permMap[itemMap[k.permintaan_item_id].permintaan_id]:null}))
+      .filter((k:any)=>k.item)
+      .sort((a:any,b:any)=>(b.diputuskan_at||"").localeCompare(a.diputuskan_at||""));
+    setKoreksiDecided(merged);
+  };
+  useEffect(()=>{
+    fetchKoreksiDecided();
+    const ch=supabase.channel("realtime-gudang-riwayat-koreksi-decided")
+      .on("postgres_changes",{event:"UPDATE",schema:"public",table:"permintaan_item_koreksi"},fetchKoreksiDecided)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[tanggal]);
+  const koreksiDecidedFiltered=koreksiDecided.filter((k:any)=>!q||[
+    k.item?.nama_komponen,k.diajukan_oleh,k.disetujui_oleh,k.perm?.proyek,k.perm?.panel_nama,k.perm?.wo_number,
+  ].some(v=>(v||"").toLowerCase().includes(q)));
+
   const[koreksiTarget,setKoreksiTarget]=useState<any|null>(null);
   const[koreksiQty,setKoreksiQty]=useState("");
   const[koreksiAlasan,setKoreksiAlasan]=useState("");
@@ -351,6 +396,46 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
         </div>
       )}
       </SectionCard>
+
+      {/* Riwayat Koreksi Qty Diputuskan (16 Sep 2026) - section TERPISAH, gak nyampur sama list
+          item di atas sama sekali (murni tambahan, render kondisional cuma kalau ada datanya utk
+          tanggal/pencarian ini - gak ada empty-state baru yang perlu ditambah). */}
+      {koreksiDecidedFiltered.length>0&&(
+        <div style={{marginTop:14}}>
+          <SectionCard icon="✏️" title="Koreksi Qty Diputuskan" subtitle="Pengajuan koreksi yang sudah disetujui/ditolak di tanggal ini">
+            <div style={{display:"flex",flexDirection:"column",gap:8}}>
+              {koreksiDecidedFiltered.map((k:any)=>{
+                const disetujui=k.status==="disetujui";
+                const warna=disetujui?"#16a34a":"#dc2626";
+                return(
+                  <div key={k.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"11px 14px"}}>
+                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:6}}>
+                      <div style={{minWidth:0}}>
+                        <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{k.item.nama_komponen}</div>
+                        <div style={{fontSize:10.5,color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                          {k.perm?.proyek||"-"}{k.perm?.panel_nama?` · ${k.perm.panel_nama}`:""}
+                        </div>
+                      </div>
+                      <span style={{flexShrink:0,background:warna+"18",color:warna,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700,whiteSpace:"nowrap"}}>
+                        {disetujui?"✓ Disetujui":"✕ Ditolak"}
+                      </span>
+                    </div>
+                    <div style={{fontSize:11.5,color:"#334155",marginBottom:4}}>
+                      Qty {k.qty_lama}{k.item.satuan?` ${k.item.satuan}`:""} → <strong>{k.qty_diusulkan}{k.item.satuan?` ${k.item.satuan}`:""}</strong>
+                    </div>
+                    <div style={{display:"flex",flexDirection:"column",gap:2,fontSize:10.5,color:"#64748b"}}>
+                      <span>📝 Diajukan oleh {k.diajukan_oleh} — {fmtDateTime(k.diajukan_at)}</span>
+                      <span>{disetujui?"✅":"✕"} {disetujui?"Disetujui":"Ditolak"} oleh {k.disetujui_oleh||"-"} — {fmtDateTime(k.diputuskan_at)}</span>
+                    </div>
+                    <div style={{fontSize:10.5,color:"#64748b",fontStyle:"italic" as const,marginTop:4}}>Alasan: {k.alasan}</div>
+                    {!disetujui&&k.catatan_reject&&<div style={{fontSize:11,color:"#dc2626",marginTop:4}}>⚠ {k.catatan_reject}</div>}
+                  </div>
+                );
+              })}
+            </div>
+          </SectionCard>
+        </div>
+      )}
 
       {koreksiTarget&&(
         <div onClick={tutupKoreksi} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.5)",zIndex:9999,display:"flex",alignItems:"center",justifyContent:"center",padding:20}}>
