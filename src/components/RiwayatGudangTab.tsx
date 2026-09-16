@@ -39,6 +39,22 @@ const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
 };
 
 const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"-";
+// Tanggal LOKAL (WIB) murni, buat bandingin "hari kalender" - beda dari fmtDateTime yang include
+// jam. Dipakai deteksi lintas-hari di bawah (16 Sep 2026).
+const fmtDateOnly=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):"-";
+// GUARD LINTAS-HARI (16 Sep 2026, ditemukan user - insiden "67 vs 57 roll" di Rekap Permintaan
+// Barang) - fetchData() di atas nampilin 1 item di tanggal manapun SALAH SATU event-nya
+// (updated_at ATAU diambil_at) jatuh, dan dedup CUMA dalam 1 hari yang sama. Kalau Gudang
+// menyiapkan barang di 1 hari tapi operator baru ambil di HARI LAIN, item yang SAMA (1 baris,
+// 1 qty) muncul di 2 tampilan tanggal berbeda. Orang yang cross-check manual per-tanggal
+// (buka tanggal A, catat qty, buka tanggal B, catat qty lagi) gampang ke-double-count qty itu -
+// ini akar masalah kabel 1.5MM (57 asli ke-hitung 67 gara-gara 1 item nyebrang hari). Bukan bug
+// data (Rekap Permintaan Barang sendiri tetap benar, SUM 1x per baris) - ini murni bantu visual
+// biar gak kejadian lagi ke item lain.
+const isLintasHari=(r:any)=>{
+  if(!r.updated_at||!r.diambil_at)return false;
+  return new Date(r.updated_at).toDateString()!==new Date(r.diambil_at).toDateString();
+};
 
 // Badge status TERKINI - prioritas: udah diambil > disiapkan (nunggu diambil) > ditolak > lainnya.
 const statusTerkini=(item:any):{label:string,color:string}=>{
@@ -333,8 +349,15 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {filteredRows.map((r:any)=>{
             const status=statusTerkini(r);
+            const lintasHari=isLintasHari(r);
             return(
-              <div key={r.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"11px 14px"}}>
+              <div key={r.id} style={{background:"#fff",border:lintasHari?"1.5px solid #fbbf24":"1.5px solid #e2e8f0",borderRadius:12,padding:"11px 14px"}}>
+                {lintasHari&&(
+                  <div title="Item ini juga muncul di tampilan tanggal satunya (disiapkan & diambil beda hari) - 1 transaksi yang sama, jangan dihitung 2x kalau cek per-tanggal manual."
+                    style={{display:"flex",alignItems:"center",gap:5,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"5px 9px",marginBottom:8,fontSize:10,fontWeight:700,color:"#92400e"}}>
+                    🔁 Lintas hari: disiapkan {fmtDateOnly(r.updated_at)}, diambil {fmtDateOnly(r.diambil_at)} — 1 transaksi, jangan dihitung 2×
+                  </div>
+                )}
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
                   <div style={{minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{r.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{r.qty}{r.satuan?` ${r.satuan}`:""}</span></div>
