@@ -12,7 +12,15 @@ export const PROSES_TANPA_MAPPING_KOMPONEN=["QC TEST","PACKING"];
 // sebagai parameter eksplisit (dari bom_proses_relevan yang di-fetch lokal di OperatorView),
 // bukan dibaca dari module-global state kayak GLOBAL_PROSES_RELEVAN_SET di Vista Teknik (repo
 // ini gak punya infra global-state itu, cuma OperatorView yang butuh, jadi gak perlu dibikin).
+// GUARD KERAS (16 Sep 2026, cermin dari guard yang sama di vista-teknik/src/lib/panelHelpers.ts,
+// fix ghost-BUSBAR-badge 10 Sep 2026) - BUSBAR bukan proses per-komponen-mekanikal, progress-nya
+// 100% di pseudo-komponen (LINE/NETRAL/GROUND/dst) via checklist, bukan lewat kode BOM mekanikal
+// manapun. Selalu return false/exclude di sini, GAK PEDULI isi bom_proses_relevan ATAU
+// KOMPONEN_PROSES_MAP - dua-duanya sumber data yang bisa basi/salah (lihat komentar
+// KOMPONEN_PROSES_MAP di panelTypes.ts). Defense-in-depth: fix di map SAJA gampang keulang basi
+// lagi kalau lupa disinkron manual - guard di sini gak bergantung ke situ sama sekali.
 export const isKomponenRelevant=(kode:string,tipe:string,proses:string,relevanSet:Set<string>,hasMappingSet:Set<string>):boolean=>{
+  if(proses==="BUSBAR")return false;
   if(PROSES_TANPA_MAPPING_KOMPONEN.includes(proses))return true;
   const mapKey=kode+"|"+tipe;
   if(hasMappingSet.has(mapKey)){
@@ -24,9 +32,10 @@ export const isKomponenRelevant=(kode:string,tipe:string,proses:string,relevanSe
 };
 export function getRelevantProsesForKode(kode:string,tipe:string,relevanSet:Set<string>,hasMappingSet:Set<string>):string[]{
   const mapKey=kode+"|"+tipe;
-  const base=hasMappingSet.has(mapKey)
+  const base=(hasMappingSet.has(mapKey)
     ? ALL_PROSES.filter((pr:string)=>relevanSet.has(kode+"|"+tipe+"|"+pr))
-    : (KOMPONEN_PROSES_MAP[kode]||[]);
+    : (KOMPONEN_PROSES_MAP[kode]||[]))
+    .filter((pr:string)=>pr!=="BUSBAR"); // guard sama seperti isKomponenRelevant di atas
   return [...new Set([...base,...PROSES_TANPA_MAPPING_KOMPONEN])];
 }
 
