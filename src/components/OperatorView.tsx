@@ -813,10 +813,19 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // Query builder Supabase sekali-pakai per .await() - dibungkus fungsi biar bisa dipanggil
     // ulang (dibangun fresh tiap kali), dipakai baik buat cek awal maupun re-cek di dalam retry
     // insert di bawah.
+    // BUG FIX (16 Sep 2026, dilaporkan user - timer WIRING gak nongol di Renhar padahal jalan di
+    // operator) - dulu query ini TANPA .eq("tanggal",tanggal), jadi kalau operator ini punya row
+    // "aktif" (selesai=null) yang nyangkut dari HARI LAIN (timer ketinggalan jalan - lihat audit
+    // 7 Agu 2026, ghost timer), start timer HARI INI diam-diam nyambung ke row lama itu, bukan
+    // bikin baris baru - klien nunjukin "jalan" (state timerAktif keisi), tapi baris di DB tetap
+    // bertanggal lama, jadi gak pernah kelolos filter tanggal=hari-ini punya Renhar. Sekarang
+    // ikut cocokkan tanggal juga - row lama beda tanggal dianggap BUKAN match, timer baru
+    // bertanggal benar dibikin, row lama dibiarkan apa adanya (tetap kedeteksi lewat mekanisme
+    // reminder/Timer Aktif yang sudah ada, gak disentuh di sini).
     const queryAktif=()=>{
       let q=supabase.from("fcs_timer_kerja")
         .select("*").eq("pekerja_id",pekerjaId).eq("panel_id",panelId)
-        .eq("kode_komponen",kode).eq("proses",proses).is("selesai",null);
+        .eq("kode_komponen",kode).eq("proses",proses).eq("tanggal",tanggal).is("selesai",null);
       q=tahap?q.eq("tahap",tahap):q.is("tahap",null);
       return q.order("mulai",{ascending:false}).limit(1).maybeSingle();
     };
