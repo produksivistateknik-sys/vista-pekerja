@@ -55,8 +55,10 @@ export function useWoEngineeringBroadcast(akun:string|null){
     return()=>{supabase.removeChannel(ch)}
   },[akun,fetchAll])
 
+  // REVISI (17 Sep 2026, redesign visual) - SEMUA event belum dibaca ditumpuk (stack) sebagai
+  // kartu terpisah, bukan 1 per waktu lagi - lihat WoEngineeringBanner.tsx & komentar lengkap di
+  // vista-teknik/src/lib/useWoEngineeringBroadcast.ts. Urutan tetap FIFO tertua dulu.
   const unread=events.filter(e=>!dibacaIds.has(e.id))
-  const current=unread.length>0?unread[0]:null
 
   const markAsRead=async(eventId:number)=>{
     if(!akun)return
@@ -64,5 +66,5 @@ export function useWoEngineeringBroadcast(akun:string|null){
     await supabase.from("wo_engineering_events_dibaca").upsert({event_id:eventId,akun},{onConflict:"event_id,akun",ignoreDuplicates:true})
   }
 
-  return{current,unreadCount:unread.length,markAsRead}
+  return{unread,markAsRead}
 }
