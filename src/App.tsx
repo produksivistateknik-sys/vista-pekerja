@@ -9,6 +9,7 @@ import { KoneksiBadge } from "./components/ui/Primitives";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { LandingPage } from "./components/LandingPage";
 import { Login } from "./components/Login";
+import { WoEngineeringBanner } from "./components/WoEngineeringBanner";
 import { ArsipSeksiView } from "./components/ArsipSeksiView";
 import { ArsipQCView } from "./components/ArsipQCView";
 import { NameplateView } from "./components/NameplateView";
@@ -410,6 +411,7 @@ export default function App(){
           </button>
         </div>
       )}
+      <WoEngineeringBanner akun={user?.username?`pekerja:${user.username}`:null} topOffset={hasDateRolled?40:0}/>
       <style>{`
         .menu-tile-np:active{transform:translateY(-2px);box-shadow:0 8px 20px #00000022!important;}
         @media(hover:hover){.menu-tile-np:hover{transform:translateY(-2px);box-shadow:0 8px 20px #00000022!important;}}
