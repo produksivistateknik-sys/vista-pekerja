@@ -6,16 +6,30 @@ import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
 // TAB RIWAYAT (dalam GudangHome) - histori aksi harian: submit/reject BBMB
 // (updated_at/updated_by, aksi GUDANG) dan konfirmasi pengambilan fisik BBMB
 // (diambil_at/diambil_oleh, aksi OPERATOR - sejak 17 Agu 2026 pengambilan
-// dikonfirmasi operator sendiri, bukan Gudang lagi). Dua kolom timestamp
-// TERPISAH (bukan cuma updated_at) - dipakai buat nentuin apa 1 item MASUK
-// tanggal yang lagi difilter (salah satu event jatuh di tanggal itu).
+// dikonfirmasi operator sendiri, bukan Gudang lagi) - keduanya di RECORD YANG
+// SAMA (permintaan_item), cuma info pengambilan ditampilkan SEBAGAI BAGIAN
+// dari kartu yang sama, bukan baris riwayat sendiri.
 //
 // REVISI (2 Sep 2026) - dulu 1 item bisa muncul 2 KALI sebagai baris riwayat
 // terpisah (1 buat event submit/reject, 1 lagi buat event diambil) kalau
-// kedua event itu jatuh di tanggal yang sama - laporan nyata: "AMPLAS 120
-// x10 Pcs" nongol 2x. Sekarang digabung jadi 1 CARD per item, isinya 3 baris
-// riwayat (Diminta/Disiapkan-Ditolak/Diambil) + 1 badge status TERKINI aja
-// (bukan 2 badge terpisah per event).
+// kedua event itu jatuh di TANGGAL YANG SAMA - laporan nyata: "AMPLAS 120
+// x10 Pcs" nongol 2x. Digabung jadi 1 CARD per item, isinya 3 baris riwayat
+// (Diminta/Disiapkan-Ditolak/Diambil) + 1 badge status TERKINI aja.
+//
+// REVISI KE-2 (17 Sep 2026, ditemukan user) - fix di atas cuma nutup gejala
+// DALAM 1 tanggal yang sama. Query fetchData() dulu MASIH nganggap item
+// "masuk" tanggal X kalau updated_at ATAU diambil_at jatuh di situ - kalau
+// approve & ambil beda HARI KALENDER, item yang SAMA tetap muncul di 2
+// TAMPILAN TANGGAL BERBEDA (buka tanggal approve-nya nongol, buka tanggal
+// ambil-nya nongol lagi). Dicek live: 110 dari 443 item (25%) punya
+// updated_at & diambil_at beda hari kalender - bukan kasus langka. Sekarang
+// SATU-SATUNYA penentu "item ini tanggal berapa" = updated_at (kapan Gudang
+// submit/reject) - diambil_at TIDAK LAGI dipakai sebagai tanggal acuan
+// alternatif, cuma ditampilkan sebagai info "📦 Diambil ..." di dalam kartu
+// yang sama (kode itu sudah ada sejak awal, gak berubah). Badge "🔁 Lintas
+// hari" (16 Sep 2026) DIHAPUS - itu tambalan sementara buat WARN soal
+// duplikasi ini, sekarang duplikasinya sendiri sudah hilang di akarnya jadi
+// warning itu jadi gak relevan lagi.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const DIVISI_LABEL:Record<string,string>={
@@ -39,22 +53,6 @@ const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
 };
 
 const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"-";
-// Tanggal LOKAL (WIB) murni, buat bandingin "hari kalender" - beda dari fmtDateTime yang include
-// jam. Dipakai deteksi lintas-hari di bawah (16 Sep 2026).
-const fmtDateOnly=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):"-";
-// GUARD LINTAS-HARI (16 Sep 2026, ditemukan user - insiden "67 vs 57 roll" di Rekap Permintaan
-// Barang) - fetchData() di atas nampilin 1 item di tanggal manapun SALAH SATU event-nya
-// (updated_at ATAU diambil_at) jatuh, dan dedup CUMA dalam 1 hari yang sama. Kalau Gudang
-// menyiapkan barang di 1 hari tapi operator baru ambil di HARI LAIN, item yang SAMA (1 baris,
-// 1 qty) muncul di 2 tampilan tanggal berbeda. Orang yang cross-check manual per-tanggal
-// (buka tanggal A, catat qty, buka tanggal B, catat qty lagi) gampang ke-double-count qty itu -
-// ini akar masalah kabel 1.5MM (57 asli ke-hitung 67 gara-gara 1 item nyebrang hari). Bukan bug
-// data (Rekap Permintaan Barang sendiri tetap benar, SUM 1x per baris) - ini murni bantu visual
-// biar gak kejadian lagi ke item lain.
-const isLintasHari=(r:any)=>{
-  if(!r.updated_at||!r.diambil_at)return false;
-  return new Date(r.updated_at).toDateString()!==new Date(r.diambil_at).toDateString();
-};
 
 // Badge status TERKINI - prioritas: udah diambil > disiapkan (nunggu diambil) > ditolak > lainnya.
 const statusTerkini=(item:any):{label:string,color:string}=>{
@@ -104,25 +102,19 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
     if(!silent)setLoading(true);
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
-    // 2 sumber event per item - updated_at (aksi Gudang: submit/reject) dan diambil_at (aksi
-    // operator: konfirmasi ambil) - query terpisah, tapi hasilnya di-dedup jadi 1 baris/item.
+    // SATU sumber tanggal (17 Sep 2026, REVISI KE-2 - lihat komentar header file) - updated_at
+    // (kapan Gudang submit/reject) SATU-SATUNYA penentu "item ini masuk tanggal apa". diambil_at
+    // TIDAK LAGI dipakai sebagai tanggal acuan alternatif - cuma tampil sebagai info "📦 Diambil"
+    // di dalam kartu yang sama (render di bawah, kode itu gak berubah). Karena cuma 1 query/1
+    // sumber, gak perlu dedup Map lagi - Postgres SELECT gak mungkin balikin 1 id 2x.
     // BUG FIX (8 Sep 2026) - neq status='ditolak_admin' WAJIB di sini: fitur approval admin
     // (PermintaanAdminTab.tsx) reuse kolom updated_at/updated_by buat aksi tolak admin (biar
     // konsisten pola submit/reject Gudang) - tanpa exclude ini, item yang DITOLAK ADMIN (belum
     // pernah sampai ke Gudang sama sekali) ikut "ketangkep" query ini seolah aksi Gudang.
-    const [byUpdated,byDiambil]=await Promise.all([
-      fetchAllPaged((from,to)=>
-        supabase.from("permintaan_item").select("*").not("updated_at","is",null).neq("status","ditolak_admin")
-          .gte("updated_at",startIso).lte("updated_at",endIso).range(from,to)),
-      fetchAllPaged((from,to)=>
-        supabase.from("permintaan_item").select("*").not("diambil_at","is",null)
-          .gte("diambil_at",startIso).lte("diambil_at",endIso).range(from,to)),
-    ]);
-    // Item MASUK tanggal ini kalau SALAH SATU event (submit/reject ATAU diambil) jatuh di tanggal
-    // yang lagi difilter - tapi cuma 1 BARIS per item (dedup by id), bukan 2 event terpisah lagi.
-    const itemMap=new Map<number,any>();
-    [...byUpdated,...byDiambil].forEach((it:any)=>{if(!itemMap.has(it.id))itemMap.set(it.id,it);});
-    const merged=[...itemMap.values()].sort((a,b)=>((b.diambil_at||b.updated_at||"")).localeCompare(a.diambil_at||a.updated_at||""));
+    const items=await fetchAllPaged((from,to)=>
+      supabase.from("permintaan_item").select("*").not("updated_at","is",null).neq("status","ditolak_admin")
+        .gte("updated_at",startIso).lte("updated_at",endIso).range(from,to));
+    const merged=items.slice().sort((a,b)=>(b.updated_at||"").localeCompare(a.updated_at||""));
     const permIds=[...new Set(merged.map((it:any)=>it.permintaan_id))];
     if(permIds.length===0){setRows([]);if(!silent)setLoading(false);return;}
     const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").in("id",permIds).range(from,to));
@@ -144,25 +136,24 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
   // Dot merah di date picker (6 Sep 2026) - tanggal yang punya item riwayat BELUM DIINPUT
   // (sudah_diinput=false), TERPISAH TOTAL dari dot di tab Permintaan (kondisi/sumber data beda,
   // cuma komponen visualnya yang dipakai bareng). Query SEKALI per bulan yang lagi keliatan -
-  // sama pola 2-sumber-event (updated_at ATAU diambil_at) kayak fetchData() di atas, cuma
   // discope ke rentang bulan (bukan 1 hari) dan di-filter sudah_diinput=false. status='submit'
   // SENGAJA disaring (6 Sep 2026, permintaan user) - item DITOLAK gak pernah ada barang keluar,
   // gak ada yang perlu dicatat ke pembukuan, jadi gak boleh ikut nyalain dot "belum diinput".
+  // SATU sumber tanggal (17 Sep 2026, sinkron sama fetchData() di atas) - dot cuma nyala di
+  // tanggal updated_at, BUKAN diambil_at lagi - kalau dot masih ikut diambil_at, tanggal itu bisa
+  // nyala titiknya padahal list Riwayat di tanggal itu kosong (item-nya sekarang "tinggal" di
+  // tanggal updated_at-nya).
   const[dotDates,setDotDates]=useState<Set<string>>(new Set());
   const dotMonthRef=useRef<{year:number,month:number}|null>(null);
   const fetchDotDates=async(year:number,month:number)=>{
     const lastDay=new Date(year,month+1,0).getDate();
     const start=`${year}-${String(month+1).padStart(2,"0")}-01T00:00:00`;
     const end=`${year}-${String(month+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}T23:59:59.999`;
-    const [byUpdated,byDiambil]=await Promise.all([
-      fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("id,updated_at,diambil_at,sudah_diinput").eq("status","submit").not("updated_at","is",null).gte("updated_at",start).lte("updated_at",end).eq("sudah_diinput",false).range(from,to)),
-      fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("id,updated_at,diambil_at,sudah_diinput").eq("status","submit").not("diambil_at","is",null).gte("diambil_at",start).lte("diambil_at",end).eq("sudah_diinput",false).range(from,to)),
-    ]);
+    const items=await fetchAllPaged((from,to)=>
+      supabase.from("permintaan_item").select("id,updated_at,sudah_diinput").eq("status","submit")
+        .not("updated_at","is",null).gte("updated_at",start).lte("updated_at",end).eq("sudah_diinput",false).range(from,to));
     const dates=new Set<string>();
-    [...byUpdated,...byDiambil].forEach((it:any)=>{
-      if(it.diambil_at&&it.diambil_at>=start&&it.diambil_at<=end)dates.add(it.diambil_at.slice(0,10));
-      if(it.updated_at&&it.updated_at>=start&&it.updated_at<=end)dates.add(it.updated_at.slice(0,10));
-    });
+    items.forEach((it:any)=>{if(it.updated_at)dates.add(it.updated_at.slice(0,10));});
     setDotDates(dates);
   };
   const handleVisibleMonthChange=(year:number,month:number)=>{
@@ -349,15 +340,8 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {filteredRows.map((r:any)=>{
             const status=statusTerkini(r);
-            const lintasHari=isLintasHari(r);
             return(
-              <div key={r.id} style={{background:"#fff",border:lintasHari?"1.5px solid #fbbf24":"1.5px solid #e2e8f0",borderRadius:12,padding:"11px 14px"}}>
-                {lintasHari&&(
-                  <div title="Item ini juga muncul di tampilan tanggal satunya (disiapkan & diambil beda hari) - 1 transaksi yang sama, jangan dihitung 2x kalau cek per-tanggal manual."
-                    style={{display:"flex",alignItems:"center",gap:5,background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"5px 9px",marginBottom:8,fontSize:10,fontWeight:700,color:"#92400e"}}>
-                    🔁 Lintas hari: disiapkan {fmtDateOnly(r.updated_at)}, diambil {fmtDateOnly(r.diambil_at)} — 1 transaksi, jangan dihitung 2×
-                  </div>
-                )}
+              <div key={r.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"11px 14px"}}>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
                   <div style={{minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{r.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{r.qty}{r.satuan?` ${r.satuan}`:""}</span></div>
