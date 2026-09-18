@@ -162,6 +162,78 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     return()=>{supabase.removeChannel(ch);if(refetchTimer.current)clearTimeout(refetchTimer.current);};
   },[tugas.seksi,panelIdsKey]);
 
+  // Timer kerja (18 Sep 2026, FITUR BARU - upgrade Pasang Komponen ke model "proses biasa",
+  // sama kayak Potong/Bending/dst) - dulu TANPA timer sama sekali (lihat komentar header file
+  // "TANPA operator/timer, sama kayak QS"). fcs_timer_kerja SUDAH punya kolom `tahap` (dipakai
+  // BUSBAR) - reuse langsung, proses="PASANG KOMPONEN", tahap=tugas.tahap (ASSEMBLING/WIRING),
+  // TIDAK ADA perubahan skema/migrasi data. Model SEDERHANA dibanding OperatorView (single
+  // operator per sesi, bukan multi-worker bulk-assign) - konsisten sama sisa komponen ini yang
+  // memang single-user, gak perlu direplikasi kompleksitas assign-banyak-orang OperatorView.
+  const[timerAktif,setTimerAktif]=useState<Record<string,any>>({});
+  const[timerLoading,setTimerLoading]=useState<string|null>(null);
+  const[,forceTimerTick]=useState(0);
+  const fetchTimerAktif=async()=>{
+    const{data,error}=await supabase.from("fcs_timer_kerja").select("*")
+      .eq("pekerja_id",user.id).eq("proses","PASANG KOMPONEN").eq("tahap",tugas.tahap).is("selesai",null);
+    if(error){console.error("gagal ambil timer aktif:",error);return;}
+    const map:Record<string,any>={};
+    (data||[]).forEach((t:any)=>{map[`${t.panel_id}_${t.kode_komponen}`]=t;});
+    setTimerAktif(map);
+  };
+  useEffect(()=>{
+    fetchTimerAktif();
+    const ch=supabase.channel(`realtime-timer-komponen-pasang-${tugas.seksi}-${user.id}`)
+      .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja",filter:`pekerja_id=eq.${user.id}`},fetchTimerAktif)
+      .subscribe();
+    return()=>{supabase.removeChannel(ch);};
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[tugas.seksi,user.id]);
+  // Tick ringan tiap 5 detik SAAT ada timer aktif - biar durasi berjalan kelihatan nge-tick,
+  // bukan beku sampai event realtime/aksi lain memicu re-render (pola sama persis RencanaHarian).
+  useEffect(()=>{
+    if(Object.keys(timerAktif).length===0)return;
+    const iv=setInterval(()=>forceTimerTick(v=>v+1),5000);
+    return()=>clearInterval(iv);
+  },[Object.keys(timerAktif).length>0]);
+
+  const mulaiTimer=async(panelId:number,kode:string)=>{
+    const tKey=`${panelId}_${kode}`;
+    setTimerLoading(tKey);
+    try{
+      const tanggal=TODAY;
+      // Scope-by-tanggal (BUG FIX 16 Sep 2026, sama pola OperatorView.startTimer) - timer "aktif"
+      // dari HARI LAIN yang ketinggalan jalan gak boleh ke-nyambung diam-diam ke sesi hari ini.
+      const{data:existing}=await withRetry(()=>supabase.from("fcs_timer_kerja").select("*")
+        .eq("pekerja_id",user.id).eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses","PASANG KOMPONEN")
+        .eq("tahap",tugas.tahap).eq("tanggal",tanggal).is("selesai",null).order("mulai",{ascending:false}).limit(1).maybeSingle());
+      if(existing){setTimerAktif(prev=>({...prev,[tKey]:existing}));return;}
+      const{data,error}=await withRetry(()=>supabase.from("fcs_timer_kerja").insert({
+        pekerja_id:user.id,panel_id:panelId,kode_komponen:kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap,tanggal,mulai:new Date().toISOString(),
+      }).select().single());
+      if(error){alert("Gagal mulai timer: "+error.message);return;}
+      setTimerAktif(prev=>({...prev,[tKey]:data}));
+    }catch(err:any){
+      alert("Gagal mulai timer - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+    }finally{
+      setTimerLoading(null);
+    }
+  };
+  const selesaiTimer=async(panelId:number,kode:string)=>{
+    const tKey=`${panelId}_${kode}`;
+    const timer=timerAktif[tKey];
+    if(!timer)return;
+    setTimerLoading(tKey);
+    try{
+      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id));
+      if(error){alert("Gagal selesai-in timer: "+error.message);return;}
+      setTimerAktif(prev=>{const n={...prev};delete n[tKey];return n;});
+    }catch(err:any){
+      alert("Gagal selesai-in timer - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+    }finally{
+      setTimerLoading(null);
+    }
+  };
+
   // Komponen relevan buat seksi ini di 1 panel: qty>0, relevan ke proses "PASANG KOMPONEN", dan
   // (khusus wiring_control) cuma Box Control/Pintu - Wiring Control cuma kontribusi ke komponen
   // yang punya tahap WIRING, gak pernah ke komponen lain (Groundplate dst itu Assembling Luar aja).
@@ -654,6 +726,27 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
                           <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{r.nama}</span>
                           <span style={{fontSize:11,fontWeight:800,color:pct>=100?"#16a34a":tugas.color}}>{pct}%</span>
                         </div>
+                        {(()=>{
+                          const tKey=`${p.id}_${r.kode}`;
+                          const timer=timerAktif[tKey];
+                          const tLoading=timerLoading===tKey;
+                          let durasiLabel="";
+                          if(timer){
+                            const menit=(Date.now()-new Date(timer.mulai).getTime())/60000;
+                            const jam=Math.floor(menit/60);
+                            const sisaMenit=Math.round(menit%60);
+                            durasiLabel=jam>0?`${jam}j ${sisaMenit}m`:menit>=1?`${Math.round(menit)}m`:`${Math.max(0,Math.round(menit*60))}d`;
+                          }
+                          return(
+                            <button disabled={tLoading}
+                              onClick={()=>timer?selesaiTimer(p.id,r.kode):mulaiTimer(p.id,r.kode)}
+                              style={{width:"100%",marginBottom:10,fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"11px 14px",minHeight:44,
+                                cursor:tLoading?"not-allowed":"pointer",
+                                background:timer?"#fef2f2":"#f0fdf4",color:timer?"#dc2626":"#16a34a"}}>
+                              {tLoading?"...":timer?`⏹ Selesai ${durasiLabel}`:"▶ Mulai Kerja"}
+                            </button>
+                          );
+                        })()}
                         <div style={{display:"flex",gap:6,marginBottom:10}}>
                           {PCT_STEPS.map((s:number)=>{
                             const reached=pct>=s;
@@ -729,13 +822,23 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
                               )}
                             </div>
                         </>
+                        {/* BUG FIX+FITUR (18 Sep 2026) - dulu trigger DB panels_auto_archive_seksi()
+                            OTOMATIS insert ke panel_seksi_archived begitu progress tahap ini
+                            genuinely 100% (TANPA operator sadar/putuskan) - trigger itu SEKARANG
+                            DIHAPUS (migration terkait) buat bagian assembling_luar/wiring_control,
+                            operator yang mutusin sendiri kapan komponen ini "beneran selesai &
+                            siap diarsipkan". Tombol ini REUSE simpanProgress() apa adanya (fungsi
+                            itu MEMANG SUDAH upsert ke panel_seksi_archived, gak berubah sama
+                            sekali, satu sumber logika CLAUDE.md B.1) - cuma label/ikon beda pas
+                            pct>=100 ("📦 Arsipkan Komponen", negasin ini aksi FINAL) vs pct<100
+                            ("💾 Simpan Progress", checkpoint biasa) - biar operator sadar bedanya. */}
                         <button onClick={()=>simpanProgress(p,r.kode,r.nama,r.isTahap)} disabled={saving||pct===0||sudahDiarsip}
                           style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,width:"100%",
                             background:sudahDiarsip?"#dcfce7":saving||pct===0?"#cbd5e1":tugas.color,
                             color:sudahDiarsip?"#16a34a":"#fff",border:"none",borderRadius:10,padding:"10px 10px",fontSize:12,fontWeight:700,
                             cursor:saving||pct===0||sudahDiarsip?"not-allowed":"pointer"}}>
-                          <i className={saving?"ti ti-loader-2":sudahDiarsip?"ti ti-circle-check-filled":"ti ti-device-floppy"} style={{fontSize:14}}/>
-                          {saving?"Menyimpan...":sudahDiarsip?"✅ Sudah Diarsip":"Simpan Progress"}
+                          <i className={saving?"ti ti-loader-2":sudahDiarsip?"ti ti-circle-check-filled":pct>=100?"ti ti-archive":"ti ti-device-floppy"} style={{fontSize:14}}/>
+                          {saving?"Menyimpan...":sudahDiarsip?"✅ Sudah Diarsip":pct>=100?"📦 Arsipkan Komponen":"Simpan Progress"}
                         </button>
                       </div>
                     );
