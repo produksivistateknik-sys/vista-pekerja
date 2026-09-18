@@ -336,7 +336,16 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         await supabase.from("panels").update({pasang_komponen_photos:newFoto}).eq("id",panel.id);
         setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,pasang_komponen_photos:newFoto}:p));
       } else {
-        const kode=key.split("_")[1];
+        // BUG FIX (18 Sep 2026, dilaporkan user - foto "hilang" di CIMORY CITEUREUP) - dulu
+        // key.split("_")[1], cuma ambil potongan PERTAMA setelah underscore. key dibentuk
+        // `${panel.id}_${kode}` - buat kode yang TIPE panelnya sendiri mengandung underscore
+        // (WM_SS/WM_MS/WM_POLY, jadi kode aslinya WM_SS.2 dst), split("_")[1] motong di
+        // underscore kode itu sendiri ("422_WM_SS.2" -> "WM" doang, bukan "WM_SS.2") - foto
+        // kesimpen ke kode HANTU "WM" (gak pernah ada di BOM, gak punya qty/progress), bukan ke
+        // kode asli - dari sisi galeri per-komponen kelihatan "foto gak muncul" krn nyari di
+        // kode yang bener tapi datanya nyasar ke kode lain. slice(indexOf+1) ambil SEMUA
+        // setelah underscore PERTAMA - aman krn panel.id numerik gak pernah punya underscore.
+        const kode=key.slice(key.indexOf("_")+1);
         const cl=panel.checklist?.[kode]||{};
         const newFoto=[...(cl.fotoPemasangan||[]),...fotoTerupload];
         const newEntry={...cl,fotoPemasangan:newFoto};
