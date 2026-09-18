@@ -7,9 +7,28 @@ import { FotoZoomViewerPekerja } from "./FotoZoomViewerPekerja";
 // ARSIP SEKSI - tab "Arsip" per divisi (Warehouse/QS/QC/Pasang Komponen), read-only browsing.
 // Sumber: panel_seksi_archived - diisi OTOMATIS oleh trigger DB panels_auto_archive_seksi()
 // begitu progress seksi itu 100%, TANPA aksi manual apapun dari operator/planner. Ini SALINAN
-// (data live di panels TIDAK dihapus/berubah), jadi tab ini murni buat lihat riwayat foto yang
-// udah selesai, dikelompokkan per WO. Unarchive (kalau progress kelirunya ke-set 100%) sengaja
-// cuma bisa dari Vista Teknik (admin) - lihat ArsipSeksiSection di ArsipTab.tsx.
+// (data live di panels TIDAK dihapus/berubah - panel TETAP bisa diprogres normal di Renhar/Raw
+// Schedule, gak ada yang "terkunci"), jadi tab ini murni buat lihat riwayat foto yang udah
+// selesai, dikelompokkan per WO.
+//
+// KOREKSI (18 Sep 2026) - komentar lama di sini nyebut "Unarchive... cuma bisa dari Vista
+// Teknik, lihat ArsipSeksiSection di ArsipTab.tsx" - USANG/GAK AKURAT, dicek langsung: gak ada
+// komponen ArsipSeksiSection maupun fitur unarchive utk panel_seksi_archived di Vista Teknik
+// SAMA SEKALI (grep seluruh repo, panel_seksi_archived cuma muncul di file types generated).
+// Tombol "↩ Unarchive" yang ADA di ArsipTab.tsx itu utk sistem BEDA TOTAL (arsip_panel()/
+// panels_archived, whole-panel move manual dari ManajemenWO.tsx) - gak berlaku ke tabel ini.
+//
+// BUG DIKETAHUI (18 Sep 2026, investigasi live) - seksi wiring_control/assembling_luar
+// (sumber checklist[kode].pasangKomponenTahap) archive PER TAHAP SENDIRI-SENDIRI (WIRING atau
+// ASSEMBLING cukup salah satu 100) - BUKAN proses "PASANG KOMPONEN" gabungan. Dicek: backup
+// function SEBELUM 6 Agu 2026 (supabase/backup_panels_auto_archive_seksi_20260806_before_
+// wiring_only.sql, vista-teknik) mensyaratkan v_asm=100 AND v_wir=100 dua-duanya sebelum
+// archive ke 1 seksi gabungan 'pasang_komponen' - perubahan 6 Agu diduga memecah jadi 2 kondisi
+// terpisah, itulah row yang muncul di sini bisa "Selesai" padahal proses gabungannya belum
+// 100% (dicek live: 9 dari 56 baris kena, lintas 4 proyek). BELUM diperbaiki - source function
+// SEKARANG gak bisa diintrospeksi tanpa akses SQL Editor langsung (revisi berkali-kali di
+// database, gak lewat migration file - lihat catatan sama di panel_seksi_archived_nameplate
+// migration, vista-teknik).
 // Dipisah dari App.tsx (Sprint 7).
 // ─────────────────────────────────────────────────────────────────────────────
 // Paginasi eksplisit (BUG FIX 5 Sep 2026) - Supabase/PostgREST default mentok 1000 baris per
