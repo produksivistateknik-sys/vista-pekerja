@@ -582,10 +582,24 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
           // diarsip HILANG dari accordion (sesuai spek "Simpan -> langsung hilang dari card
           // aktif") - header panel (selesaiPanel/relevan.length) TETAP hitung dari `relevan`
           // penuh, cuma isi accordion-nya yang difilter.
+          //
+          // BUG FIX (18 Sep 2026, dilaporkan operator - "0/1 komponen selesai" tapi badge
+          // "Sudah Diarsip" nongol bareng, operator BUNTU gak ada tombol apa pun buat lanjut)
+          // - dulu "sudah diarsip" cuma cek arsipPctR===pctR (progress SEKARANG sama persis
+          // kayak yang PERNAH diarsip), TANPA pctR>=100. Asumsi awal (komentar 7-14 Agu di atas)
+          // "arsip pasti berarti 100%" - valid waktu itu, TAPI jebol kalau ada baris
+          // panel_seksi_archived BASI dari bug versi trigger DB lama (dicek live: snapshot-nya
+          // nunjukin progress <100, mis. WM.4 panel PP-LANTAI 16B/15B tersimpan 90% bukan 100%
+          // - lihat investigasi auto-archive). Begitu progress live balik ke angka yang SAMA
+          // kayak snapshot basi itu, PCT_STEPS+Simpan Progress HILANG TOTAL dari UI (masuk
+          // relevanArsip, versi ringkas tanpa kontrol edit) - operator gak punya cara APA PUN
+          // menaikkan progress lagi, padahal jelas-jelas belum 100%. Tambah &&pctR>=100 -
+          // "sudah diarsip" (dan kontrol edit ikut disembunyikan) SEKARANG WAJIB genuinely
+          // 100%, gak cukup cuma "kebetulan sama kayak arsip".
           const relevanBelumArsip=relevan.filter(r=>{
             const pctR=getProgress(p,r.kode,r.isTahap);
             const arsipPctR=arsipMap[`${p.id}|${r.kode}`];
-            return !(arsipPctR!==undefined&&arsipPctR===pctR);
+            return !(arsipPctR!==undefined&&arsipPctR===pctR&&pctR>=100);
           });
           // PERBAIKAN (14 Agu 2026): komponen yang sudah diarsip TETAP dirender (bukan lenyap
           // total) - versi ringkas tanpa PCT_STEPS/Simpan Progress, cuma buat nambah foto
@@ -594,7 +608,7 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
           const relevanArsip=relevan.filter(r=>{
             const pctR=getProgress(p,r.kode,r.isTahap);
             const arsipPctR=arsipMap[`${p.id}|${r.kode}`];
-            return arsipPctR!==undefined&&arsipPctR===pctR;
+            return arsipPctR!==undefined&&arsipPctR===pctR&&pctR>=100;
           });
           const expanded=expandedPanel.has(p.id);
           const fotoPanelArr=p.pasang_komponen_photos||[];
@@ -626,8 +640,14 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
                     // BUG FIX (7 Agu 2026): "sudah diarsip" = pct sekarang PERSIS sama kayak pct
                     // terakhir yang diarsip - kalau progress berubah lagi (naik/turun), otomatis
                     // gak dianggap "sudah" lagi, tombol Simpan Progress aktif lagi.
+                    // BUG FIX (18 Sep 2026) - tambah &&pct>=100, samakan sama relevanBelumArsip/
+                    // relevanArsip di atas (satu sumber logika, CLAUDE.md B.1) - lihat komentar
+                    // lengkap di deklarasi relevanBelumArsip. Baris ini praktiknya gak pernah true
+                    // di dalam loop relevanBelumArsip (kondisinya kebalikan dari filter yang
+                    // nentuin masuk sini), tetap disamakan biar gak ada 2 sumber kebenaran beda
+                    // kalau ada yang refactor salah satu doang nanti.
                     const arsipPct=arsipMap[`${p.id}|${r.kode}`];
-                    const sudahDiarsip=arsipPct!==undefined&&arsipPct===pct;
+                    const sudahDiarsip=arsipPct!==undefined&&arsipPct===pct&&pct>=100;
                     return(
                       <div key={r.kode} style={{border:"1.5px solid #eef0f3",borderRadius:12,padding:"12px 13px",background:pct>=100?"#f0fdf4":"#fafbfc"}}>
                         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
