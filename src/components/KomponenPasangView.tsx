@@ -4,7 +4,7 @@ import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry } from "../lib/koneksi";
 import { mergePanelChecklist } from "../lib/checklistHelpers";
-import { fetchAllPanels, isKomponenRelevant, hitungProgressBusbarGabungan, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA, PASANG_KOMPONEN_URUTAN_TAHAP } from "../lib/panelHelpers";
+import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { uploadToR2 } from "../lib/r2Client";
@@ -235,8 +235,14 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
   };
 
   // Komponen relevan buat seksi ini di 1 panel: qty>0, relevan ke proses "PASANG KOMPONEN", dan
-  // (khusus wiring_control) cuma Box Control/Pintu - Wiring Control cuma kontribusi ke komponen
-  // yang punya tahap WIRING, gak pernah ke komponen lain (Groundplate dst itu Assembling Luar aja).
+  // pembagian tugasnya TEGAS TERPISAH per divisi (dikonfirmasi user 18 Sep 2026, investigasi bug
+  // WM.4 "stuck 50%" berulang di TRANS ICON SURABAYA/CJI): Wiring Control CUMA Pintu/Box Control,
+  // Assembling Luar CUMA komponen selain itu (Dudukan ACB/Groundplate/Dudukan Capacitor/Detuned
+  // Reaktor dst). SEBELUMNYA cabang assembling_luar `return true` TANPA exclude Pintu/Box Control -
+  // itu sebabnya Assembling Luar (operator GILANG, beberapa WO) sempat kelihatan & bisa submit
+  // progress ASSEMBLING ke Pintu/Box Control padahal bukan tugasnya, mengkontaminasi data
+  // checklist[kode].pasangKomponenTahap.ASSEMBLING - lihat komentar di updatePctLive soal data lama
+  // itu SENGAJA dibiarkan (gak dihapus), cuma gak dipakai lagi di perhitungan combined progress.
   const komponenRelevanPanel=(panel:any):{kode:string,nama:string,isTahap:boolean}[]=>{
     // Lookup nama WAJIB pakai key gabungan tipe_panel+kode (lihat komentar fetchData di atas) -
     // panel.tipe SELALU ada di scope closure sini, jadi aman langsung dipakai per-panel.
@@ -245,8 +251,9 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       if(!((cl?.qty||0)>0))return false;
       if(!isKomponenRelevant(kode,panel.tipe,"PASANG KOMPONEN",relevanSet,hasMappingSet))return false;
       const nama=namaKode(kode);
-      if(tugas.seksi==="wiring_control")return PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(nama);
-      return true;
+      const isTahapNama=PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(nama);
+      if(tugas.seksi==="wiring_control")return isTahapNama;
+      return !isTahapNama; // assembling_luar: TIDAK PERNAH Pintu/Box Control
     }).map(([kode]:any)=>({kode,nama:namaKode(kode),isTahap:PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(namaKode(kode))}));
   };
 
@@ -280,7 +287,15 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     if(isTahap){
       const tahapState=cl.pasangKomponenTahap||{};
       const newTahap={...tahapState,[tugas.tahap]:{...tahapState[tugas.tahap],progress:pct,lastOperator}};
-      const combined=hitungProgressBusbarGabungan(newTahap,PASANG_KOMPONEN_URUTAN_TAHAP);
+      // FIX (18 Sep 2026): dulu combined = rata-rata ASSEMBLING+WIRING (hitungProgressBusbarGabungan) -
+      // SALAH, karena Pintu/Box Control CUMA tugas Wiring Control (dikonfirmasi user, lihat komentar
+      // panjang di komponenRelevanPanel di atas). Assembling Luar sekarang di-exclude dari daftar
+      // tugasnya utk 2 nama ini, jadi field ASSEMBLING gak akan pernah lagi dapet data baru - combined
+      // progress yang dibaca Detail Progres/Renhar ("PASANG KOMPONEN") SEHARUSNYA murni ikut WIRING,
+      // bukan dirata-rata sama ASSEMBLING (yang kalau kosong dianggap 0, bikin macet di 50% padahal
+      // Wiring Control-nya udah genuinely 100%). Data pasangKomponenTahap.ASSEMBLING lama yang kadung
+      // ada (dari sebelum fix ini) DIBIARKAN apa adanya (gak dihapus) - cuma gak dipakai di sini lagi.
+      const combined=newTahap.WIRING?.progress||0;
       newCl={...cl,pasangKomponenTahap:newTahap,progress:{...(cl.progress||{}),"PASANG KOMPONEN":combined},
         progressByDate:{...(cl.progressByDate||{}),"PASANG KOMPONEN":{...((cl.progressByDate||{})["PASANG KOMPONEN"]||{}),[TODAY]:combined}}};
     } else {
