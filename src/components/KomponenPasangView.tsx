@@ -207,9 +207,23 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         .eq("pekerja_id",user.id).eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses","PASANG KOMPONEN")
         .eq("tahap",tugas.tahap).eq("tanggal",tanggal).is("selesai",null).order("mulai",{ascending:false}).limit(1).maybeSingle());
       if(existing){setTimerAktif(prev=>({...prev,[tKey]:existing}));return;}
-      const{data,error}=await withRetry(()=>supabase.from("fcs_timer_kerja").insert({
-        pekerja_id:user.id,panel_id:panelId,kode_komponen:kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap,tanggal,mulai:new Date().toISOString(),
-      }).select().single());
+      const{data,error}=await withRetry(async()=>{
+        const hasil=await supabase.from("fcs_timer_kerja").insert({
+          pekerja_id:user.id,panel_id:panelId,kode_komponen:kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap,tanggal,mulai:new Date().toISOString(),
+        }).select().single();
+        // BUG FIX (20 Sep 2026) - constraint DB fcs_timer_kerja_satu_aktif (migration terkait,
+        // partial unique index) jadi jaring pengaman terakhir kalau cek `existing` di atas lolos
+        // gara-gara race (attempt retry sebelumnya belum ke-commit pas attempt ini jalan - sama
+        // pola OperatorView.startTimer). INSERT kedua yang bentrok gagal unique_violation (23505)
+        // - itu bukan kegagalan beneran, fetch & pakai baris yang udah ada, jangan alert error.
+        if(hasil.error?.code==="23505"){
+          const{data:sudahAda}=await supabase.from("fcs_timer_kerja").select("*")
+            .eq("pekerja_id",user.id).eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses","PASANG KOMPONEN")
+            .eq("tahap",tugas.tahap).eq("tanggal",tanggal).is("selesai",null).order("mulai",{ascending:false}).limit(1).maybeSingle();
+          if(sudahAda)return{data:sudahAda,error:null};
+        }
+        return hasil;
+      });
       if(error){alert("Gagal mulai timer: "+error.message);return;}
       setTimerAktif(prev=>({...prev,[tKey]:data}));
     }catch(err:any){

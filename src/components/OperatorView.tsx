@@ -362,6 +362,17 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   const [expandedPanel,setExpandedPanel]=useState<Record<string,string|null>>({});
   const [bulkAssignGroupKey,setBulkAssignGroupKey]=useState<string|null>(null);
   const [tempBulkPekerjaIds,setTempBulkPekerjaIds]=useState<number[]>([]);
+  // BUG FIX (20 Sep 2026, ditemukan lewat audit database - 7 baris fcs_timer_kerja duplikat utk
+  // pekerja+komponen+proses+tanggal yang SAMA, dibuat dalam detik yang sama) - tombol "Mulai (N)"
+  // di modal bulk-assign SEBELUMNYA cuma disable kalau belum pilih pekerja, TIDAK disable selagi
+  // bulkAssignAndStartDesktop() masih jalan (loop sekuensial startTimer() per baris×pekerja, bisa
+  // lama di koneksi pabrik yang lambat/putus-putus). Operator yang gak lihat feedback bisa
+  // nge-tap "Mulai" lagi selagi proses pertama belum kelar - itu memicu pemanggilan KEDUA yang
+  // genuinely paralel sama yang pertama, dua rangkaian startTimer() jalan bareng buat kombinasi
+  // yang sama, masing-masing bisa lolos cek "timer udah ada?" krn insert yang satunya belum
+  // ke-commit/kebaca. bulkStarting dipakai disable tombol + kasih feedback visual "Memproses..."
+  // selama proses ini jalan.
+  const [bulkStarting,setBulkStarting]=useState(false);
   // Khusus BUSBAR: bulk-assign HARUS pilih satu tahap spesifik dulu (bukan ke-4 tahap sekaligus)
   // - alur kerja lapangan-nya per-tahap secara terpisah (misal fabrikasi banyak part sekaligus
   // dalam satu sesi, plating/pasang biasanya sesi lain/orang lain) - beda dari proses lain yang
@@ -848,9 +859,22 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       const{data,error}=await withRetry(async()=>{
         const{data:already}=await queryAktif();
         if(already)return{data:already,error:null};
-        return await supabase.from("fcs_timer_kerja").insert({
+        const hasil=await supabase.from("fcs_timer_kerja").insert({
           pekerja_id:pekerjaId,panel_id:panelId,kode_komponen:kode,proses,tanggal,mulai:new Date().toISOString(),tahap:tahap||null
         }).select().single();
+        // BUG FIX (20 Sep 2026) - constraint DB fcs_timer_kerja_satu_aktif (migration terkait,
+        // partial unique index max 1 baris aktif per kombinasi) sekarang JADI JARING PENGAMAN
+        // TERAKHIR kalau cek queryAktif() di atas lolos gara-gara race (2 pemanggilan startTimer
+        // paralel, atau retry attempt sebelumnya belum ke-commit pas attempt ini jalan - lihat
+        // komentar panjang soal withTimeout gak cancel request asli). INSERT kedua yang bentrok
+        // GAGAL dgn unique_violation (23505) - itu BUKAN kegagalan beneran, itu tandanya baris
+        // yang kita mau udah ada (dibikin race satunya) - fetch & pakai itu, JANGAN alert error
+        // ke operator utk kondisi yang sebenarnya sukses ini.
+        if(hasil.error?.code==="23505"){
+          const{data:existing}=await queryAktif();
+          if(existing)return{data:existing,error:null};
+        }
+        return hasil;
       });
       if(error){
         alert("Gagal mulai timer: "+error.message);
@@ -2553,15 +2577,20 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                       <div style={{display:"flex",gap:8}}>
                         <button onClick={()=>setBulkAssignProses(null)}
                           style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
-                        <button disabled={tempBulkPekerjaIds.length===0}
+                        <button disabled={tempBulkPekerjaIds.length===0||bulkStarting}
                           onClick={async()=>{
-                            await bulkAssignAndStartDesktop(proses,bulkTargetRows,tempBulkPekerjaIds);
-                            setBulkAssignProses(null);
+                            setBulkStarting(true);
+                            try{
+                              await bulkAssignAndStartDesktop(proses,bulkTargetRows,tempBulkPekerjaIds);
+                              setBulkAssignProses(null);
+                            }finally{
+                              setBulkStarting(false);
+                            }
                           }}
                           style={{flex:1,padding:"10px",borderRadius:10,border:"none",
-                            background:tempBulkPekerjaIds.length===0?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
-                            cursor:tempBulkPekerjaIds.length===0?"not-allowed":"pointer"}}>
-                          Mulai ({tempBulkPekerjaIds.length})
+                            background:tempBulkPekerjaIds.length===0||bulkStarting?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
+                            cursor:tempBulkPekerjaIds.length===0||bulkStarting?"not-allowed":"pointer"}}>
+                          {bulkStarting?"Memproses...":`Mulai (${tempBulkPekerjaIds.length})`}
                         </button>
                       </div>
                     </div>
@@ -2680,7 +2709,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
               <div style={{display:"flex",gap:8}}>
                 <button onClick={()=>setBulkAssignProses(null)}
                   style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
-                <button disabled={tempBulkPekerjaIds.length===0}
+                <button disabled={tempBulkPekerjaIds.length===0||bulkStarting}
                   onClick={async()=>{
                     // Catat waktu mulai section HANYA kalau section ini belum punya (section yang
                     // udah terbuka lanjut collect+mulai lagi TIDAK menggeser waktu mulainya).
@@ -2688,13 +2717,18 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                     if(!sectionMulaiMap[sectionMulaiKey]){
                       setSectionMulaiMap((prev:any)=>({...prev,[sectionMulaiKey]:new Date().toISOString()}));
                     }
-                    await bulkAssignAndStartDesktop(proses,bulkTargetRows,tempBulkPekerjaIds);
-                    setBulkAssignProses(null);
+                    setBulkStarting(true);
+                    try{
+                      await bulkAssignAndStartDesktop(proses,bulkTargetRows,tempBulkPekerjaIds);
+                      setBulkAssignProses(null);
+                    }finally{
+                      setBulkStarting(false);
+                    }
                   }}
                   style={{flex:1,padding:"10px",borderRadius:10,border:"none",
-                    background:tempBulkPekerjaIds.length===0?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
-                    cursor:tempBulkPekerjaIds.length===0?"not-allowed":"pointer"}}>
-                  Mulai ({tempBulkPekerjaIds.length})
+                    background:tempBulkPekerjaIds.length===0||bulkStarting?"#94a3b8":"#16a34a",color:"#fff",fontWeight:700,fontSize:13,
+                    cursor:tempBulkPekerjaIds.length===0||bulkStarting?"not-allowed":"pointer"}}>
+                  {bulkStarting?"Memproses...":`Mulai (${tempBulkPekerjaIds.length})`}
                 </button>
               </div>
             </div>
