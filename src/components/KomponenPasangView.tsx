@@ -4,6 +4,7 @@ import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry } from "../lib/koneksi";
 import { mergePanelChecklist } from "../lib/checklistHelpers";
+import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip } from "../lib/componentProcessProgress";
 import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
@@ -320,6 +321,21 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     const newChecklist={...freshChecklist,[kode]:newCl};
     setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
     await withRetry(()=>mergePanelChecklist(panel.id,{[kode]:newCl}));
+    // FASE 2 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, checklist di atas TETAP
+    // sumber kebenaran yang dibaca semua consumer lama (Task Monitoring dkk BELUM diubah).
+    // Best-effort SENGAJA (console.error, TIDAK alert/blok operator) - checklist di atas sudah
+    // berhasil tersimpan sebelum baris ini, tabel baru ini masih 0 consumer di fase ini, jadi
+    // kegagalannya TIDAK BOLEH bikin operator kehilangan progress yang sebenarnya sudah tersimpan.
+    // sudahDisimpan100 SELALU false di sini (updatePctLive bukan aksi arsip) - biar konsisten
+    // sama logika `sudahDiarsip` checklist lama (pct berubah lagi -> otomatis dianggap "belum
+    // diarsip ulang" sampai simpanProgress dipanggil lagi).
+    const ccpTahap=isTahap?tugas.tahap:null;
+    upsertComponentProcessProgress({
+      panelId:panel.id,kode,proses:"PASANG KOMPONEN",tahap:ccpTahap,pct,
+      qtyTotal:cl.qty||0,photos:newCl.fotoPemasangan||cl.fotoPemasangan||[],
+      operatorNama:lastOperator.nama,operatorAt:lastOperator.ts,sudahDisimpan100:false,
+      updatedBy:user.nama,
+    }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updatePctLive):",error);});
   };
 
   // "Simpan Progress" - commit checkpoint+history (fresh-refetch checklist biar gak nimpa balik
@@ -376,6 +392,31 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         diarsipkan_pada:new Date().toISOString(),diarsipkan_oleh:user.nama,
       },{onConflict:"panel_id,seksi,kode"}));
       if(arsipErr)throw arsipErr;
+      // FASE 2 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, sinkron sama
+      // panel_seksi_archived di atas (checkpoint FINAL, bukan cuma progress berjalan kayak
+      // updatePctLive - makanya sudahDisimpan100 dihitung dari combined>=100 di sini, sama
+      // persis rumus archiveData.pasangKomponenTahap[...].sudahDisimpan100 barusan). Best-effort
+      // (console.error, TIDAK throw) - panel_seksi_archived di atas SUDAH berhasil tersimpan,
+      // kegagalan tabel baru ini gak boleh bikin operator kehilangan arsip yang sebenarnya
+      // sudah sukses.
+      const ccpTahap=isTahap?tugas.tahap:null;
+      const{error:ccpErr}=await upsertComponentProcessProgress({
+        panelId:panel.id,kode,proses:"PASANG KOMPONEN",tahap:ccpTahap,pct:combined,
+        qtyTotal:freshCl.qty||0,photos:freshCl.fotoPemasangan||[],
+        operatorNama:user.nama,operatorAt:new Date().toISOString(),sudahDisimpan100:combined>=100,
+        updatedBy:user.nama,
+      });
+      if(ccpErr)console.error("dual-write component_process_progress gagal (simpanProgress):",ccpErr);
+      // Validasi konsistensi (bukan gate keras - lihat komentar cekPasangKomponenSiapArsip) -
+      // cuma dijalankan pas beneran arsip final (combined>=100), console.warn kalau ternyata
+      // gak sinkron (harusnya gak pernah kejadian selama dual-write di atas sukses, ini jaring
+      // pengaman deteksi drift, bukan pengganti alur arsip panel_seksi_archived yang sudah ada -
+      // tombol "Arsipkan Komponen" TETAP tombol yang sama, WO-072 restructuring, bukan tombol baru).
+      if(combined>=100){
+        cekPasangKomponenSiapArsip(panel.id,kode).then(siap=>{
+          if(siap===false)console.warn(`component_process_progress belum konsisten utk panel ${panel.id} kode ${kode} - archiveData tersimpan tapi status blm 'done' semua`);
+        });
+      }
       // BUG FIX (14 Agu 2026): kalau seksi sebelah (lihat siblingSeksi di atas) udah pernah
       // archive komponen yang SAMA duluan, sekalian segerin foto di row-nya juga - biar gak
       // ketinggalan snapshot foto lama walau progress tahap dia sendiri gak berubah.
