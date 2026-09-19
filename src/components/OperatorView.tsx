@@ -173,7 +173,6 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   const [loadingData,setLoadingData]=useState(false);
   const [pekerjaList,setPekerjaList]=useState<any[]>([]);
   const [woTargetMap,setWoTargetMap]=useState<Record<number,string>>({});
-  const [wiringInfoMap,setWiringInfoMap]=useState<Record<string,any>>({});
   const [komponenInfoMap,setKomponenInfoMap]=useState<Record<string,any>>({});
   const [selectedKomponen,setSelectedKomponen]=useState<Record<string,string[]>>(()=>{
     try{
@@ -567,57 +566,26 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     } else {
       setWoTargetMap({});
     }
-    // Ambil info wiring (CREATE BY, CREATE ON, TARGET SELESAI) dari fcs_schedule dan raw_schedule
-    const wiringProses=["WIRING CONTROL","WIRING POWER"];
-    const wiringTasks=tasks.filter((t:any)=>wiringProses.includes(t.proses));
-    if(wiringTasks.length>0){
-      const wiringPanelIds=[...new Set(wiringTasks.map((t:any)=>t.panel_id||t.panelId).filter(Boolean))];
-      const wiringProsesNames=[...new Set(wiringTasks.map((t:any)=>t.proses))];
-      const[{data:fcsData},{data:rawData}]=await Promise.all([
-        supabase.from("fcs_schedule").select("panel_id,jenis_pekerjaan,kode_komponen,qty_total,generated_by,created_at")
-          .in("panel_id",wiringPanelIds as any).in("jenis_pekerjaan",wiringProsesNames),
-        supabase.from("raw_schedule").select("panel_id,proses,schedule")
-          .in("panel_id",wiringPanelIds as any).in("proses",wiringProsesNames),
-      ]);
-      const infoMap:Record<string,any>={};
-      (fcsData||[]).forEach((row:any)=>{
-        const key=`${row.panel_id}_${row.jenis_pekerjaan}`;
-        if(!infoMap[key])infoMap[key]={bobot:row.kode_komponen,jumlahOrang:row.qty_total,createdBy:row.generated_by,createdAt:row.created_at,targetSelesai:null};
-      });
-      (rawData||[]).forEach((row:any)=>{
-        const key=`${row.panel_id}_${row.proses}`;
-        let lastTgl:string|null=null;
-        Object.entries(row.schedule||{}).forEach(([tgl,entries]:any)=>{
-          (entries||[]).forEach((e:any)=>{
-            (e.komponen||[]).forEach((k:string)=>{
-              if(k.startsWith("__wiring_")){if(!lastTgl||tgl>lastTgl)lastTgl=tgl;}
-            });
-          });
-        });
-        if(lastTgl&&infoMap[key])infoMap[key].targetSelesai=lastTgl;
-      });
-      setWiringInfoMap(infoMap);
-    } else {
-      setWiringInfoMap({});
-    }
+    // Info wiring (badge bobot/jumlah-orang + CREATE BY/CREATE ON dari fcs_schedule) DIHAPUS
+    // (20 Sep 2026, retirement fcs_schedule Fase 1) - fcs_schedule 0 baris, badge sudah lama
+    // silent-broken (gak pernah tampil, dikonfirmasi user - hapus, bukan dialihkan sumbernya).
+    // wiringInfoMap sengaja TIDAK diisi lagi sama sekali (bukan cuma kosongin fcs_schedule-nya)
+    // - itu match PERSIS perilaku production yang sudah berjalan (fcs_schedule selalu 0 baris,
+    // jadi wiringInfoMap SELALU {} juga sebelum ini), gak ada regresi.
 
-    // Ambil info komponen (CREATE BY, CREATE ON, TARGET SELESAI) untuk proses biasa
+    // Ambil info komponen (CREATE BY, CREATE ON, TARGET SELESAI) untuk proses biasa - SUMBER
+    // TUNGGAL raw_schedule (createdBy/createdAt per-entry) sekarang, fcs_schedule DIHAPUS
+    // (20 Sep 2026) - raw_schedule sendiri SUDAH cukup, terbukti dari kode di bawah yang
+    // membuat entry kompMap langsung dari raw_schedule kalau belum ada (baris `if(!kompMap[key])`
+    // di dalam loop rawDtNw), bukan cuma nunggu fcs_schedule nyiapin duluan.
     const nonWiringProses=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR"];
     const nonWiringTasks=tasks.filter((t:any)=>nonWiringProses.includes(t.proses));
     if(nonWiringTasks.length>0){
       const nwPanelIds=[...new Set(nonWiringTasks.map((t:any)=>t.panel_id||t.panelId).filter(Boolean))];
       const nwProsesNames=[...new Set(nonWiringTasks.map((t:any)=>t.proses))];
-      const[{data:fcsDtNw},{data:rawDtNw}]=await Promise.all([
-        supabase.from("fcs_schedule").select("panel_id,jenis_pekerjaan,kode_komponen,generated_by,created_at")
-          .in("panel_id",nwPanelIds as any).in("jenis_pekerjaan",nwProsesNames),
-        supabase.from("raw_schedule").select("panel_id,proses,schedule")
-          .in("panel_id",nwPanelIds as any).in("proses",nwProsesNames),
-      ]);
+      const{data:rawDtNw}=await supabase.from("raw_schedule").select("panel_id,proses,schedule")
+          .in("panel_id",nwPanelIds as any).in("proses",nwProsesNames);
       const kompMap:Record<string,any>={};
-      (fcsDtNw||[]).forEach((row:any)=>{
-        const key=`${row.panel_id}_${row.jenis_pekerjaan}_${row.kode_komponen}`;
-        if(!kompMap[key])kompMap[key]={createdBy:row.generated_by,createdAt:row.created_at,targetSelesai:null};
-      });
       (rawDtNw||[]).forEach((row:any)=>{
         Object.entries(row.schedule||{}).forEach(([tgl,entries]:any)=>{
           (entries||[]).forEach((e:any)=>{
@@ -1938,8 +1906,9 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           (task.komponen||[]).forEach((kode:string,ki:number)=>{
             // Handle token wiring khusus: __wiring_{org}org_{bobot}
             if(kode.startsWith("__wiring_")){
-              // Token wiring cuma buat ekstrak badge bobot/jumlah orang (via wiringInfoMap di row komponen real).
-              // Gak bikin baris sendiri lagi - komponen real di bawah yang jadi baris (per-komponen tracking).
+              // Token wiring (bobot/jumlah-orang, badge terkait DIHAPUS 20 Sep 2026 - lihat
+              // retirement fcs_schedule) - gak bikin baris sendiri, komponen real di bawah yang
+              // jadi baris (per-komponen tracking). Token-nya sendiri tetap di-skip di sini.
               return;
             }
             const rowKey=`${panelId}_${kode}`;
@@ -1964,8 +1933,6 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
             const qtyProses=isBusbarKomp?0:cl.qtyProsesByDate?.[proses]?.[viewDate]??cl.qtyProses?.[proses]??0;
             const pct=isBusbarKomp?(cl.progress?.[proses]||0):getProgressOnDate(cl,proses,viewDate);
             const wpDef=isBusbarKomp?null:panelCfg.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
-            const wInfoLookup=wiringInfoMap[`${panelId}_${proses}`];
-            const wiringBadge=wInfoLookup&&wInfoLookup.bobot?wInfoLookup:null;
             // Sudah disimpan (klik "Simpan Progress") hari ini dengan pct 100 - bukan cuma qty kebetulan penuh.
             const sudahDisimpan100=(cl.history?.[proses]||[]).some((h:any)=>h.tanggal===viewDate&&h.pct===100);
             // Timer pernah dimulai (walau udah di-stop lagi) - buat gating input qty di POTONG/BENDING/STEL/FINISHING.
@@ -1975,7 +1942,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
             const pipelineStatus=computeProsesStatus(getBestProgressMap(cl),proses,relevantProsesKode);
             rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
               isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp,
-              aktualSelesai:getFirstCompletionDate(cl,proses),wiringBadge,sudahDisimpan100,sudahPernahMulai,pipelineStatus});
+              aktualSelesai:getFirstCompletionDate(cl,proses),sudahDisimpan100,sudahPernahMulai,pipelineStatus});
           });
         });
 
@@ -2356,11 +2323,6 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                             <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                                 <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{renderNamaKomponen(r.item.nama)}</span>
-                                {r.wiringBadge&&(
-                                  <span style={{fontSize:9,fontWeight:700,background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px"}}>
-                                    ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
-                                  </span>
-                                )}
                                 {isDisabled&&(()=>{
                                   const pct=r.pct||0;
                                   const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
@@ -2449,11 +2411,6 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                             <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                                 <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{r.panel.nama}</span>
-                                {r.wiringBadge&&(
-                                  <span style={{fontSize:9,fontWeight:700,background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px"}}>
-                                    ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
-                                  </span>
-                                )}
                                 {isDisabled&&(()=>{
                                   const pct=r.pct||0;
                                   const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
@@ -2832,7 +2789,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
               {group.rows.map((r:any)=>{
                 const done=isDone(r);
                 const bisaEdit=canEditProgressKomponen(r.task,r.kode,r.panelId,proses);
-                const kInfo=r.wiringBadge||komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
+                const kInfo=komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
                 const fmtD=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):"–";
                 const isBusbarProses=proses==="BUSBAR";
                 const idsKomp=isBusbarProses?[]:getFlatOperatorIds(r.task,r.kode);
@@ -3091,11 +3048,6 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
                           <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>
-                          {cardMode==='timer'&&r.wiringBadge&&(
-                            <span style={{background:"#eef2ff",color:"#4f46e5",borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:700}}>
-                              ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
-                            </span>
-                          )}
                         </div>
                       </div>
                       {r.pct===100
@@ -3201,16 +3153,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                     <th style={{...thS,textAlign:"left",minWidth:40,position:"sticky",left:0,zIndex:4}}>NO</th>
                     <th style={{...thS,textAlign:"left",minWidth:100,position:"sticky",left:40,zIndex:4}}>PROYEK</th>
                     <th style={{...thS,textAlign:"left",minWidth:160,position:"sticky",left:140,zIndex:4}}>NAMA PANEL</th>
-                    {false?(
-                      <>
-                        <th style={{...thS,minWidth:80}}>BOBOT</th>
-                        <th style={{...thS,minWidth:60}}>ORANG</th>
-                        <th style={{...thS,minWidth:100}}>CREATE BY</th>
-                        <th style={{...thS,minWidth:100}}>CREATE ON</th>
-                        <th style={{...thS,minWidth:110}}>TARGET SELESAI</th>
-                        <th style={{...thS,minWidth:110}}>AKTUAL SELESAI</th>
-                      </>
-                    ):(
+                    {(
                       <>
                         <th style={{...thS,minWidth:50}}>WP</th>
                         <th style={{...thS,textAlign:"left",minWidth:160}}>KOMPONEN</th>
@@ -3275,26 +3218,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                               borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>↩ Lanjutan</span>
                           )}
                         </td>
-                        {false?(()=>{
-                          const wInfo=wiringInfoMap[`${r.panelId}_${proses}`]||{};
-                          const BOBOT_COLOR:any={EASY:"#16a34a",MEDIUM:"#d97706",HARD:"#dc2626",VERY_HARD:"#7c3aed"};
-                          const bc=BOBOT_COLOR[wInfo.bobot]||"#6366f1";
-                          const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"-";
-                          return(
-                            <>
-                              <td style={{...td,textAlign:"center"}}>
-                                <span style={{background:bc+"18",color:bc,border:`1px solid ${bc}33`,borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>
-                                  {(wInfo.bobot||"–").replace("_"," ")}
-                                </span>
-                              </td>
-                              <td style={{...td,textAlign:"center",fontWeight:700,color:"#475569"}}>{wInfo.jumlahOrang||"–"} org</td>
-                              <td style={{...td,fontSize:10,color:"#475569"}}>{wInfo.createdBy||"–"}</td>
-                              <td style={{...td,fontSize:10,color:"#64748b"}}>{fmtDate(wInfo.createdAt)}</td>
-                              <td style={{...td,fontSize:10,fontWeight:600,color:"#1d4ed8"}}>{fmtDate(wInfo.targetSelesai)}</td>
-                              <td style={{...td,fontSize:10,fontWeight:600,color:r.pct>=100?"#16a34a":"#94a3b8"}}>{r.pct>=100?fmtDate(r.aktualSelesai):"-"}</td>
-                            </>
-                          );
-                        })():(
+                        {(
                           <>
                             <td style={{...td,textAlign:"center"}}>
                               <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
@@ -3304,15 +3228,6 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                             </td>
                             <td style={{...td,fontWeight:600,color:"#374151",whiteSpace:"nowrap"}}>
                               {renderNamaKomponen(r.item.nama)}
-                              {r.wiringBadge&&(()=>{
-                                const BOBOT_COLOR:any={EASY:"#16a34a",MEDIUM:"#d97706",HARD:"#dc2626",VERY_HARD:"#7c3aed"};
-                                const bc=BOBOT_COLOR[r.wiringBadge.bobot]||"#6366f1";
-                                return(
-                                  <span style={{marginLeft:6,background:bc+"18",color:bc,border:`1px solid ${bc}33`,borderRadius:6,padding:"1px 6px",fontSize:9,fontWeight:700,whiteSpace:"nowrap"}}>
-                                    ⚡ {(r.wiringBadge.bobot||"").replace("_"," ")} · {r.wiringBadge.jumlahOrang||"–"}org
-                                  </span>
-                                );
-                              })()}
                             </td>
                             <td style={{...td,textAlign:"center",fontFamily:"'DM Mono',monospace",fontSize:10,color:"#94a3b8"}}>{r.kode}</td>
                             <td style={{...td,textAlign:"center"}}>
@@ -3325,7 +3240,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                               </span>
                             </td>
                             {(()=>{
-                              const kInfo=r.wiringBadge||komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
+                              const kInfo=komponenInfoMap[`${r.panelId}_${proses}_${r.kode}`]||{};
                               const fmtDate=(d:string)=>d?new Date(d).toLocaleDateString("id-ID",{day:"numeric",month:"short",year:"numeric"}):"–";
                               const locked=isCellLocked(r.panelId,r.kode,proses);
                               const floor=getLockedFloor(r.panelId,r.kode,proses);
