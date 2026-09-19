@@ -167,8 +167,14 @@ export function computeProsesStatus(progressMap:Record<string,number>|undefined|
   // normal - gate langsung ke progress RAKIT (skip PASANG KOMPONEN sepenuhnya), dan threshold-nya
   // "udah IN PROGRESS" (progress>0), BUKAN ambang 25% standar. Cermin dari fix yang sama di
   // vista-teknik/src/lib/panelHelpers.ts.
+  // BUG FIX (20 Sep 2026, kasus nyata WM.3/Pintu box polyester WM_POLY) - gate ke RAKIT cuma
+  // valid kalau RAKIT genuinely relevan buat kode ini. Komponen beli-jadi gak punya baris RAKIT
+  // di bom_proses_relevan, progressMap["RAKIT"] PERMANEN 0 -> gate gak akan pernah kebuka, macet
+  // "NOT YET" selamanya. Cermin dari fix yang sama di vista-teknik.
   if(proses==="WIRING CONTROL"||proses==="WIRING POWER"){
-    return(progressMap?.["RAKIT"]||0)>0?"TO DO":"NOT YET";
+    if(!relevantProses||relevantProses.includes("RAKIT")){
+      return(progressMap?.["RAKIT"]||0)>0?"TO DO":"NOT YET";
+    }
   }
   const chain=(relevantProses&&relevantProses.length>0)?ALL_PROSES.filter(p=>relevantProses.includes(p)):ALL_PROSES;
   const prosesIdx=chain.indexOf(proses);
