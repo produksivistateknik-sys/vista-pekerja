@@ -1287,8 +1287,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       // seketika diklik, TIDAK nunggu "Simpan Progress" - jadi kalau user gak sempat/lupa klik
       // Simpan, progress udah kesimpen permanen tanpa jejak operator sama sekali. Catat
       // checkpoint di sini juga tiap kali progress gabungan BUSBAR berubah.
+      const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses==="BUSBAR"&&(t.komponen||[]).includes(kode));
       if(combined>0){
-        const task=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses==="BUSBAR"&&(t.komponen||[]).includes(kode));
         const idsKomp=(task?.pekerja_per_komponen||{})[kode]||[];
         const flatIds=Array.isArray(idsKomp)?idsKomp:(idsKomp&&typeof idsKomp==="object"?Object.values(idsKomp).flat():[]);
         const workerObjs=(flatIds as number[]).map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
@@ -1297,6 +1297,20 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           panel_id:panelId,kode_komponen:kode,proses:"BUSBAR",checkpoint:combined,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
         }));
       }
+      // FASE 4 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, 1 baris per TAHAP
+      // (bukan gabungan - lihat FASE4_BUSBAR_DESIGN.md poin 3). Operator diambil per-tahap
+      // (pekerja_per_komponen[kode][tahap], BEDA dari checkpoint di atas yang gabung SEMUA
+      // tahap - BUSBAR emang satu-satunya proses yang assignment operatornya udah per-tahap
+      // dari sumbernya, lihat FASE4_BUSBAR_DESIGN.md poin 1d). Best-effort (console.error,
+      // TIDAK alert/blok) - checklist di atas sudah berhasil tersimpan sebelum baris ini.
+      const idsTahap=(task?.pekerja_per_komponen||{})[kode]?.[tahap]||[];
+      const workerObjsTahap=idsTahap.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
+      const pekerjaNamaTahap=workerObjsTahap.length>0?workerObjsTahap.map((w:any)=>w.nama).join(', '):user.nama;
+      upsertComponentProcessProgress({
+        panelId,kode,proses:"BUSBAR",tahap,pct,
+        qtyTotal:0,operatorNama:pekerjaNamaTahap,operatorAt:new Date().toISOString(),
+        sudahDisimpan100:false,updatedBy:pekerjaNamaTahap,
+      }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updatePctManualBusbarTahap):",error);});
     }catch(err){
       alertGagalSimpanBusbar(err,'updatePctManualBusbarTahap');
     }
@@ -1374,6 +1388,17 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       alertGagalSimpanBusbar(err,'simpanProgressTahapBusbar');
       return false;
     }
+    // FASE 4 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, 1 baris utk TAHAP ini
+    // (idsKomp/pekerjaNamaLog di atas SUDAH per-tahap - lihat deklarasinya, beda dari
+    // updatePctManualBusbarTahap yang checkpoint gabungnya lintas-tahap tapi dual-write-nya
+    // tetap per-tahap sendiri). sudahDisimpan100 pakai rumus yang SUDAH ADA (pctTahap>=100,
+    // sama persis newBusbarTahap di atas) - bukan rumus baru. Best-effort, TIDAK gagalin
+    // Simpan-nya sendiri (checkpoint+checklist di atas sudah sukses).
+    upsertComponentProcessProgress({
+      panelId,kode,proses:"BUSBAR",tahap,pct:pctTahap,
+      qtyTotal:0,operatorNama:pekerjaNamaLog,operatorAt:new Date().toISOString(),
+      sudahDisimpan100:pctTahap>=100,updatedBy:pekerjaNamaLog,
+    }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (simpanProgressTahapBusbar):",error);});
     // Catat snapshot persen ke fcs_timer_kerja (kolom `progress`, ditambah investigasi "histori
     // persen busbar" - JANGAN dianggap pengganti checklist.busbarTahap di atas, itu tetap sumber
     // progress TERKINI/gabungan, ini MURNI tambahan histori per-record). Diisi ke baris sesi
