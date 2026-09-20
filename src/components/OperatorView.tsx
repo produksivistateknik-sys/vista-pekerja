@@ -401,6 +401,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // Operator dulu baru bisa Mulai, baru qty kebuka) - itu udah aman by design.
   const PROSES_QTY_LOCK_SEBELUM_MULAI=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN"];
   const PROSES_AUTO_ASSIGN_SAAT_QTY=["POTONG","BENDING","STEL","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN"];
+  // FASE 5 (21 Sep 2026) - "proses biasa" yang dual-write ke component_process_progress.
+  // EKSPLISIT bukan WIRING CONTROL/POWER (Fase 3, guard sendiri) atau BUSBAR (Fase 4, guard
+  // sendiri, per-tahap) atau QC TEST/PACKING/NAMEPLATE/YELLOWMARK (struktur beda total, di luar
+  // scope - lihat FASE5_PROSES_BIASA_DESIGN.md). Dipakai di updateQtyProses, lockSingleKomponen,
+  // lockProgress, simpanSectionPaintingRendam.
+  const PROSES_BIASA_CCP=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING","RAKIT"];
   const myProses:string[]=(user.sub_bagian&&cfg.subBagianProses?.[user.sub_bagian])||cfg.proses||[];
 
   // Ambil semua timer aktif (lintas tanggal) + semua timer hari ini (aktif maupun sudah selesai).
@@ -741,6 +747,21 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         await supabase.from('progress_checkpoint_log').insert({
           panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
         });
+      }
+      // FASE 5 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, KHUSUS "proses biasa"
+      // (PROSES_BIASA_CCP). qty_done/qty_total DIISI (beda dari Fase 2/3/4 yang selalu null -
+      // proses ini genuinely qty-based, lihat FASE5_PROSES_BIASA_DESIGN.md poin 4). Best-effort
+      // (console.error, TIDAK alert/blok) - checklist di atas sudah berhasil tersimpan.
+      if(PROSES_BIASA_CCP.includes(proses)){
+        const task2=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses===proses&&(t.komponen||[]).includes(kode));
+        const idsKomp2=(task2?.pekerja_per_komponen||{})[kode]||[];
+        const workerObjs2=idsKomp2.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
+        const pekerjaNamaCcp=workerObjs2.length>0?workerObjs2.map((w:any)=>w.nama).join(', '):user.nama;
+        upsertComponentProcessProgress({
+          panelId,kode,proses,tahap:null,pct,qtyDone:qtyProses,qtyTotal:qtyKomp,
+          operatorNama:pekerjaNamaCcp,operatorAt:new Date().toISOString(),
+          sudahDisimpan100:false,updatedBy:pekerjaNamaCcp,
+        }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updateQtyProses):",error);});
       }
     },600);
   };
@@ -1142,9 +1163,13 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       // yang jadi "checkpoint hari ini", jadi bisa langsung dihitung dari pct, TIDAK perlu re-query
       // history (beda dari backfill yang mesti scan history krn gak ada event commit yang baru
       // terjadi). Best-effort (console.error, TIDAK blok) - commit checklist di atas sudah sukses.
-      if(proses==="WIRING CONTROL"||proses==="WIRING POWER"){
+      // FASE 5 (21 Sep 2026) - guard diperluas, tambah PROSES_BIASA_CCP (BENDING/STEL/FINISHING/
+      // RAKIT - 4 dari 7 proses biasa yang genuinely lewat fungsi ini; POTONG/RENDAM/PAINTING
+      // TIDAK PERNAH sampai sini, tombolnya sendiri di-hapus khusus 3 proses itu - lihat
+      // FASE5_PROSES_BIASA_DESIGN.md poin 3, dual-write-nya ada di simpanSectionPaintingRendam).
+      if(proses==="WIRING CONTROL"||proses==="WIRING POWER"||PROSES_BIASA_CCP.includes(proses)){
         upsertComponentProcessProgress({
-          panelId,kode,proses,tahap:null,pct,
+          panelId,kode,proses,tahap:null,pct,qtyDone:cl.qtyProses?.[proses]??null,
           qtyTotal:cl.qty||0,operatorNama:pekerjaNamaLog,operatorAt:new Date().toISOString(),
           sudahDisimpan100:pct>=100,updatedBy:pekerjaNamaLog,
         }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (lockSingleKomponen):",error);});
@@ -1487,6 +1512,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       if(!panel){gagal+=panelRows.length;continue;}
       const newChecklist={...panel.checklist};
       const checkpointEntries:any[]=[];
+      const ccpEntriesPanel:any[]=[];
       panelRows.forEach((r:any)=>{
         const cl=newChecklist[r.kode];
         if(!cl)return;
@@ -1497,6 +1523,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
         const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(", "):user.nama;
         checkpointEntries.push({panel_id:r.panelId,kode_komponen:r.kode,proses,checkpoint:r.pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate});
+        // FASE 5 (21 Sep 2026) - kandidat dual-write component_process_progress. Satu-satunya
+        // titik commit utk POTONG/RENDAM/PAINTING (lockSingleKomponen sengaja gak dipakai buat
+        // 3 proses ini - lihat FASE5_PROSES_BIASA_DESIGN.md poin 3), jadi WAJIB ditambal di sini.
+        ccpEntriesPanel.push({kode:r.kode,pct:r.pct,qtyDone:cl.qtyProses?.[proses]??null,qtyTotal:cl.qty||0,operatorNama:pekerjaNamaLog});
       });
       const partial:Record<string,any>={};
       panelRows.forEach((r:any)=>{ if(newChecklist[r.kode])partial[r.kode]=newChecklist[r.kode]; });
@@ -1506,6 +1536,16 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         const{error:panelErr}=await withRetry(()=>mergePanelChecklist(Number(panelId),partial));
         if(panelErr)throw panelErr;
         setPanelsMap((prev:any)=>({...prev,[panelId]:{...prev[panelId],checklist:newChecklist}}));
+        // Best-effort, TIDAK gagalin Simpan Progress-nya sendiri (checkpoint+checklist di atas
+        // sudah sukses). sudahDisimpan100=r.pct>=100, baris history barusan commit ITU SENDIRI
+        // jadi checkpoint hari ini (sama rumus lockSingleKomponen/lockProgress).
+        Promise.all(ccpEntriesPanel.map(e=>
+          upsertComponentProcessProgress({
+            panelId:Number(panelId),kode:e.kode,proses,tahap:null,pct:e.pct,qtyDone:e.qtyDone,
+            qtyTotal:e.qtyTotal,operatorNama:e.operatorNama,operatorAt:new Date().toISOString(),
+            sudahDisimpan100:e.pct>=100,updatedBy:e.operatorNama,
+          }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (simpanSectionPaintingRendam):",error);})
+        ));
       }catch{
         gagal+=panelRows.length;
       }
@@ -1583,8 +1623,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                   pekerja_nama:pekerjaNamaLog,
                   tanggal:viewDate,
                 });
-                if(pr==="WIRING CONTROL"||pr==="WIRING POWER"){
-                  ccpEntries.push({panelId:Number(panelId),kode,proses:pr,pct,qtyTotal:cl.qty||0,operatorNama:pekerjaNamaLog});
+                if(pr==="WIRING CONTROL"||pr==="WIRING POWER"||PROSES_BIASA_CCP.includes(pr)){
+                  ccpEntries.push({panelId:Number(panelId),kode,proses:pr,pct,qtyTotal:cl.qty||0,qtyDone:cl.qtyProses?.[pr]??null,operatorNama:pekerjaNamaLog});
                 }
               }
               processed.add(cellKey);
@@ -1616,8 +1656,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                 pekerja_nama:pekerjaNamaLog,
                 tanggal:viewDate,
               });
-              if(pr==="WIRING CONTROL"||pr==="WIRING POWER"){
-                ccpEntries.push({panelId:Number(panelId),kode,proses:pr,pct,qtyTotal:cl.qty||0,operatorNama:pekerjaNamaLog});
+              if(pr==="WIRING CONTROL"||pr==="WIRING POWER"||PROSES_BIASA_CCP.includes(pr)){
+                ccpEntries.push({panelId:Number(panelId),kode,proses:pr,pct,qtyTotal:cl.qty||0,qtyDone:cl.qtyProses?.[pr]??null,operatorNama:pekerjaNamaLog});
               }
             }
           });
@@ -1713,7 +1753,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     if(ccpEntries.length>0){
       await Promise.all(ccpEntries.map(e=>
         upsertComponentProcessProgress({
-          panelId:e.panelId,kode:e.kode,proses:e.proses,tahap:null,pct:e.pct,
+          panelId:e.panelId,kode:e.kode,proses:e.proses,tahap:null,pct:e.pct,qtyDone:e.qtyDone??null,
           qtyTotal:e.qtyTotal,operatorNama:e.operatorNama,operatorAt:new Date().toISOString(),
           sudahDisimpan100:e.pct>=100,updatedBy:e.operatorNama,
         }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (lockProgress):",error);})
