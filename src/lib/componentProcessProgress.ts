@@ -1,15 +1,16 @@
-// Fase 2 (21 Sep 2026) - helper baca/tulis tabel component_process_progress. Domain aktif SAAT
-// INI cuma Pasang Komponen (proses="PASANG KOMPONEN"), dipanggil dari KomponenPasangView.tsx
-// sebagai DUAL-WRITE bersamaan dengan mergePanelChecklist() - checklist TETAP sumber kebenaran
-// yang dibaca semua consumer lama (Task Monitoring, Detail Progres, laporan) selama masa
-// transisi. Lihat supabase/FASE2_COMPONENT_PROCESS_PROGRESS_DESIGN.md (vista-teknik repo) utk
-// desain lengkap.
+// Fase 2-5 (21 Sep 2026) - helper baca/tulis tabel component_process_progress. Domain aktif:
+// Pasang Komponen (KomponenPasangView.tsx, Fase 2), WIRING CONTROL/POWER + BUSBAR + proses
+// biasa (OperatorView.tsx, Fase 3-5) - SEMUA proses kecuali QC TEST/PACKING/NAMEPLATE/
+// YELLOWMARK (struktur beda total, di luar scope - lihat FASE5_PROSES_BIASA_DESIGN.md).
+// DUAL-WRITE bersamaan dengan mergePanelChecklist() - checklist TETAP ditulis paralel sebagai
+// jaring pengaman, TAPI consumer admin (Task Monitoring/Detail Progres/Rencana Harian/
+// Dashboard/Summary Progress/Manajemen WO, vista-teknik) SEKARANG SUDAH baca dari tabel ini
+// duluan (Fase 6-10), checklist cuma fallback. Lihat
+// supabase/FASE2_COMPONENT_PROCESS_PROGRESS_DESIGN.md dst (vista-teknik repo) utk desain lengkap.
 //
 // SATU SUMBER LOGIKA (CLAUDE.md B.1) - pctToStatus() ini SATU-SATUNYA tempat yang nentuin
-// status dari angka persen. Jangan hardcode ambang 100/0 di tempat lain yang nulis ke tabel
-// ini - import dari sini. Belum ada consumer di vista-teknik yang baca tabel ini sama sekali
-// di Fase 2 (Task Monitoring dkk BELUM diubah, sesuai scope task) - kalau nanti ada, mirror
-// fungsi ini persis (pola sama seperti panelHelpers.ts/.tsx computeProsesStatus).
+// status dari angka persen di SISI PENULIS (vista-pekerja). Jangan hardcode ambang 100/0 di
+// tempat lain yang nulis ke tabel ini - import dari sini.
 import { supabase } from "./supabase";
 import { withRetry } from "./koneksi";
 
@@ -66,6 +67,25 @@ export async function upsertComponentProcessProgress(row: CcpUpsertInput) {
       },
       { onConflict: "panel_id,kode_komponen,proses,tahap_key" }
     )
+  );
+}
+
+// AUDIT (21 Sep 2026) - ditemukan saat cek bug sesi ini: KomponenPasangView.tsx punya 3 fungsi
+// foto-ONLY (simpanFotoStaged, simpanFotoArsipTambahan, hapusFotoTersimpan) yang nulis
+// checklist[kode].fotoPemasangan TANPA lewat updatePctLive/simpanProgress - kolom `photos` di
+// ccp jadi basi kalau operator tambah/hapus foto TANPA progress-nya ikut berubah (2 aksi
+// independen). Dampak SAAT INI nol (belum ada consumer yang baca ccp.photos), tapi tetap bug
+// nyata - baris ini SENGAJA UPDATE (bukan upsert penuh via upsertComponentProcessProgress) biar
+// TIDAK BERISIKO menimpa status/progress_pct kalau pemanggil salah rekonstruksi pct - kalau
+// barisnya belum ada (belum pernah di-dual-write), ini no-op, bukan bikin baris baru asal-asalan.
+export async function updateComponentProcessProgressPhotos(
+  panelId: number, kode: string, proses: string, tahap: string | null, photos: any[]
+) {
+  return withRetry(() =>
+    supabase.from("component_process_progress")
+      .update({ photos, updated_at: new Date().toISOString() })
+      .eq("panel_id", panelId).eq("kode_komponen", kode).eq("proses", proses)
+      .eq("tahap_key", tahap ?? "")
   );
 }
 

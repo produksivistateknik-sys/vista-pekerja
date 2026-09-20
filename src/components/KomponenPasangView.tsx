@@ -4,7 +4,7 @@ import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry } from "../lib/koneksi";
 import { mergePanelChecklist } from "../lib/checklistHelpers";
-import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip } from "../lib/componentProcessProgress";
+import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip, updateComponentProcessProgressPhotos } from "../lib/componentProcessProgress";
 import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
@@ -277,6 +277,14 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     if(isTahap)return cl?.pasangKomponenTahap?.[tugas.tahap]?.progress||0;
     return cl?.progress?.["PASANG KOMPONEN"]||0;
   };
+  // AUDIT (21 Sep 2026) - dipakai fungsi foto-only (simpanFotoStaged/simpanFotoArsipTambahan/
+  // hapusFotoTersimpan) buat nentuin tahap yang benar pas sinkronin ccp.photos - sama rumus
+  // isTahap yang dipakai komponenRelevanPanel, TAPI bisa dipanggil independen (gak butuh lolos
+  // filter relevansi seksi dulu, foto bisa disentuh dari mana aja).
+  const tahapUntukKode=(panel:any,kode:string):string|null=>{
+    const nama=kodeNamaMap[`${panel.tipe}|${kode}`]||kode;
+    return PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(nama)?tugas.tahap:null;
+  };
 
   // PCT_STEPS klik - persist LANGSUNG ke checklist (live), TIDAK checkpoint/archive - sama
   // persis format Wiring Control yang sudah ada (updatePctManualPasangKomponenTahap dulu).
@@ -493,6 +501,10 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         const newEntry={...cl,fotoPemasangan:newFoto};
         await mergePanelChecklist(panel.id,{[kode]:newEntry});
         setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:{...p.checklist,[kode]:newEntry}}:p));
+        // AUDIT (21 Sep 2026) - sinkronkan ccp.photos juga (update, bukan upsert - lihat komentar
+        // updateComponentProcessProgressPhotos, no-op kalau baris belum pernah di-dual-write).
+        updateComponentProcessProgressPhotos(panel.id,kode,"PASANG KOMPONEN",tahapUntukKode(panel,kode),newFoto)
+          .then(({error})=>{if(error)console.error("sinkron ccp.photos gagal (simpanFotoStaged):",error);});
       }
       // Cuma revoke+buang staged foto yang BERHASIL diupload. Yang gagal tetap di stagedFoto[key]
       // (di-filter by reference dari state TERKINI, bukan snapshot awal, biar aman kalau operator
@@ -544,6 +556,9 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         const newEntry={...cl,fotoPemasangan:newFotoLive};
         await mergePanelChecklist(panel.id,{[kode]:newEntry});
         setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:{...p.checklist,[kode]:newEntry}}:p));
+        // AUDIT (21 Sep 2026) - sinkronkan ccp.photos juga (lihat komentar simpanFotoStaged).
+        updateComponentProcessProgressPhotos(panel.id,kode,"PASANG KOMPONEN",tahapUntukKode(panel,kode),newFotoLive)
+          .then(({error})=>{if(error)console.error("sinkron ccp.photos gagal (simpanFotoArsipTambahan):",error);});
 
         const{data:arsipRow}=await supabase.from("panel_seksi_archived").select("data").eq("panel_id",panel.id).eq("seksi",tugas.seksi).eq("kode",kode).maybeSingle();
         if(arsipRow){
@@ -587,6 +602,9 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       const newEntry={...cl,fotoPemasangan:newFoto};
       await mergePanelChecklist(panel.id,{[kode as string]:newEntry});
       setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:{...p.checklist,[kode as string]:newEntry}}:p));
+      // AUDIT (21 Sep 2026) - sinkronkan ccp.photos juga (lihat komentar simpanFotoStaged).
+      updateComponentProcessProgressPhotos(panel.id,kode as string,"PASANG KOMPONEN",tahapUntukKode(panel,kode as string),newFoto)
+        .then(({error})=>{if(error)console.error("sinkron ccp.photos gagal (hapusFotoTersimpan):",error);});
     }
   };
 
