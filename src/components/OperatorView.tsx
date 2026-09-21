@@ -230,22 +230,14 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // sini, dipilih SEBELUM masuk ke layar filter/grid-tipe-komponen (yang jadi Level 2, discope
   // ke tahap ini), baru Level 3 (kartu komponen) langsung ke detail 1 tahap tanpa grid lagi.
   const [selectedBusbarTahap,setSelectedBusbarTahap]=useState<string|null>(null);
-  // Sub-navigasi MEKANIK (21 Sep 2026) - Potong/Bending/Stel/Finishing digabung jadi 1 login
-  // "Mekanik" (subBagianProses.Mekanik=[4 proses], lihat panelTypes.ts), pola grid-kartu Level 1
-  // SAMA PERSIS selectedBusbarTahap di atas - null = masih di grid pilihan, terisi = proses itu
-  // yang dirender (myProses difilter ke 1 item lewat wrapper di bawah, render per-proses aslinya
-  // TIDAK disentuh). isMekanikConsolidated dipakai berkali-kali di bawah.
-  const isMekanikConsolidated=user.sub_bagian==="Mekanik";
-  const [selectedMekanikProses,setSelectedMekanikProses]=useState<string|null>(null);
   // Navigasi Kembali per-level (7 Sep 2026) - lihat komentar sama di KomponenPasangView.tsx.
   useEffect(()=>{
     registerBackHandler?.(()=>{
       if(selectedBusbarTahap){setSelectedBusbarTahap(null);return true;}
-      if(selectedMekanikProses){setSelectedMekanikProses(null);return true;}
       return false;
     });
     return()=>registerBackHandler?.(null);
-  },[selectedBusbarTahap,selectedMekanikProses]);
+  },[selectedBusbarTahap]);
   const PROSES_FLASH_TERSIMPAN=["FINISHING","RENDAM","PAINTING","WIRING CONTROL","WIRING POWER","RAKIT","PASANG KOMPONEN","BUSBAR"];
 
   // Auto-scroll + highlight kartu accordion begitu popup Konfirmasi ditutup, biar operator
@@ -2010,42 +2002,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         </div>
       )}
 
-      {/* MEKANIK Level 1 - grid pilih proses (Potong/Bending/Stel/Finishing), pola sama persis
-          grid BUSBAR (setSelectedBusbarTahap) di bawah. Cuma nampil kalau login "Mekanik"
-          gabungan DAN belum pilih proses - begitu dipilih, myProses difilter jadi 1 item di
-          bawah dan render per-proses aslinya (myProses.map) jalan APA ADANYA, gak diubah. */}
-      {isMekanikConsolidated&&!selectedMekanikProses&&(
-        <Card style={{marginBottom:20,padding:16}}>
-          <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:2}}>MEKANIK</div>
-          <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Pilih proses yang mau dikerjakan</div>
-          <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
-            {myProses.map((p:string)=>(
-              <button key={p} onClick={()=>setSelectedMekanikProses(p)}
-                style={{background:"#fff",borderRadius:14,padding:"16px 10px",
-                  border:"1.5px solid #e2e8f0",boxShadow:"0 2px 8px #0000000a",
-                  display:"flex",flexDirection:"column",alignItems:"center",gap:8,
-                  cursor:"pointer",fontFamily:"inherit"}}>
-                <div style={{width:44,height:44,borderRadius:12,background:PROSES_COLOR[p]||"#d97706",
-                  display:"flex",alignItems:"center",justifyContent:"center"}}>
-                  <span style={{fontSize:18,color:"#fff",fontWeight:800}}>{p[0]}</span>
-                </div>
-                <span style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{p}</span>
-              </button>
-            ))}
-          </div>
-        </Card>
-      )}
-      {isMekanikConsolidated&&selectedMekanikProses&&(
-        <div style={{marginBottom:8}}>
-          <button onClick={()=>setSelectedMekanikProses(null)}
-            style={{fontSize:11,color:"#64748b",fontWeight:700,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,padding:"5px 10px",cursor:"pointer"}}>
-            ← Kembali ke Pilih Proses
-          </button>
-        </div>
-      )}
-
       {/* tabel per proses */}
-      {(isMekanikConsolidated?(selectedMekanikProses?myProses.filter((p:string)=>p===selectedMekanikProses):[]):myProses).map(proses=>{
+      {myProses.map(proses=>{
         const tasks=tasksByProses[proses]||[];
         if(!tasks.length)return null;
         const pc=PROSES_COLOR[proses]||"#64748b";

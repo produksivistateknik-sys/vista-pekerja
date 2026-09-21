@@ -172,13 +172,8 @@ export const PRIORITAS_COLOR: Record<string,string> = {"Tinggi":"#dc2626","Sedan
 
 export const DIVISI_CONFIG: Record<string,any> = {
   mekanik:    {label:"Mekanik",       icon:"🔧", color:"#d97706",bg:"#fffbeb",proses:null,manualName:true,
-    // Potong/Bending/Stel/Finishing digabung jadi 1 login "Mekanik" (21 Sep 2026, pola SAMA
-    // PERSIS Rendam+Painting - lihat komentar di divisi painting di bawah) - operator sekarang
-    // pilih proses lewat sub-navigasi grid kartu DALAM 1 sesi (selectedMekanikProses,
-    // OperatorView.tsx), bukan 4 login/password terpisah lagi. Password lama potong123/
-    // bending123/stel123/finishing123 SENGAJA gak dipertahankan (sama seperti rendam123 dulu).
-    subBagianPassword:{Mekanik:"mekanik123"},
-    subBagianProses:{Mekanik:["POTONG","BENDING","STEL","FINISHING"]}},
+    subBagianPassword:{Potong:"potong123",Bending:"bending123",Stel:"stel123",Finishing:"finishing123"},
+    subBagianProses:{Potong:["POTONG"],Bending:["BENDING"],Stel:["STEL"],Finishing:["FINISHING"]}},
   painting:   {label:"Painting",      icon:"🎨", color:"#7c3aed",bg:"#f5f3ff",proses:null,manualName:true,
     // Rendam+Painting digabung jadi 1 login "Painting" (pola sama kayak Assembling Luar yang
     // gabungin RAKIT+PASANG KOMPONEN) - proses produksinya TETAP terpisah di raw_schedule/
