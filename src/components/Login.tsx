@@ -29,7 +29,15 @@ export function Login({onLogin}:any){
         .then(({data})=>{setUserList(data??[]);setUsername("");});
       supabase.from("pekerja").select("id,nama,divisi").eq("divisi",div)
         .then(({data})=>{setPekerjaOptions(data??[]);setPekerjaTerpilihId("");});
-      setSubBagianTerpilih(null);
+      // AUTO-SELECT sub-bagian (21 Sep 2026) - kalau divisi ini cuma punya 1 opsi sub-bagian
+      // (mis. Mekanik, Painting - subBagianPassword cuma 1 key), klik manual jadi langkah kosong
+      // yang gak perlu. Generic berdasar JUMLAH key (bukan hardcode nama divisi/sub-bagian) -
+      // otomatis berlaku ke divisi lain di masa depan yang juga cuma py 1 sub-bagian. Divisi
+      // dengan >1 opsi (mis. Assembling: Assembling Luar/Dalam) TETAP null, operator tetap pilih
+      // manual seperti sebelumnya - render grid tombol di bawah gak berubah utk kasus itu.
+      const subBagianOptsUtkDivisiIni=(DIVISI_CONFIG as any)[div]?.subBagianPassword;
+      const keysUtkDivisiIni=subBagianOptsUtkDivisiIni?Object.keys(subBagianOptsUtkDivisiIni):[];
+      setSubBagianTerpilih(keysUtkDivisiIni.length===1?keysUtkDivisiIni[0]:null);
       setNamaManualTeks("");
     }
   },[div]);
@@ -208,7 +216,7 @@ export function Login({onLogin}:any){
             </div>
           </div>
           <div style={{height:1,background:"#f1f5f9",marginBottom:16}}/>
-          {subBagianOptions&&(
+          {subBagianOptions&&Object.keys(subBagianOptions).length>1&&(
             <div style={{marginBottom:16}}>
               <div className="lg-label">Sub-bagian</div>
               <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
