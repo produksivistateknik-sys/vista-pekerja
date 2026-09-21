@@ -18,7 +18,9 @@ import { DIVISI_CONFIG } from "../lib/panelTypes";
 // ─────────────────────────────────────────────────────────────────────────────
 export function OperatorHome({user,viewMode}:any){
   const[mainTab,setMainTab]=useState<"tugas"|"review"|"riwayat"|"tambahan">("tugas");
-  const bisaReviewPotong=user.divisi==="mekanik"&&user.sub_bagian==="Potong";
+  // FIX (21 Sep 2026) - sama persis App.tsx: sub_bagian operator Potong sekarang "Mekanik"
+  // (gabungan 4 proses), deteksi dari isi proses bukan nama sub-bagian literal.
+  const bisaReviewPotong=user.divisi==="mekanik"&&!!DIVISI_CONFIG[user.divisi]?.subBagianProses?.[user.sub_bagian]?.includes("POTONG");
   // Sistem Section (RENDAM/PAINTING doang) - tab "Review" nunjukin ReviewPaintingView (Section-
   // grouped), BUKAN ReviewPotongView. Tab "Tambahan" TETAP cuma buat mekanik/Potong seperti
   // sebelumnya - proses lain (termasuk divisi painting ini) gak dapet tab itu.

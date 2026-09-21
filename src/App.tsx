@@ -187,7 +187,13 @@ export default function App(){
   // kenapa gak sempat unregister sendiri (harusnya sudah via cleanup useEffect di tiap view),
   // reset paksa di sini biar gak ada handler basi milik view LAMA nyangkut kepakai buat view BARU.
   useEffect(()=>{backHandlerRef.current=null;},[selectedMenu]);
-  const bisaReviewPotong=user?.divisi==="mekanik"&&user?.sub_bagian==="Potong";
+  // FIX (21 Sep 2026, restrukturisasi navigasi MEKANIK) - dulu deteksi "operator Potong" cek
+  // nama sub_bagian PERSIS "Potong". Sejak Potong/Bending/Stel/Finishing digabung jadi 1 login
+  // "Mekanik", sub_bagian operator Potong sekarang bernilai "Mekanik" - kalau tetap dicek string
+  // literal lama, fitur Review/Tambahan HILANG DIAM-DIAM buat operator ini. Sekarang dicek dari
+  // ISI proses-nya (myProses/subBagianProses), bukan nama sub-bagian - tahan terhadap perubahan
+  // struktur login serupa ke depan.
+  const bisaReviewPotong=user?.divisi==="mekanik"&&!!cfg?.subBagianProses?.[user?.sub_bagian]?.includes("POTONG");
   const bisaReviewPainting=user?.divisi==="painting";
   const prosesRiwayat:string[]=cfg?.subBagianProses?.[user?.sub_bagian]||cfg?.proses||[];
 
