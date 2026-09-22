@@ -343,7 +343,8 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       qtyTotal:cl.qty||0,photos:newCl.fotoPemasangan||cl.fotoPemasangan||[],
       operatorNama:lastOperator.nama,operatorAt:lastOperator.ts,sudahDisimpan100:false,
       updatedBy:user.nama,
-    }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updatePctLive):",error);});
+    }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updatePctLive):",error);})
+      .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (updatePctLive) - ccp bisa nyangkut basi:",err));
   };
 
   // "Simpan Progress" - commit checkpoint+history (fresh-refetch checklist biar gak nimpa balik

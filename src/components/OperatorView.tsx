@@ -769,7 +769,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           panelId,kode,proses,tahap:null,pct,qtyDone:qtyProses,qtyTotal:qtyKomp,
           operatorNama:pekerjaNamaCcp,operatorAt:new Date().toISOString(),
           sudahDisimpan100:false,updatedBy:pekerjaNamaCcp,
-        }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updateQtyProses):",error);});
+        }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updateQtyProses):",error);})
+          .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (updateQtyProses) - ccp bisa nyangkut basi:",err));
       }
     },600);
   };
@@ -1118,7 +1119,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           panelId,kode,proses,tahap:null,pct,
           qtyTotal:cl.qty||0,operatorNama:pekerjaNamaLog,operatorAt:new Date().toISOString(),
           sudahDisimpan100:false,updatedBy:pekerjaNamaLog,
-        }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updatePctManual):",error);});
+        }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updatePctManual):",error);})
+          .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (updatePctManual) - ccp bisa nyangkut basi:",err));
       }
     }catch{
       alert("Gagal simpan progress ke server - koneksi lambat. Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.");
@@ -1180,7 +1182,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           panelId,kode,proses,tahap:null,pct,qtyDone:cl.qtyProses?.[proses]??null,
           qtyTotal:cl.qty||0,operatorNama:pekerjaNamaLog,operatorAt:new Date().toISOString(),
           sudahDisimpan100:pct>=100,updatedBy:pekerjaNamaLog,
-        }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (lockSingleKomponen):",error);});
+        }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (lockSingleKomponen):",error);})
+          .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (lockSingleKomponen) - ccp bisa nyangkut basi:",err));
       }
     }catch{
       alert('Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Kunci Progress lagi.');
@@ -1343,7 +1346,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         panelId,kode,proses:"BUSBAR",tahap,pct,
         qtyTotal:0,operatorNama:pekerjaNamaTahap,operatorAt:new Date().toISOString(),
         sudahDisimpan100:false,updatedBy:pekerjaNamaTahap,
-      }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updatePctManualBusbarTahap):",error);});
+      }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updatePctManualBusbarTahap):",error);})
+        .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (updatePctManualBusbarTahap) - ccp bisa nyangkut basi:",err));
     }catch(err){
       alertGagalSimpanBusbar(err,'updatePctManualBusbarTahap');
     }
@@ -1431,7 +1435,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       panelId,kode,proses:"BUSBAR",tahap,pct:pctTahap,
       qtyTotal:0,operatorNama:pekerjaNamaLog,operatorAt:new Date().toISOString(),
       sudahDisimpan100:pctTahap>=100,updatedBy:pekerjaNamaLog,
-    }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (simpanProgressTahapBusbar):",error);});
+    }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (simpanProgressTahapBusbar):",error);})
+      .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (simpanProgressTahapBusbar) - ccp bisa nyangkut basi:",err));
     // Catat snapshot persen ke fcs_timer_kerja (kolom `progress`, ditambah investigasi "histori
     // persen busbar" - JANGAN dianggap pengganti checklist.busbarTahap di atas, itu tetap sumber
     // progress TERKINI/gabungan, ini MURNI tambahan histori per-record). Diisi ke baris sesi
@@ -1553,6 +1558,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
             qtyTotal:e.qtyTotal,operatorNama:e.operatorNama,operatorAt:new Date().toISOString(),
             sudahDisimpan100:e.pct>=100,updatedBy:e.operatorNama,
           }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (simpanSectionPaintingRendam):",error);})
+            .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (simpanSectionPaintingRendam) - ccp bisa nyangkut basi:",err))
         ));
       }catch{
         gagal+=panelRows.length;
@@ -1765,6 +1771,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           qtyTotal:e.qtyTotal,operatorNama:e.operatorNama,operatorAt:new Date().toISOString(),
           sudahDisimpan100:e.pct>=100,updatedBy:e.operatorNama,
         }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (lockProgress):",error);})
+          .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (lockProgress) - ccp bisa nyangkut basi:",err))
       ));
     }
 
