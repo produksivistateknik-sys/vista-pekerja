@@ -22,7 +22,7 @@ import { SectionCard, SegmentedControl, EmptyState, DatePickerField } from "./gu
 const DIVISI_LABEL:Record<string,string>={
   mekanik:"Mekanik",painting:"Painting",assembling:"Assembling",
   wiring_ctrl:"Wiring Control",wiring_pwr:"Wiring Power",
-  qc:"QC",nameplate:"Nameplate",komponen:"Komponen",gudang:"Gudang",
+  qc:"QC",nameplate:"Nameplate",komponen:"QS",gudang:"Gudang", // label "Komponen"->"QS" (23 Sep 2026), key TETAP "komponen"
 };
 
 const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{

@@ -203,7 +203,12 @@ export const DIVISI_CONFIG: Record<string,any> = {
   // 174-177) - masih lewat operator_users (username+password individual ter-hash) padahal
   // field `password` di sini sudah lama disiapkan tapi gak kepakai. Sekarang disamakan.
   nameplate:  {label:"Nameplate",     icon:"🏷️", color:"#0891b2",bg:"#ecfeff",password:"nameplate123",proses:null,manualName:true},
-  komponen:   {label:"Komponen",       icon:"📦", color:"#0d9488",bg:"#f0fdfa",proses:null,manualName:true,
+  // LABEL diganti "Komponen" -> "QS" (23 Sep 2026, diminta user) - MURNI ganti tampilan, key
+  // internal TETAP "komponen" (dipakai relasi ke user.divisi, checklist, dll - JANGAN diubah,
+  // ganti key butuh migrasi data pekerja/operator_users yang sudah ada). Divisi ini sekarang
+  // cuma punya 1 sub-bagian aktif (QS, lihat subBagianPassword di bawah - Warehouse sudah
+  // dihapus), jadi label top-level "QS" langsung lebih jelas drpd "Komponen" yang generik.
+  komponen:   {label:"QS",             icon:"📦", color:"#0d9488",bg:"#f0fdfa",proses:null,manualName:true,
     // "Assembling" sengaja dihapus dari opsi login - sudah gantiin pakai Assembling Luar
     // (Pasang Komponen, divisi "assembling") buat kebutuhan itu. Data lama sub_bagian=Assembling
     // di fcs_tracking_komponen TETAP ada, cuma gak bisa login buat nambah data baru lagi.
