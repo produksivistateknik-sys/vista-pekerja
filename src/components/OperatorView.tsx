@@ -489,7 +489,9 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     setPernahDikunci(false);
     loadData();
     // load semua pekerja untuk kolom OPERATOR
-    supabase.from("pekerja").select("id,nama,divisi").then(({data})=>setPekerjaList(data??[]));
+    // BUG FIX (23 Sep 2026) - sama kelas bug dgn Login.tsx (dulu gak filter deleted_at) - pekerja
+    // yang udah di-soft-delete masih bisa ke-assign ke tugas baru lewat picker OPERATOR ini.
+    supabase.from("pekerja").select("id,nama,divisi").is("deleted_at",null).then(({data})=>setPekerjaList(data??[]));
     refreshTimerData();
 
     const renharChannel=supabase.channel("realtime-renhar-pekerja")

@@ -27,7 +27,14 @@ export function Login({onLogin}:any){
     if(div){
       supabase.from("operator_users").select("id,nama,username").eq("divisi",div).eq("is_active",true)
         .then(({data})=>{setUserList(data??[]);setUsername("");});
-      supabase.from("pekerja").select("id,nama,divisi").eq("divisi",div)
+      // BUG FIX (23 Sep 2026) - dulu gak filter deleted_at, jadi pekerja yang udah di-soft-delete
+      // (tombol Hapus di Master Pekerja vista-teknik, deleted_at diisi BUKAN row dihapus beneran)
+      // tetap ikut kefetch & nongol lagi di dropdown login - kelas bug SAMA PERSIS yang sudah
+      // pernah difix di pekerjaService.ts vista-teknik (komentar "BUG FIX 7 Sep 2026" di situ),
+      // cuma query di sini luput dari fix itu (repo terpisah, gak ada shared package). Ketauan
+      // nyata: 2 pekerja QS yang sudah dihapus (termasuk 1 data uji coba) masih muncul di
+      // dropdown ini bareng pekerja QS yang aktif.
+      supabase.from("pekerja").select("id,nama,divisi").eq("divisi",div).is("deleted_at",null)
         .then(({data})=>{setPekerjaOptions(data??[]);setPekerjaTerpilihId("");});
       // AUTO-SELECT sub-bagian (21 Sep 2026) - kalau divisi ini cuma punya 1 opsi sub-bagian
       // (mis. Mekanik, Painting - subBagianPassword cuma 1 key), klik manual jadi langkah kosong
