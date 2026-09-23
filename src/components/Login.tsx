@@ -53,9 +53,12 @@ export function Login({onLogin}:any){
   const go=async()=>{
     if(isManualName&&subBagianOptions){
       if(!subBagianTerpilih){setErr("Pilih sub-bagian dulu!");return;}
-      // Warehouse/QS ketik nama manual (bebas, gak perlu terdaftar di tabel pekerja) - beda
-      // dari sub-bagian lain yang masih wajib pilih dari daftar pekerja terdaftar.
-      const isNamaBebas=subBagianTerpilih==="Warehouse"||subBagianTerpilih==="QS";
+      // QS DIKELUARKAN dari free-text (23 Sep 2026, diminta user) - sekarang wajib pilih dari
+      // daftar pekerja terdaftar (divisi="komponen" di tabel pekerja), pola SAMA PERSIS
+      // Mekanik/Painting/QC/dll. "Warehouse" TETAP dipertahankan di sini walau sudah gak pernah
+      // muncul di subBagianPassword manapun (dihapus 14 Agu 2026) - jaga-jaga kalau ada
+      // sub-bagian lain bernama sama di masa depan, sama seperti sebelumnya.
+      const isNamaBebas=subBagianTerpilih==="Warehouse";
       if(isNamaBebas){
         if(!namaManualTeks.trim()){setErr("Ketik nama kamu!");return;}
       } else if(!pekerjaTerpilihId){setErr("Pilih nama kamu!");return;}
@@ -237,7 +240,7 @@ export function Login({onLogin}:any){
             <div className="lg-label">Nama</div>
             <div style={{position:"relative"}}>
               <span className="lg-icon">👤</span>
-              {isManualName&&(subBagianTerpilih==="Warehouse"||subBagianTerpilih==="QS"||namaBebasDivisi)?(
+              {isManualName&&(subBagianTerpilih==="Warehouse"||namaBebasDivisi)?(
                 <input className="lg-sel" type="text" value={namaManualTeks}
                   onChange={(e:any)=>{setNamaManualTeks(e.target.value);setErr("");}}
                   placeholder="Ketik nama kamu..."/>
