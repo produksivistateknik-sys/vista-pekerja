@@ -49,14 +49,17 @@ export function getRelevantProsesForKode(kode:string,tipe:string,relevanSet:Set<
 export function timerKey(panelId:number,kode:string,proses:string,pekerjaId:number,tahap?:string|null){
   return `${panelId}_${kode}_${proses}_${pekerjaId}`+(tahap?`_${tahap}`:"");
 }
-// Urutan tahap BUSBAR - COUPLER/GROUND skip HEAT-SHRINK, semua jenis lain lewat 4 tahap penuh.
+// Urutan tahap BUSBAR - COUPLER/GROUND/COUPLE-AN skip HEAT-SHRINK, semua jenis lain (termasuk
+// BUSDUCT) lewat 4 tahap penuh. COUPLE-AN ditambah 23 Sep 2026 - WAJIB SAMA PERSIS dengan
+// daftar pengecualian di trigger DB panels_validate_busbar_cap_progress (migration terpisah) -
+// kalau beda, operator bisa kekunci progress PASANG (reject keras di trigger, gak ada bypass).
 export const BUSBAR_URUTAN_TAHAP_LENGKAP=["FABRIKASI","PLATING","HEATSHRINK","PASANG"];
 export const BUSBAR_URUTAN_TAHAP_SINGKAT=["FABRIKASI","PLATING","PASANG"];
 export const BUSBAR_TAHAP_LABEL:Record<string,string>={FABRIKASI:"Fabrikasi",PLATING:"Plating",HEATSHRINK:"Heat-Shrink",PASANG:"Pasang"};
 // Nama icon tabler (dipakai lewat className={`ti ti-${...}`}) buat kartu grid tahap BUSBAR.
 export const BUSBAR_TAHAP_ICON:Record<string,string>={FABRIKASI:"tool",PLATING:"droplet",HEATSHRINK:"flame",PASANG:"plug"};
 export function getUrutanTahapBusbar(kode:string):string[]{
-  return(kode==="COUPLER"||kode==="GROUND")?BUSBAR_URUTAN_TAHAP_SINGKAT:BUSBAR_URUTAN_TAHAP_LENGKAP;
+  return(kode==="COUPLER"||kode==="GROUND"||kode==="COUPLE-AN")?BUSBAR_URUTAN_TAHAP_SINGKAT:BUSBAR_URUTAN_TAHAP_LENGKAP;
 }
 // PASANG KOMPONEN 2-tahap (Box Control/Pintu: ASSEMBLING punya Assembling Luar, WIRING punya
 // Wiring Control) - export dari sini (7 Agu 2026) biar OperatorView DAN KomponenPasangView

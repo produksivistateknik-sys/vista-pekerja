@@ -78,7 +78,10 @@ export const ALL_PROSES = ["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINT
 // FS.4/FS.9 JUGA relevan ke proses BUSBAR (via bom_proses_relevan, bener secara fisik) tapi
 // progress-nya harusnya nyimpen di checklist[kode].progress.BUSBAR, BUKAN di busbar_progress
 // (field itu cuma buat batang busbar tetap: H-BUS/LINE/INCOMING/OUTGOING/NETRAL/GROUND/COUPLER).
-export const BUSBAR_KOMPONEN_VALID=new Set(["H-BUS","LINE","INCOMING","OUTGOING","NETRAL","GROUND","COUPLER"]);
+// BUSDUCT/COUPLE-AN (23 Sep 2026) ditambahkan bareng BUSBAR_KOMPONEN vista-teknik - lihat
+// getUrutanTahapBusbar() di panelHelpers.tsx utk aturan tahap (COUPLE-AN skip HEATSHRINK
+// sama seperti COUPLER, BUSDUCT tetap 4 tahap penuh).
+export const BUSBAR_KOMPONEN_VALID=new Set(["H-BUS","LINE","INCOMING","OUTGOING","NETRAL","GROUND","COUPLER","BUSDUCT","COUPLE-AN"]);
 
 // Fallback statis dipakai getRelevantProsesForKode buat kode yang belum punya mapping di
 // bom_proses_relevan (tabel DB) - SAMA PERSIS dengan KOMPONEN_PROSES_MAP di
