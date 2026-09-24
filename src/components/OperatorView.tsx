@@ -1642,6 +1642,17 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       const newChecklist={...panel.checklist};
       const processed=new Set();
       const touchedKode=new Set<string>();
+      // FIX (24 Sep 2026) - lockProgress() (tombol bulk) TIDAK PERNAH stop timer komponen yang
+      // dikunci, beda dari lockSingleKomponen (autoStopTimerJikaSelesai) & simpanSectionPaintingRendam
+      // (stop eksplisit sebelum simpan). Kalau operator lupa pencet "Selesai" sebelum klik "Kunci
+      // Progress Hari Ini", timer-nya nyangkut jalan terus - komponen kelihatan "masih aktif" di tab
+      // Proses Aktif walau checklist-nya sudah 100%. Dikumpulkan di sini (SEMUA kode+proses yang
+      // pct-nya 100 lewat tombol ini, TERMASUK yang checklist-nya gak berubah sama sekali karena
+      // sudah tercatat 100% sebelumnya - itu justru kasus paling rawan timer nyangkut, operator udah
+      // "selesai" progress-nya tapi belum tentu udah stop timer), di-stop SETELAH checklist berhasil
+      // tersimpan (best-effort, sama prinsip autoStopTimerJikaSelesai - gak boleh gagalin progress
+      // yang udah kesimpen).
+      const timerStopCandidates:{kode:string,proses:string,idsKomp:number[]}[]=[];
 
       relatedTasks.forEach((task:any)=>{
         (task.komponen||[]).forEach((kode:string)=>{
@@ -1654,6 +1665,9 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
             if(!canLockKomponen(task,kode,Number(panelId),pr))return;
             const pct=getProgressOnDate(cl,pr,viewDate);
             if(pct===0)return;
+            if(pct===100){
+              timerStopCandidates.push({kode,proses:pr,idsKomp:(task.pekerja_per_komponen||{})[kode]||[]});
+            }
             const prevHist=cl.history?.[pr]||[];
             const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
             if(existIdx>=0){
@@ -1764,6 +1778,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       }
       setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist,
         ...(busbarProgressUpdate?{busbar_progress:busbarProgressUpdate}:{})}}));
+
+      for(const c of timerStopCandidates){
+        await autoStopTimerJikaSelesai(Number(panelId),c.kode,c.proses,100,c.idsKomp);
+      }
 
       // Bersihkan komponen yang sudah 100% selesai dari raw_schedule (khusus WIRING CONTROL/POWER)
       // Best-effort - checklist utama panel ini sudah aman tersimpan di atas.
