@@ -165,6 +165,37 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
     fetchList();
   };
 
+  // Hapus dokumen MOM FAT (24 Sep 2026) - utk koreksi kalau QC salah/kurang upload. Hapus file
+  // R2 dulu (dokumen asli + semua foto poin), BARU hapus row mom_fat - mom_fat_poin ikut hilang
+  // otomatis lewat ON DELETE CASCADE (migration 20260830030000), gak perlu hapus manual satu-satu.
+  // Storage cleanup dibungkus try/catch (hapusFotoDariStorage bisa gagal krn network) supaya
+  // kegagalan hapus 1 file storage TIDAK bikin dokumennya nyangkut selamanya di list.
+  const[deletingMomFat,setDeletingMomFat]=useState(false);
+  const hapusMomFat=async()=>{
+    if(!activeMomFat)return;
+    if(!confirm(`Hapus dokumen "${activeMomFat.judul}"?\n\nSemua checklist & foto di dalamnya ikut terhapus permanen dan TIDAK BISA dibatalkan.`))return;
+    setDeletingMomFat(true);
+    try{
+      await hapusFotoDariStorage("mom-fat-photos",activeMomFat.file_url);
+      for(const p of poinList){
+        for(const f of (p.foto||[])){
+          await hapusFotoDariStorage("mom-fat-photos",f.url);
+        }
+      }
+    }catch(err:any){
+      console.error("Gagal hapus sebagian file storage MOM FAT:",err);
+    }
+    const{error}=await supabase.from("mom_fat" as any).delete().eq("id",activeMomFat.id);
+    if(error){
+      alert("Gagal menghapus dokumen: "+error.message);
+      setDeletingMomFat(false);
+      return;
+    }
+    setDeletingMomFat(false);
+    setMode("list");setActiveMomFat(null);
+    fetchList();
+  };
+
   const toggleCentang=async(p:Poin)=>{
     const selesaiBaru=!p.selesai;
     setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,selesai:selesaiBaru}:x));
@@ -237,9 +268,14 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
           <button onClick={()=>{setMode("list");setActiveMomFat(null);}} style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:"#2563eb",fontWeight:700,fontSize:13,cursor:"pointer",padding:0}}>
             <i className="ti ti-arrow-left"/> Kembali
           </button>
-          <button onClick={toggleArsip} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"#64748b",fontWeight:600,fontSize:12,cursor:"pointer",padding:0}}>
-            <i className={"ti "+(activeMomFat.is_archived?"ti-archive-off":"ti-archive")}/> {activeMomFat.is_archived?"Batalkan Arsip":"Arsipkan"}
-          </button>
+          <div style={{display:"flex",alignItems:"center",gap:14}}>
+            <button onClick={toggleArsip} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"#64748b",fontWeight:600,fontSize:12,cursor:"pointer",padding:0}}>
+              <i className={"ti "+(activeMomFat.is_archived?"ti-archive-off":"ti-archive")}/> {activeMomFat.is_archived?"Batalkan Arsip":"Arsipkan"}
+            </button>
+            <button onClick={hapusMomFat} disabled={deletingMomFat} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"#dc2626",fontWeight:600,fontSize:12,cursor:deletingMomFat?"default":"pointer",padding:0,opacity:deletingMomFat?.6:1}}>
+              <i className={"ti "+(deletingMomFat?"ti-loader-2":"ti-trash")}/> Hapus
+            </button>
+          </div>
         </div>
         <SectionCard icon="📋" title={activeMomFat.judul} subtitle={`${done}/${total} poin selesai · oleh ${activeMomFat.operator_nama}`}>
           <a href={activeMomFat.file_url} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,color:"#2563eb",marginBottom:14,textDecoration:"none"}}>
