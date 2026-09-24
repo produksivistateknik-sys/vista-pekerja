@@ -1602,6 +1602,40 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // upsert SEKALIGUS di akhir fungsi setelah semua panel diproses.
     const ccpEntries:any[]=[];
 
+    // FIX (24 Sep 2026) - "Kunci Progress Hari Ini" (tombol bulk ini, TERPISAH dari
+    // simpanSectionPaintingRendam) ikut nyentuh POTONG/RENDAM/PAINTING kalau proses itu ada di
+    // myProses user (Mekanik: POTONG termasuk, Painting: RENDAM+PAINTING termasuk - lihat
+    // panelTypes.ts DIVISI_CONFIG). Entry yang ditulis di sini POLOS tanpa field `section`, jadi
+    // biarpun progress-nya benar tersimpan (checklist/progress/checkpoint_log tetap kena), entry
+    // itu PERMANEN gak akan pernah muncul di ReviewPotongView/ReviewPaintingView (keduanya cuma
+    // baca entry yang punya `section` - lihat komentar di file itu). Root cause laporan "sudah
+    // dikerjakan tapi hilang dari Review" (WM.5 x 6 panel, 24 Sep 2026).
+    // FIX-nya BUKAN exclude 3 proses itu dari tombol ini (progress operator tetap harus kesimpen),
+    // tapi begitu progress proses itu MENCAPAI 100% lewat tombol ini, otomatis kasih `section`
+    // juga - biar konsisten kelihatan di Review persis kayak lewat Section manual. Section number
+    // dihitung SEKALI per proses per klik tombol (cache di bawah), SEMUA komponen yang barusan
+    // capai 100% lewat klik yang sama dikelompokkan jadi 1 auto-section - sectionMulai dipakai
+    // waktu klik (BUKAN waktu mulai kerja sungguhan, karena tombol bulk ini gak punya konsep itu).
+    // Progress <100% (parsial) TETAP seperti sebelumnya - sengaja TIDAK dikasih section (scope
+    // sempit sesuai kesepakatan, biar dampak perubahan minim).
+    const SECTION_PROSES=["POTONG","RENDAM","PAINTING"];
+    const autoSectionCache:Record<string,{section:number,sectionMulai:string}>={};
+    const autoSectionTs=new Date().toISOString();
+    const getAutoSection=(pr:string)=>{
+      if(autoSectionCache[pr])return autoSectionCache[pr];
+      let maxSection=0;
+      Object.values(panelsMap).forEach((p:any)=>{
+        Object.values(p.checklist||{}).forEach((cl:any)=>{
+          (cl?.history?.[pr]||[]).forEach((h:any)=>{
+            if(h.tanggal===viewDate&&String(h.shift)===String(shift)&&typeof h.section==="number"&&h.section>maxSection)maxSection=h.section;
+          });
+        });
+      });
+      const result={section:maxSection+1,sectionMulai:autoSectionTs};
+      autoSectionCache[pr]=result;
+      return result;
+    };
+
     for(const [panelId,panel] of Object.entries(panelsMap)){
       const relatedTasks=todayTasks.filter((t:any)=>(t.panel_id||t.panelId)===Number(panelId));
       if(!relatedTasks.length)continue;
@@ -1625,7 +1659,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
             if(existIdx>=0){
               if(prevHist[existIdx].pct!==pct){
                 const updatedHist=[...prevHist];
-                updatedHist[existIdx]={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
+                const patch:any={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
+                if(pct===100&&SECTION_PROSES.includes(pr)&&typeof patch.section!=="number"){
+                  const auto=getAutoSection(pr);
+                  patch.section=auto.section;patch.sectionMulai=auto.sectionMulai;
+                }
+                updatedHist[existIdx]=patch;
                 newChecklist[kode]={...cl,history:{...(cl.history||{}),[pr]:updatedHist}};
                 touchedKode.add(kode);
                 const idsKomp=(task.pekerja_per_komponen||{})[kode]||[];
@@ -1646,7 +1685,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
               processed.add(cellKey);
               return;
             }
-            const newEntry={pct,tanggal:viewDate,shift,ts:new Date().toISOString()};
+            const newEntry:any={pct,tanggal:viewDate,shift,ts:new Date().toISOString()};
+            if(pct===100&&SECTION_PROSES.includes(pr)){
+              const auto=getAutoSection(pr);
+              newEntry.section=auto.section;newEntry.sectionMulai=auto.sectionMulai;
+            }
             newChecklist[kode]={
               ...cl,
               history:{...(cl.history||{}),[pr]:[...prevHist,newEntry]}
