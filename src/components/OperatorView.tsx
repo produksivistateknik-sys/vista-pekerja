@@ -27,6 +27,19 @@ const STATUS_PIPELINE_STYLE:Record<ProsesStatus,{bg:string,color:string,border:s
 const STATUS_PIPELINE_LABEL:Record<ProsesStatus,string>={
   "NOT YET":"Not Yet","TO DO":"To Do","IN PROGRESS":"In Progress","DONE":"Done",
 };
+// Badge baris terkunci (isRowLocked) di popup pilih komponen/panel - sama gaya dgn badge status
+// pipeline di kartu, biar operator lihat SEBELUM collect kalau komponen ini belum boleh dikerjakan.
+function BadgeNotYetPopup({terkumpul}:{terkumpul:boolean}){
+  const st=STATUS_PIPELINE_STYLE["NOT YET"];
+  return(
+    <>
+      <span style={{fontSize:9,fontWeight:700,background:st.bg,color:st.color,border:`1px solid ${st.border}`,borderRadius:6,padding:"1px 6px"}}>
+        {STATUS_PIPELINE_LABEL["NOT YET"]}
+      </span>
+      {terkumpul&&<span style={{fontSize:9,color:"#dc2626",fontWeight:600}}>hapus centang untuk mengeluarkan</span>}
+    </>
+  );
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // OPERATOR VIEW - dipisah dari App.tsx (Sprint 6, komponen terbesar ~3700 baris)
@@ -2251,7 +2264,23 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         // tombol aksi massal ini beroperasi di luar kartu jadi butuh exclude terpisah - kalau gak,
         // "Simpan Semua Progress" bisa nyimpen progress komponen yang harusnya belum boleh
         // dikerjakan sama sekali.
-        const bulkTargetRows=visibleRows.filter((r:any)=>r.pipelineStatus!=="NOT YET"||rowHasActiveTimer(r));
+        // SATU aturan kunci (25 Sep 2026, kasus RENDAM "Groundplate" tab To Do -> PP-ELECTRONIC
+        // WM.2 kebuka Not Yet): dulu kartu/tombol massal/tabel desktop masing-masing nulis kondisi
+        // sendiri, dan popup pilih panel/komponen GAK ngecek sama sekali - operator bisa collect
+        // komponen Not Yet (POTONG/BENDING 0%) lalu kartunya langsung ke-lock di area kerja.
+        // - rowNotYetTanpaTimer: aturan dasar (NOT YET & gak ada timer aktif - timer aktif tetap
+        //   boleh dijangkau biar bisa di-STOP, lihat AUDIT FIX 6 Agu di atas).
+        // - isRowLocked: yang dipakai kartu & popup - BUSBAR dikecualikan (REVISI 11 Sep 2026, cap
+        //   dinamis per tahap di tombol PCT_STEPS + trigger DB, bukan lock kartu).
+        const rowNotYetTanpaTimer=(r:any)=>r.pipelineStatus==="NOT YET"&&!rowHasActiveTimer(r);
+        const isRowLocked=(r:any)=>proses!=="BUSBAR"&&rowNotYetTanpaTimer(r);
+        const bulkTargetRows=visibleRows.filter((r:any)=>!rowNotYetTanpaTimer(r));
+        // Isi popup pilih komponen/panel ikut tab status aktif (dulu cuma BUSBAR, fix 2 Sep 2026 -
+        // sekarang semua proses): yang UDAH dikumpulkan tetap kelihatan apapun tab-nya, sisanya
+        // cuma yang statusnya cocok tab. Konsisten dgn kartu grup (chipSourceRows) yang diklik.
+        const tampilDiPopup=(r:any)=>statusFilter==="ALL"
+          ||(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)
+          ||r.pipelineStatus===statusFilter;
       const isWiringProses=["WIRING CONTROL","WIRING POWER"].includes(proses);
       // Proses yang operatornya dipilih per-kartu individual (bukan bulk satu grup sekaligus) -
       // WIRING udah dari revisi sebelumnya, RAKIT/PASANG KOMPONEN nyusul sekarang. Dipisah dari
@@ -2422,7 +2451,13 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                     const groupSudahTuntas=groupAllRows.length>0&&groupAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
                     return(
                       <button key={jg.namaKomponen} disabled={groupSudahTuntas}
-                        onClick={()=>{setKomponenPopupJenis({proses,namaKomponen:jg.namaKomponen});setTempSelectedPanelJenis(selRows.map((r:any)=>r.panelId));}}
+                        onClick={()=>{
+                          setKomponenPopupJenis({proses,namaKomponen:jg.namaKomponen});
+                          // Centang awal = SEMUA yang udah dikumpulkan dgn nama ini (bukan cuma yang lolos
+                          // tab aktif / selRows) - popup selalu nampilin yang udah dikumpulkan, kalau gak
+                          // ikut dicentang di sini, Konfirmasi ngeluarin mereka diam-diam (!isSel&&already).
+                          setTempSelectedPanelJenis(rows.filter((r:any)=>(r.item?.nama||r.kode)===jg.namaKomponen&&(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode)).map((r:any)=>r.panelId));
+                        }}
                         style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
                           padding:"6px 12px",borderRadius:8,border:groupSudahTuntas?"1px solid #e2e8f0":selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
                           background:groupSudahTuntas?"#f8fafc":selCount>0?"#eef2ff":"#fff",
@@ -2512,15 +2547,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
               // peduli tab status (Not Yet/To Do/In Progress/Done) yang lagi aktif pas kartu
               // panelnya diklik - operator ngira filter "gak ngefek" padahal filternya emang cuma
               // nentuin kartu PANEL mana yang muncul di grid, isi modalnya sendiri gak ikut ke-
-              // filter. Scoped ke BUSBAR aja (proses lain yang lewat modal ini gak diubah) - filter
-              // komponen yang BELUM dikumpulkan sesuai statusFilter, komponen yang UDAH dikumpulkan
-              // tetap kelihatan apapun tab-nya (konsisten sama visibleRows di Level 3).
-              const panelRows=rows.filter((r:any)=>{
-                if(r.panelId!==komponenPopup.panelId)return false;
-                if(proses!=="BUSBAR"||statusFilter==="ALL")return true;
-                const alreadyConfirmed=(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode);
-                return alreadyConfirmed||r.pipelineStatus===statusFilter;
-              });
+              // filter. Dulu scoped ke BUSBAR aja - 25 Sep 2026 diperluas ke semua proses lewat
+              // tampilDiPopup (komponen UDAH dikumpulkan tetap kelihatan apapun tab-nya, konsisten
+              // sama visibleRows di Level 3). Komponen terkunci (isRowLocked) tampil badge Not Yet
+              // & gak bisa dicentang.
+              const panelRows=rows.filter((r:any)=>r.panelId===komponenPopup.panelId&&tampilDiPopup(r));
               const panelInfo=panelRows[0];
               return(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
@@ -2541,7 +2572,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                         const panelKeyPopup=`${proses}_${komponenPopup.panelId}`;
                         const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
                         const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
-                        const isDisabled=alreadyConfirmed||sudahSelesai;
+                        const locked=isRowLocked(r);
+                        // Terkunci & belum dikumpulkan -> gak bisa dicentang. Terkunci tapi TERLANJUR
+                        // dikumpulkan (sebelum fix ini) -> BOLEH dicentang-lepas: kartunya di area kerja
+                        // pointerEvents:none, ini satu-satunya jalan ngeluarin (CLAUDE.md G.3).
+                        const isDisabled=(alreadyConfirmed&&!locked)||sudahSelesai||(locked&&!alreadyConfirmed);
                         return(
                           <label key={r.kode} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
                             cursor:isDisabled?"not-allowed":"pointer",opacity:isDisabled?0.55:1}}>
@@ -2554,7 +2589,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                             <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                                 <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{renderNamaKomponen(r.item.nama)}</span>
-                                {isDisabled&&(()=>{
+                                {locked?<BadgeNotYetPopup terkumpul={alreadyConfirmed}/>:isDisabled&&(()=>{
                                   const pct=r.pct||0;
                                   const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
                                   const statusBadgeKey=pct>=100?"selesai":pct>0?"proses":"belum";
@@ -2574,11 +2609,16 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                       })}
                     </div>
                     <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:"1px solid #f1f5f9"}}>
-                      <button onClick={()=>setTempSelectedKomponen(panelRows.filter((r:any)=>{
-                          const alreadyConfirmed=(selectedKomponen[`${proses}_${komponenPopup.panelId}`]||[]).includes(r.kode);
-                          const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
-                          return !alreadyConfirmed&&!sudahSelesai;
-                        }).map((r:any)=>r.kode))}
+                      <button onClick={()=>{
+                          // DITAMBAH ke centang yang ada (bukan diganti) - Konfirmasi di bawah nyimpen
+                          // tempSelectedKomponen apa adanya, jadi dulu yang udah dikumpulkan ikut keluar.
+                          const eligible=panelRows.filter((r:any)=>{
+                            const alreadyConfirmed=(selectedKomponen[`${proses}_${komponenPopup.panelId}`]||[]).includes(r.kode);
+                            const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
+                            return !alreadyConfirmed&&!sudahSelesai&&!isRowLocked(r);
+                          }).map((r:any)=>r.kode);
+                          setTempSelectedKomponen((prev:string[])=>[...new Set([...prev,...eligible])]);
+                        }}
                         style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
                       <button onClick={()=>setTempSelectedKomponen([])}
                         style={{fontSize:11,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
@@ -2610,7 +2650,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
               );
             })()}
             {komponenPopupJenis&&komponenPopupJenis.proses===proses&&(()=>{
-              const groupRows=rows.filter((r:any)=>(r.item?.nama||r.kode)===komponenPopupJenis.namaKomponen);
+              // Ikut tab status aktif + yang udah dikumpulkan tetap tampil (tampilDiPopup, 25 Sep 2026 -
+              // dulu `rows` penuh: kartu "Groundplate" di tab To Do mewakili 4 panel To Do tapi popup-nya
+              // nampilin 13 panel termasuk Not Yet PP-ELECTRONIC yang bisa dicentang tanpa peringatan).
+              const groupRows=rows.filter((r:any)=>(r.item?.nama||r.kode)===komponenPopupJenis.namaKomponen&&tampilDiPopup(r));
               return(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
                   onClick={()=>setKomponenPopupJenis(null)}>
@@ -2629,7 +2672,9 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                         const panelKeyPopup=`${proses}_${r.panelId}`;
                         const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
                         const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
-                        const isDisabled=alreadyConfirmed||sudahSelesai;
+                        const locked=isRowLocked(r);
+                        // Sama aturan popup per-panel di atas - terkunci & terlanjur dikumpulkan boleh dilepas.
+                        const isDisabled=(alreadyConfirmed&&!locked)||sudahSelesai||(locked&&!alreadyConfirmed);
                         return(
                           <label key={r.panelId} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
                             cursor:isDisabled?"not-allowed":"pointer",opacity:isDisabled?0.55:1}}>
@@ -2642,7 +2687,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                             <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                                 <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{r.panel.nama}</span>
-                                {isDisabled&&(()=>{
+                                {locked?<BadgeNotYetPopup terkumpul={alreadyConfirmed}/>:isDisabled&&(()=>{
                                   const pct=r.pct||0;
                                   const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
                                   const statusBadgeKey=pct>=100?"selesai":pct>0?"proses":"belum";
@@ -2662,11 +2707,16 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                       })}
                     </div>
                     <div style={{display:"flex",gap:8,padding:"12px 16px",borderTop:"1px solid #f1f5f9"}}>
-                      <button onClick={()=>setTempSelectedPanelJenis(groupRows.filter((r:any)=>{
-                          const alreadyConfirmed=(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode);
-                          const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
-                          return !alreadyConfirmed&&!sudahSelesai;
-                        }).map((r:any)=>r.panelId))}
+                      <button onClick={()=>{
+                          // DITAMBAH ke centang yang ada (bukan diganti) - dulu nimpa, yang udah dikumpulkan
+                          // ke-uncheck & ikut keluar pas Konfirmasi. Yang terkunci gak ikut dicentang.
+                          const eligible=groupRows.filter((r:any)=>{
+                            const alreadyConfirmed=(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode);
+                            const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
+                            return !alreadyConfirmed&&!sudahSelesai&&!isRowLocked(r);
+                          }).map((r:any)=>r.panelId);
+                          setTempSelectedPanelJenis((prev:number[])=>[...new Set([...prev,...eligible])]);
+                        }}
                         style={{fontSize:11,color:"#1d4ed8",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Pilih Semua</button>
                       <button onClick={()=>setTempSelectedPanelJenis([])}
                         style={{fontSize:11,color:"#dc2626",background:"none",border:"none",cursor:"pointer",fontWeight:600}}>Kosongkan</button>
@@ -2856,8 +2906,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const bulkToolbarAssignMulai=(proses==="RENDAM"||proses==="PAINTING")?(
       <div key="bulk-toolbar-assignmulai" style={{display:"flex",flexDirection:"column",gap:8}}>
         <div style={{display:"flex",gap:8}}>
-          <button onClick={()=>{setBulkAssignProses(proses);setTempBulkPekerjaIds([]);}}
-            style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+          {/* Disable kalau 0 target (25 Sep 2026) - dulu tetap bisa diklik tapi gak ngapa-ngapain
+              (semua yang terkumpul Not Yet), operator ngira tombolnya rusak. */}
+          <button disabled={bulkTargetRows.length===0} onClick={()=>{setBulkAssignProses(proses);setTempBulkPekerjaIds([]);}}
+            style={{flex:1,minHeight:48,padding:"10px",borderRadius:10,border:"none",background:bulkTargetRows.length===0?"#94a3b8":"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:bulkTargetRows.length===0?"not-allowed":"pointer"}}>
             Pilih Operator & Mulai ({bulkTargetRows.length})
           </button>
           {adaTimerJalanAssignMulai&&(
@@ -2867,6 +2919,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
             </button>
           )}
         </div>
+        {bulkTargetRows.length===0&&visibleRows.length>0&&(
+          <div style={{fontSize:11,color:"#b45309",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"8px 10px"}}>
+            Semua komponen yang dikumpulkan masih <b>Not Yet</b> (proses sebelumnya belum jalan). Keluarkan lewat kartu jenis komponen di atas - hapus centangnya.
+          </div>
+        )}
         <button onClick={()=>simpanSectionPaintingRendam(proses,bulkTargetRows)}
           style={{minHeight:48,padding:"10px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
           💾 Simpan Progress
@@ -3032,7 +3089,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                 // dibuka/dilihat, operator boleh mulai timer tahap manapun. Pembatasan sebenarnya
                 // sekarang di level tombol PCT_STEPS (getBusbarCapTahap, lihat di bawah) + trigger
                 // DB, bukan di kartu. Proses lain (WIRING dst) TIDAK berubah, tetap pakai gate lama.
-                const isLocked=!isBusbarProses&&r.pipelineStatus==="NOT YET"&&!rowHasActiveTimer(r);
+                const isLocked=isRowLocked(r); // BUSBAR sudah dikecualikan di dalam isRowLocked
                 return(
                   <div key={`${r.task.id}-${r.kode}-m`} style={{background:done?"#f0fdf4":"#fff",
                     border:`1.5px solid ${done?"#bbf7d0":"#e2e8f0"}`,borderRadius:14,padding:"12px 14px",
@@ -3415,7 +3472,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                     const rBg=done?"#f0fdf4":ri%2===0?"#fff":"#f8fafc";
                     const td:any={padding:"6px 8px",borderBottom:"1px solid #f1f5f9",borderRight:"1px solid #f1f5f9",
                       background:rBg,verticalAlign:"middle"};
-                    const isLockedRow=r.pipelineStatus==="NOT YET"&&!rowHasActiveTimer(r);
+                    const isLockedRow=rowNotYetTanpaTimer(r);
                     return(
                       <tr key={`${r.task.id}-${r.kode}`}
                         style={isLockedRow?{opacity:0.55,pointerEvents:"none" as const}:undefined}>
