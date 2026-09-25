@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
-import { PANEL_TYPES, PROSES_COLOR } from "../lib/panelTypes";
+import { PROSES_COLOR } from "../lib/panelTypes";
+import { fetchKomponenNamaMap, getNamaKomponen } from "../lib/komponenNama";
 import { TODAY, addDays, fmtDate } from "../lib/dateHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -16,17 +17,9 @@ export function ReviewPaintingView(){
   const[viewDate,setViewDate]=useState(TODAY);
   const[expandedSection,setExpandedSection]=useState<Record<string,boolean>>({});
 
+  // Key "tipe|kode", bukan kode doang - lihat lib/komponenNama.ts (label WM_MS ketuker WM_POLY).
   const[kodeNamaMap,setKodeNamaMap]=useState<Record<string,string>>({});
-  useEffect(()=>{
-    const map:Record<string,string>={};
-    Object.values(PANEL_TYPES).forEach((cfg:any)=>{
-      cfg.wps.forEach((w:any)=>w.items.forEach((it:any)=>{map[it.kode]=it.nama;}));
-    });
-    supabase.from("bom_master").select("kode_komponen,nama_komponen").then(({data}:any)=>{
-      (data||[]).forEach((b:any)=>{map[b.kode_komponen]=b.nama_komponen;});
-      setKodeNamaMap({...map});
-    });
-  },[]);
+  useEffect(()=>{fetchKomponenNamaMap().then(setKodeNamaMap);},[]);
 
   useEffect(()=>{
     let cancelled=false;
@@ -65,7 +58,7 @@ export function ReviewPaintingView(){
               rows.push({
                 proses,section:h.section,sectionMulai:h.sectionMulai,tanggal:h.tanggal,shift:h.shift||"1",
                 panelId:p.id,panelNama:p.nama,proyek:woMap[p.wo_id]?.proyek||"(Tanpa Proyek)",wo:woMap[p.wo_id]?.wo||"",
-                kode,namaKomponen:kodeNamaMap[kode]||kode,qtyDelta:delta,qtyTotal,ts:h.ts,
+                kode,namaKomponen:getNamaKomponen(kodeNamaMap,p.tipe,kode)||kode,qtyDelta:delta,qtyTotal,ts:h.ts,
               });
             });
           });

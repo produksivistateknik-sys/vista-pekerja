@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
-import { DIVISI_CONFIG, PANEL_TYPES } from "../lib/panelTypes";
+import { DIVISI_CONFIG } from "../lib/panelTypes";
+import { fetchKomponenNamaMap, getNamaKomponen } from "../lib/komponenNama";
 import { SectionCard, EmptyState, NotifikasiPushToggle } from "./ui/Primitives";
 import { fmtShort } from "../lib/dateHelpers";
 
@@ -50,19 +51,12 @@ export function AkunView({user,isTimerDivisi,proses,notifCount,onBukaPermintaan,
 
   const[showPwd,setShowPwd]=useState(false);
 
-  // Kode->nama komponen (buat tampilan hasil cari) - pola PERSIS RiwayatKerjaView.tsx: PANEL_TYPES
-  // statis dulu, ditimpa bom_master (lebih lengkap/update) kalau kode-nya ada di situ juga.
+  // Nama komponen (buat tampilan hasil cari) - key "tipe|kode", bukan kode doang: lihat
+  // lib/komponenNama.ts (label WM_MS ketuker WM_POLY). Tipe diambil dari panel yang dipilih.
   const[kodeNamaMap,setKodeNamaMap]=useState<Record<string,string>>({});
   useEffect(()=>{
     if(!isTimerDivisi)return;
-    const map:Record<string,string>={};
-    Object.values(PANEL_TYPES).forEach((c:any)=>{
-      c.wps.forEach((w:any)=>w.items.forEach((it:any)=>{map[it.kode]=it.nama;}));
-    });
-    supabase.from("bom_master").select("kode_komponen,nama_komponen").then(({data}:any)=>{
-      (data||[]).forEach((b:any)=>{map[b.kode_komponen]=b.nama_komponen;});
-      setKodeNamaMap({...map});
-    });
+    fetchKomponenNamaMap().then(setKodeNamaMap);
   },[isTimerDivisi]);
 
   // Cari riwayat komponen: proyek -> panel -> siapa+kapan mengerjakan (lihat komentar file).
@@ -91,7 +85,7 @@ export function AkunView({user,isTimerDivisi,proses,notifCount,onBukaPermintaan,
     if(!selectedWoId)return;
     let cancelled=false;
     (async()=>{
-      const{data}=await supabase.from("panels").select("id,no_pnl,nama").eq("wo_id",selectedWoId).is("deleted_at",null).order("no_pnl",{ascending:true});
+      const{data}=await supabase.from("panels").select("id,no_pnl,nama,tipe").eq("wo_id",selectedWoId).is("deleted_at",null).order("no_pnl",{ascending:true});
       if(!cancelled)setPanelList(data||[]);
     })();
     return()=>{cancelled=true;};
@@ -208,7 +202,7 @@ export function AkunView({user,isTimerDivisi,proses,notifCount,onBukaPermintaan,
                 <div key={r.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8,
                   padding:"8px 0",borderBottom:"1px solid #f1f5f9"}}>
                   <div style={{minWidth:0}}>
-                    <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>{r.kode_komponen} — {kodeNamaMap[r.kode_komponen]||"?"}</div>
+                    <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>{r.kode_komponen} — {getNamaKomponen(kodeNamaMap,panelList.find((p:any)=>p.id===selectedPanelId)?.tipe,r.kode_komponen)||"?"}</div>
                     <div style={{fontSize:10.5,color:"#94a3b8"}}>{r.proses} · {r.pekerjaNama} · {fmtShort(r.tanggal)}</div>
                   </div>
                   <div style={{fontSize:11,fontWeight:700,color:"#64748b",flexShrink:0}}>{r.selesai?`${r.durasi_menit||0} mnt`:"berjalan"}</div>

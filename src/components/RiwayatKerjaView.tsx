@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
-import { PANEL_TYPES } from "../lib/panelTypes";
+import { fetchKomponenNamaMap, getNamaKomponen } from "../lib/komponenNama";
 import { fmtShort } from "../lib/dateHelpers";
 import { Lbl, Inp } from "./ui/Primitives";
 
@@ -22,17 +22,9 @@ import { Lbl, Inp } from "./ui/Primitives";
 export function RiwayatKerjaView({proses,label,icon,color,registerBackHandler}:{proses:string[],label:string,icon:string,color:string,registerBackHandler?:(fn:(()=>boolean)|null)=>void}){
   const isBusbar=proses.includes("BUSBAR");
 
+  // Key "tipe|kode", bukan kode doang - lihat lib/komponenNama.ts (label WM_MS ketuker WM_POLY).
   const[kodeNamaMap,setKodeNamaMap]=useState<Record<string,string>>({});
-  useEffect(()=>{
-    const map:Record<string,string>={};
-    Object.values(PANEL_TYPES).forEach((cfg:any)=>{
-      cfg.wps.forEach((w:any)=>w.items.forEach((it:any)=>{map[it.kode]=it.nama;}));
-    });
-    supabase.from("bom_master").select("kode_komponen,nama_komponen").then(({data}:any)=>{
-      (data||[]).forEach((b:any)=>{map[b.kode_komponen]=b.nama_komponen;});
-      setKodeNamaMap({...map});
-    });
-  },[]);
+  useEffect(()=>{fetchKomponenNamaMap().then(setKodeNamaMap);},[]);
 
   const[loading,setLoading]=useState(true);
   const[woList,setWoList]=useState<any[]>([]);
@@ -118,7 +110,7 @@ export function RiwayatKerjaView({proses,label,icon,color,registerBackHandler}:{
         }
       });
       if(perProses.length===0)return;
-      out.push({kode,nama:kodeNamaMap[kode]||kode,perProses});
+      out.push({kode,nama:getNamaKomponen(kodeNamaMap,selectedPanel.tipe,kode)||kode,perProses});
     });
     return out.sort((a,b)=>a.kode.localeCompare(b.kode,undefined,{numeric:true}));
   },[selectedPanel,proses,kodeNamaMap]);
