@@ -45,9 +45,14 @@ export const compressImageNp=(file:File):Promise<Blob>=>new Promise((resolve,rej
   img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Gagal membaca foto"));};
   img.src=url;
 });
+// FIX (27 Sep 2026): cache:'no-store' - foto yang sama biasanya udah dimuat <img> (tanpa Origin,
+// respons R2 tanpa header CORS & tanpa Vary: Origin) dan kesimpan cache browser; fetch() ini dulu
+// bisa kebagian respons cache itu -> diblok CORS. Sekalian cek res.ok - dulu 404/403 tetap
+// ke-download sebagai file .jpg rusak (isi pesan error server), bukan dilaporkan gagal.
 export const downloadFotoNp=async(url:string,label:string)=>{
   try{
-    const res=await fetch(url);
+    const res=await fetch(url,{cache:"no-store"});
+    if(!res.ok)throw new Error(`server membalas HTTP ${res.status}${res.status===404?" (file tidak ditemukan)":""}`);
     const blob=await res.blob();
     const blobUrl=URL.createObjectURL(blob);
     const a=document.createElement("a");
@@ -58,6 +63,7 @@ export const downloadFotoNp=async(url:string,label:string)=>{
     document.body.removeChild(a);
     URL.revokeObjectURL(blobUrl);
   }catch(err:any){
-    alert("Gagal download: "+err.message);
+    console.error("downloadFotoNp gagal:",url,err);
+    alert("Gagal download: "+(err instanceof TypeError?"koneksi terputus atau akses file diblokir browser":err.message));
   }
 };
