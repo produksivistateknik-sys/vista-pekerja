@@ -39,6 +39,35 @@ export function getRelevantProsesForKode(kode:string,tipe:string,relevanSet:Set<
   return [...new Set([...base,...PROSES_TANPA_MAPPING_KOMPONEN])];
 }
 
+// ── Cap progress bertahap MEKANIK (29 Sep 2026) - CERMIN PERSIS trigger DB
+// panels_validate_mekanik_cap_progress (vista-teknik migration 20260921020000): progress tahap N
+// gak boleh melebihi tahap N-1 di urutan POTONG->BENDING->STEL->FINISHING. Dulu cuma di-reject di
+// DB tanpa pembatas di layar - kasus AGIS (LVMDP F3B.34): layar izinin BENDING 12/12 padahal
+// POTONG baru 10/12, server nolak berkali-kali. SENGAJA niru trigger apa adanya (BUKAN
+// isKomponenRelevant): "punya mapping" dihitung KHUSUS 4 proses ini & tanpa fallback
+// KOMPONEN_PROSES_MAP - biar pembatas layar gak pernah LEBIH KETAT dari server (kalau lebih ketat,
+// operator keblokir padahal server mau nerima). Skip-case (mis. FS.10 skip BENDING -> STEL dicap
+// ke POTONG) ikut otomatis dari bom_proses_relevan, sama kayak trigger.
+export const MEKANIK_URUTAN=["POTONG","BENDING","STEL","FINISHING"];
+export function getMekanikUrutanRelevan(kode:string,tipe:string,relevanSet:Set<string>):string[]{
+  const punyaMapping=MEKANIK_URUTAN.some((p)=>relevanSet.has(`${kode}|${tipe}|${p}`));
+  return punyaMapping?MEKANIK_URUTAN.filter((p)=>relevanSet.has(`${kode}|${tipe}|${p}`)):MEKANIK_URUTAN;
+}
+// null = proses ini gak dicap (bukan tahap Mekanik, tahap pertama, atau gak relevan buat kode ini).
+export function getMekanikCap(kode:string,tipe:string,proses:string,progress:any,relevanSet:Set<string>):{prosesSebelum:string;pctSebelum:number}|null{
+  const urut=getMekanikUrutanRelevan(kode,tipe,relevanSet);
+  const i=urut.indexOf(proses);
+  if(i<=0)return null;
+  return{prosesSebelum:urut[i-1],pctSebelum:Number(progress?.[urut[i-1]])||0};
+}
+// Qty terbesar yang pct-nya (rumus SAMA PERSIS updateQtyProses: round(qty/qtyKomp*100), maks 100)
+// masih <= pctMaks - trigger bandingin angka PERSEN, jadi batas qty diturunkan dari persen.
+export function maxQtyUntukPct(qtyKomp:number,pctMaks:number):number{
+  let q=qtyKomp;
+  while(q>0&&Math.min(100,Math.round((q/qtyKomp)*100))>pctMaks)q--;
+  return q;
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS panel/checklist/progress - dipisah dari App.tsx (Sprint 5, 5 Agu 2026)
 // ─────────────────────────────────────────────────────────────────────────────

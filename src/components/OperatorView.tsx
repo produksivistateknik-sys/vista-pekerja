@@ -10,7 +10,7 @@ import {
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
   computeProsesStatus, computeBusbarTahapStatus, getBusbarCapTahap, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
-  PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA,
+  PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA, getMekanikCap, maxQtyUntukPct,
 } from "../lib/panelHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { Badge, Card, Lbl, Inp, Btn } from "./ui/Primitives";
@@ -117,17 +117,36 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // pola sama kayak fetch bom_master/panel_type_meta/panel_wp_meta di atas.
   const [prosesRelevanSet,setProsesRelevanSet]=useState<Set<string>>(new Set());
   const [prosesRelevanHasMapping,setProsesRelevanHasMapping]=useState<Set<string>>(new Set());
+  // prosesRelevanLoaded (29 Sep 2026) - true HANYA kalau bom_proses_relevan kebaca LENGKAP. Dipakai
+  // gerbang pembatas cap Mekanik (capQtyMekanik): data kosong/terpotong bikin skip-case hilang ->
+  // pembatas bisa lebih ketat dari trigger DB & nge-blok operator keliru. Gagal/belum kebaca ->
+  // pembatas layar mati, server (trigger) tetap jadi penjaga + pesan jujur dari alertGagalSimpan.
+  const [prosesRelevanLoaded,setProsesRelevanLoaded]=useState(false);
   useEffect(()=>{
-    supabase.from("bom_proses_relevan").select("*").then(({data}:any)=>{
+    (async()=>{
+      // FIX (29 Sep 2026) - dulu 1x select tanpa .range() & tanpa cek error (aturan A.1/A.2) -
+      // tabel ini tumbuh tiap BOM baru (584 baris per 29 Sep), lewat 1000 bakal kepotong diam-diam.
+      const rows:any[]=[];
+      let from=0;
+      let gagal=false;
+      for(;;){
+        const{data,error}=await supabase.from("bom_proses_relevan").select("*")
+          .order("kode_komponen").order("tipe_panel").order("jenis_pekerjaan").range(from,from+999);
+        if(error){console.error("Gagal memuat bom_proses_relevan:",error);gagal=true;break;}
+        rows.push(...(data||[]));
+        if(!data||data.length<1000)break;
+        from+=1000;
+      }
       const relevanSet=new Set<string>();
       const hasMappingSet=new Set<string>();
-      (data||[]).forEach((r:any)=>{
+      rows.forEach((r:any)=>{
         relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
         hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
       });
       setProsesRelevanSet(relevanSet);
       setProsesRelevanHasMapping(hasMappingSet);
-    });
+      setProsesRelevanLoaded(!gagal);
+    })();
   },[]);
   // Fetch+realtime arsip Pasang Komponen (buat badge "Sudah di arsip") DIHAPUS dari sini (7 Agu
   // 2026) - progress Pasang Komponen (termasuk archive-nya) full pindah ke tab "Komponen"
@@ -718,6 +737,22 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // sempat re-render) gak jalan interleaved dan saling timpa, tapi antre satu-satu.
   const pekerjaPerKomponenQueue=useRef<Record<number,Promise<any>>>({});
 
+  // (29 Sep 2026) Batas qty Mekanik (BENDING/STEL/FINISHING) dari progress tahap sebelumnya -
+  // SATU sumber buat updateQtyProses (penegakan) & input kartu mobile/tabel desktop (max + petunjuk).
+  // Lihat getMekanikCap (lib/panelHelpers.tsx, cermin trigger DB). null = gak dicap: bukan tahap
+  // Mekanik/tahap pertama/gak relevan, ATAU bom_proses_relevan belum kebaca lengkap (lihat
+  // prosesRelevanLoaded - lebih aman gak nge-cap daripada nge-cap salah).
+  const capQtyMekanik=(panelId:number,kode:string,proses:string):{capQty:number;prosesSebelum:string;pctSebelum:number}|null=>{
+    if(!prosesRelevanLoaded)return null;
+    const panel=panelsMap[panelId];
+    const cl=panel?.checklist?.[kode];
+    if(!panel||!cl)return null;
+    const cap=getMekanikCap(kode,panel.tipe,proses,cl.progress,prosesRelevanSet);
+    if(!cap)return null;
+    const qtyKomp=cl.qty||0;
+    return{capQty:maxQtyUntukPct(qtyKomp,cap.pctSebelum),...cap};
+  };
+
   // (29 Sep 2026) Kembalikan SATU komponen di state lokal ke nilai yang BENAR-BENAR tersimpan di
   // server - dipakai kalau server MENOLAK simpan (trigger cap/RLS/constraint), biar layar gak terus
   // nampilin angka optimistic yang sebenarnya gak pernah masuk DB (kasus AGIS: layar 12/100%, DB
@@ -750,7 +785,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     if(!panel)return;
     const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{},qtyProsesByDate:{}};
     const qtyKomp=cl.qty||0;
-    const qtyProses=Math.min(Math.max(Number(val)||0,floor),qtyKomp);
+    // Cap Mekanik (29 Sep 2026) - qty gak boleh bikin persen tahap ini melebihi tahap sebelumnya
+    // (mis. BENDING > POTONG), sama persis yang ditolak trigger DB. Ketikan di atas batas langsung
+    // dipotong ke batas (petunjuk "maks N" tampil di bawah input), gak sampai dikirim ke server.
+    const capMek=capQtyMekanik(panelId,kode,proses);
+    const qtyProses=Math.min(Math.max(Number(val)||0,floor),qtyKomp,capMek?capMek.capQty:qtyKomp);
     const pct=qtyKomp>0?Math.min(100,Math.round((qtyProses/qtyKomp)*100)):0;
     const newChecklist={
       ...panel.checklist,
@@ -3426,6 +3465,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                       const locked=isCellLocked(r.panelId,r.kode,proses);
                       const floor=getLockedFloor(r.panelId,r.kode,proses);
                       const qtyLocked=PROSES_QTY_LOCK_SEBELUM_MULAI.includes(proses)&&!r.sudahPernahMulai;
+                      const capMek=capQtyMekanik(r.panelId,r.kode,proses);
                       const lanjutanPct=(proses==="POTONG"||proses==="RENDAM"||proses==="PAINTING")?carryOverPct[`${proses}_${r.panelId}_${r.kode}`]:undefined;
                       return(
                         <>
@@ -3441,7 +3481,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                             <span style={{padding:"7px 10px",borderRadius:8,border:"1.5px solid #16a34a",background:"#f0fdf4",fontSize:13,fontWeight:700,color:"#16a34a"}}>{r.qtyProses} 🔒</span>
                           ):(
                             <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
-                              <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
+                              <input type="number" min={floor} max={capMek?capMek.capQty:r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
                                 onChange={(e:any)=>{
                                   if(PROSES_AUTO_ASSIGN_SAAT_QTY.includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
                                     startUntukUserSendiri(proses,[r]);
@@ -3457,6 +3497,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                                   fontSize:16,textAlign:"center",fontWeight:700,fontFamily:"'DM Mono',monospace",
                                   color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":"#1d4ed8"}}/>
                               {qtyLocked&&<span style={{fontSize:9,color:"#94a3b8",fontWeight:600,whiteSpace:"nowrap"}}>Klik Mulai dulu</span>}
+                              {!qtyLocked&&capMek&&capMek.capQty<r.qtyKomp&&(
+                                <span style={{fontSize:9,color:"#b45309",fontWeight:700,whiteSpace:"nowrap"}} title={`Tidak boleh melebihi progress ${capMek.prosesSebelum}`}>
+                                  maks {capMek.capQty} · {capMek.prosesSebelum} {capMek.pctSebelum}%
+                                </span>
+                              )}
                             </div>
                           )}
                           <div style={{flex:1,background:"#e2e8f0",borderRadius:99,height:8,overflow:"hidden"}}>
@@ -3598,6 +3643,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                               const locked=isCellLocked(r.panelId,r.kode,proses);
                               const floor=getLockedFloor(r.panelId,r.kode,proses);
                               const qtyLocked=PROSES_QTY_LOCK_SEBELUM_MULAI.includes(proses)&&!r.sudahPernahMulai;
+                              const capMek=capQtyMekanik(r.panelId,r.kode,proses);
                               return(
                                 <>
                                   {isQtyBased&&(
@@ -3610,7 +3656,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                                         </span>
                                       ):(
                                         <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2}}>
-                                          <input type="number" min={floor} max={r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
+                                          <input type="number" min={floor} max={capMek?capMek.capQty:r.qtyKomp} value={r.qtyProses===0?"":r.qtyProses}
                                             onChange={e=>{
                                               if(PROSES_AUTO_ASSIGN_SAAT_QTY.includes(proses)&&!((r.task.pekerja_per_komponen||{})[r.kode]?.length)){
                                                 startUntukUserSendiri(proses,[r]);
@@ -3629,6 +3675,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                                           {qtyLocked?(
                                             <span style={{fontSize:9,color:"#94a3b8",fontWeight:600,whiteSpace:"nowrap"}}>Klik Mulai dulu</span>
                                           ):floor>0&&<span style={{fontSize:9,color:"#f59e0b",fontWeight:700}}>min {floor} 🔒</span>}
+                                          {!qtyLocked&&capMek&&capMek.capQty<r.qtyKomp&&(
+                                            <span style={{fontSize:9,color:"#b45309",fontWeight:700,whiteSpace:"nowrap"}} title={`Tidak boleh melebihi progress ${capMek.prosesSebelum}`}>
+                                              maks {capMek.capQty} · {capMek.prosesSebelum} {capMek.pctSebelum}%
+                                            </span>
+                                          )}
                                         </div>
                                       )}
                                     </td>
