@@ -2864,7 +2864,22 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
               // Ikut tab status aktif + yang udah dikumpulkan tetap tampil (tampilDiPopup, 25 Sep 2026 -
               // dulu `rows` penuh: kartu "Groundplate" di tab To Do mewakili 4 panel To Do tapi popup-nya
               // nampilin 13 panel termasuk Not Yet PP-ELECTRONIC yang bisa dicentang tanpa peringatan).
-              const groupRows=rows.filter((r:any)=>(r.item?.nama||r.kode)===komponenPopupJenis.namaKomponen&&tampilDiPopup(r));
+              // Status pilih per baris (dipakai render checkbox & urutan mendesak di bawah).
+              const statusBarisPopup=(r:any)=>{
+                const alreadyConfirmed=(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode);
+                const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
+                const locked=isRowLocked(r);
+                // Sama aturan popup per-panel di atas - terkunci & terlanjur dikumpulkan boleh dilepas.
+                const isDisabled=(alreadyConfirmed&&!locked)||sudahSelesai||(locked&&!alreadyConfirmed);
+                return{alreadyConfirmed,sudahSelesai,locked,isDisabled};
+              };
+              // Tanda mendesak per panel (29 Sep 2026) - helper SAMA dgn kartu (lib/urgensiDeadline).
+              // Panel mendesak yang bisa dipilih naik ke atas (Target terdekat duluan); yang terkunci/
+              // selesai/sudah dikumpulkan badge-nya pudar & tetap di posisi asli. Urutan cuma dari
+              // Target + status panel (bukan centang), jadi baris gak lompat pas checkbox diklik.
+              const groupRows=urutkanKartuMendesak(
+                rows.filter((r:any)=>(r.item?.nama||r.kode)===komponenPopupJenis.namaKomponen&&tampilDiPopup(r)),
+                (r:any)=>({urgensi:getUrgencyBadge(woTargetMap[r.task.wo_id||r.task.woId]),bisaNaik:!statusBarisPopup(r).isDisabled}));
               return(
                 <div style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.45)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:9999,padding:16}}
                   onClick={()=>setKomponenPopupJenis(null)}>
@@ -2880,12 +2895,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                     <div style={{overflowY:"auto",padding:"8px 16px",flex:1}}>
                       {groupRows.map((r:any)=>{
                         const checked=tempSelectedPanelJenis.includes(r.panelId);
-                        const panelKeyPopup=`${proses}_${r.panelId}`;
-                        const alreadyConfirmed=(selectedKomponen[panelKeyPopup]||[]).includes(r.kode);
-                        const sudahSelesai=(r.qtyKomp>0||r.isBusbar)&&r.pct===100&&r.sudahDisimpan100;
-                        const locked=isRowLocked(r);
-                        // Sama aturan popup per-panel di atas - terkunci & terlanjur dikumpulkan boleh dilepas.
-                        const isDisabled=(alreadyConfirmed&&!locked)||sudahSelesai||(locked&&!alreadyConfirmed);
+                        const{alreadyConfirmed,locked,isDisabled}=statusBarisPopup(r);
+                        const urgensiPanel=getUrgencyBadge(woTargetMap[r.task.wo_id||r.task.woId]);
                         return(
                           <label key={r.panelId} style={{display:"flex",alignItems:"center",gap:10,padding:"10px 4px",borderBottom:"1px solid #f8fafc",
                             cursor:isDisabled?"not-allowed":"pointer",opacity:isDisabled?0.55:1}}>
@@ -2913,6 +2924,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                               </div>
                               <span style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek}</span>
                             </div>
+                            {urgensiPanel&&badgeMendesak(urgensiPanel,isDisabled)}
                           </label>
                         );
                       })}
