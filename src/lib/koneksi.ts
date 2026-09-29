@@ -69,13 +69,16 @@ export function klasifikasiErrorSimpan(err:any):{jenis:"server"|"koneksi";kode:s
 // Alert gagal-simpan yang jujur + SELALU console.error detail asli (dulu gak pernah ke-log, jadi
 // penyebab asli gak bisa dilacak). `ulangi` = nama tombol buat saran "coba tekan X lagi" (kasus
 // koneksi); catatanServer/catatanKoneksi = kalimat tambahan opsional per konteks pemanggil.
-export function alertGagalSimpan(err:any,konteks:string,opts:{ulangi?:string;catatanServer?:string;catatanKoneksi?:string}={}){
-  console.error(`[${konteks}] gagal simpan:`,err);
+// `aksi` (29 Sep 2026) = kata kerja di judul pesan ("mulai timer", "selesai-in timer", dst) -
+// default "simpan progress" biar pemanggil lama gak berubah.
+export function alertGagalSimpan(err:any,konteks:string,opts:{ulangi?:string;catatanServer?:string;catatanKoneksi?:string;aksi?:string}={}){
+  console.error(`[${konteks}] gagal:`,err);
   const k=klasifikasiErrorSimpan(err);
+  const aksi=opts.aksi||"simpan progress";
   if(k.jenis==="server"){
-    alert(`Gagal simpan progress - server menolak data (kode ${k.kode}): ${k.pesan}\n\nIni BUKAN masalah koneksi. ${opts.catatanServer||"Periksa angka yang diisi, atau laporkan ke admin beserta pesan ini."}`);
+    alert(`Gagal ${aksi} - server menolak data (kode ${k.kode}): ${k.pesan}\n\nIni BUKAN masalah koneksi. ${opts.catatanServer||"Periksa angka yang diisi, atau laporkan ke admin beserta pesan ini."}`);
   } else {
-    alert(`Gagal simpan progress ke server - koneksi lambat/putus.${opts.catatanKoneksi?" "+opts.catatanKoneksi:opts.ulangi?` Coba tekan ${opts.ulangi} lagi.`:""}`);
+    alert(`Gagal ${aksi} ke server - koneksi lambat/putus.${opts.catatanKoneksi?" "+opts.catatanKoneksi:opts.ulangi?` Coba tekan ${opts.ulangi} lagi.`:""}`);
   }
 }
 

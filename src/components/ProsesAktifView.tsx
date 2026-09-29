@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { withRetry } from "../lib/koneksi";
+import { withRetry, alertGagalSimpan } from "../lib/koneksi";
 import { SectionCard, EmptyState } from "./ui/Primitives";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -71,12 +71,13 @@ export function ProsesAktifView({user}:{user:any}){
     try{
       const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timerId).is("selesai",null));
       if(error){
-        alert("Gagal tutup paksa: "+error.message);
+        alertGagalSimpan(error,`Tutup paksa timer ${timerId}`,{aksi:"tutup paksa",catatanServer:"Laporkan ke admin beserta pesan ini."});
         return;
       }
       setTimers(prev=>prev.filter(t=>t.id!==timerId));
     }catch(err:any){
-      alert("Gagal tutup paksa - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+      // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama lib/koneksi.ts.
+      alertGagalSimpan(err,`Tutup paksa timer ${timerId}`,{aksi:"tutup paksa",ulangi:"Tutup Paksa",catatanServer:"Laporkan ke admin beserta pesan ini."});
     }finally{
       setClosingId(null);
     }

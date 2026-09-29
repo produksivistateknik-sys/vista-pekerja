@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
-import { withRetry } from "../lib/koneksi";
+import { withRetry, alertGagalSimpan } from "../lib/koneksi";
 import { mergePanelChecklist } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip, updateComponentProcessProgressPhotos } from "../lib/componentProcessProgress";
 import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
@@ -225,10 +225,11 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         }
         return hasil;
       });
-      if(error){alert("Gagal mulai timer: "+error.message);return;}
+      if(error){alertGagalSimpan(error,`Mulai timer PASANG KOMPONEN ${kode} panel ${panelId}`,{aksi:"mulai timer",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
       setTimerAktif(prev=>({...prev,[tKey]:data}));
     }catch(err:any){
-      alert("Gagal mulai timer - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+      // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama lib/koneksi.ts.
+      alertGagalSimpan(err,`Mulai timer PASANG KOMPONEN ${kode} panel ${panelId}`,{aksi:"mulai timer",ulangi:"Mulai",catatanServer:"Laporkan ke admin beserta pesan ini."});
     }finally{
       setTimerLoading(null);
     }
@@ -240,10 +241,11 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     setTimerLoading(tKey);
     try{
       const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id));
-      if(error){alert("Gagal selesai-in timer: "+error.message);return;}
+      if(error){alertGagalSimpan(error,`Selesai-in timer PASANG KOMPONEN ${kode} panel ${panelId}`,{aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
       setTimerAktif(prev=>{const n={...prev};delete n[tKey];return n;});
     }catch(err:any){
-      alert("Gagal selesai-in timer - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+      // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama lib/koneksi.ts.
+      alertGagalSimpan(err,`Selesai-in timer PASANG KOMPONEN ${kode} panel ${panelId}`,{aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
     }finally{
       setTimerLoading(null);
     }

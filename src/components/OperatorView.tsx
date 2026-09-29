@@ -371,14 +371,16 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     try{
       const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",reminder.timer_id).is("selesai",null));
       if(error){
-        alert("Gagal selesai-in timer: "+error.message);
+        alertGagalSimpan(error,`Selesai-in timer dari reminder ${reminder.timer_id}`,{aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});
         return;
       }
       const key=timerKey(reminder.panel_id,reminder.kode_komponen,reminder.proses,reminder.pekerja_id);
       setTimerAktif(prev=>{const n={...prev};delete n[key];return n;});
       await dismissReminder(reminder.id);
     }catch(err:any){
-      alert("Gagal selesai-in timer - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+      // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama
+      // (klasifikasi server/koneksi + console.error), sama semua jalur simpan lain.
+      alertGagalSimpan(err,`Selesai-in timer dari reminder ${reminder.timer_id}`,{aksi:"selesai-in timer",ulangi:"tombol itu",catatanServer:"Laporkan ke admin beserta pesan ini."});
     }
   };
 
@@ -1001,7 +1003,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         return hasil;
       });
       if(error){
-        alert("Gagal mulai timer: "+error.message);
+        alertGagalSimpan(error,`Mulai timer ${proses} ${kode} panel ${panelId}`,{aksi:"mulai timer",catatanServer:"Laporkan ke admin beserta pesan ini."});
         return;
       }
       if(data){
@@ -1009,7 +1011,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         setTimerPernahMulai(prev=>({...prev,[key]:true}));
       }
     }catch(err:any){
-      alert("Gagal mulai timer - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+      // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama.
+      alertGagalSimpan(err,`Mulai timer ${proses} ${kode} panel ${panelId}`,{aksi:"mulai timer",ulangi:"Mulai",catatanServer:"Laporkan ke admin beserta pesan ini."});
     }finally{
       setTimerLoading(null);
     }
@@ -1020,20 +1023,29 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const timer=timerAktif[key];
     if(!timer)return;
     setTimerLoading(key);
+    let berhasil=false;
     try{
       const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id));
       if(error){
-        alert("Gagal selesai-in timer: "+error.message);
+        alertGagalSimpan(error,`Selesai-in timer ${proses} ${kode} panel ${panelId}`,{aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});
         return;
       }
       setTimerAktif(prev=>{const n={...prev};delete n[key];return n;});
       setTimerSelesaiHariIni(prev=>({...prev,[key]:true}));
-      // Cek apakah progress sudah 100% dan lebih cepat dari rencana - kirim notifikasi
-      if(!tahap)await cekDanKirimNotifikasiAvailable(pekerjaId,panelId,kode,proses);
+      berhasil=true;
     }catch(err:any){
-      alert("Gagal selesai-in timer - koneksi bermasalah, coba lagi.\n("+(err?.message||"unknown error")+")");
+      // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama.
+      alertGagalSimpan(err,`Selesai-in timer ${proses} ${kode} panel ${panelId}`,{aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
     }finally{
       setTimerLoading(null);
+    }
+    // Cek apakah progress sudah 100% dan lebih cepat dari rencana - kirim notifikasi.
+    // FIX (29 Sep 2026) - dulu di DALAM try yang sama: kalau langkah tambahan ini error, operator
+    // dapat "Gagal selesai-in timer - koneksi bermasalah" padahal timer-nya SUDAH berhenti.
+    // Sekarang cuma jalan kalau stop sukses, error-nya best-effort (di-log, gak di-alert).
+    if(berhasil&&!tahap){
+      try{await cekDanKirimNotifikasiAvailable(pekerjaId,panelId,kode,proses);}
+      catch(err){console.error(`[Selesai-in timer ${proses} ${kode}] timer sudah berhenti, cek notifikasi gagal:`,err);}
     }
   };
 
