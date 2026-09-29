@@ -10,7 +10,7 @@ import {
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
   computeProsesStatus, computeBusbarTahapStatus, getBusbarCapTahap, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
-  PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA, getMekanikCap, maxQtyUntukPct,
+  PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA, getMekanikCap, maxQtyUntukPct, getMekanikFloor, minQtyUntukPct,
 } from "../lib/panelHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { Badge, Card, Lbl, Inp, Btn } from "./ui/Primitives";
@@ -752,6 +752,21 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const qtyKomp=cl.qty||0;
     return{capQty:maxQtyUntukPct(qtyKomp,cap.pctSebelum),...cap};
   };
+  // Pasangan batas BAWAH (29 Sep 2026) - qty tahap ini gak boleh bikin persennya di bawah tahap
+  // SESUDAHNYA (koreksi turun POTONG di bawah BENDING dst ditolak trigger). SENGAJA gak ditegakkan
+  // per ketikan (angka 2 digit diketik digit-per-digit, "1" sebelum "10" - kalau dipotong tiap
+  // ketikan, gak bisa ngetik), tapi: updateQtyProses gak ngirim ke server selama di bawah batas,
+  // & onBlur (commitQtyFloorCheck) nolak dgn panduan urutan koreksi. Gerbang sama capQtyMekanik.
+  const batasBawahMekanik=(panelId:number,kode:string,proses:string):{minQty:number;prosesSesudah:string;pctSesudah:number}|null=>{
+    if(!prosesRelevanLoaded)return null;
+    const panel=panelsMap[panelId];
+    const cl=panel?.checklist?.[kode];
+    if(!panel||!cl)return null;
+    const fl=getMekanikFloor(kode,panel.tipe,proses,cl.progress,prosesRelevanSet);
+    if(!fl)return null;
+    const minQty=minQtyUntukPct(cl.qty||0,fl.pctSesudah);
+    return minQty>0?{minQty,...fl}:null;
+  };
 
   // (29 Sep 2026) Kembalikan SATU komponen di state lokal ke nilai yang BENAR-BENAR tersimpan di
   // server - dipakai kalau server MENOLAK simpan (trigger cap/RLS/constraint), biar layar gak terus
@@ -813,6 +828,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // penulisan ke Supabase di-debounce - cuma 1 request yang akhirnya dikirim per jeda ngetik
     const debounceKey=`${panelId}_${kode}_${proses}`;
     if(qtyWriteTimers.current[debounceKey])clearTimeout(qtyWriteTimers.current[debounceKey]);
+    // Batas bawah Mekanik (29 Sep 2026) - angka di bawah tahap sesudahnya PASTI ditolak trigger:
+    // jangan dikirim (termasuk batalin kiriman tertunda di atas), biar ngetik pelan gak memicu
+    // tolak-pulihkan-popup di tengah ketikan. Keputusan akhir di onBlur (commitQtyFloorCheck).
+    const bawahMek=batasBawahMekanik(panelId,kode,proses);
+    if(bawahMek&&qtyProses<bawahMek.minQty){delete qtyWriteTimers.current[debounceKey];return;}
     qtyWriteTimers.current[debounceKey]=setTimeout(async()=>{
       delete qtyWriteTimers.current[debounceKey];
       // FIX (29 Sep 2026) - dulu hasil merge GAK PERNAH dicek: penolakan server (mis. trigger cap
@@ -876,6 +896,16 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // (mis. entri lama yang salah input) lewat confirm() eksplisit - bukan cuma "gak bisa apa-apa"
   // kayak sebelumnya. Batal -> nilai dikembalikan ke floor (perilaku lama, aman by default).
   const commitQtyFloorCheck=(panelId:number,kode:string,proses:string,typedVal:number)=>{
+    // Batas bawah Mekanik (29 Sep 2026) - KERAS (server/trigger gak punya bypass), dicek duluan
+    // sebelum floor tanggal lampau di bawah (yang itu masih bisa di-override lewat confirm).
+    // Angka di bawah batas gak pernah dikirim (lihat updateQtyProses) - di sini operator dikasih
+    // tau urutan koreksi yang benar & angka dikembalikan ke nilai tersimpan di server.
+    const bawahMek=batasBawahMekanik(panelId,kode,proses);
+    if(bawahMek&&typedVal<bawahMek.minQty){
+      alert(`${proses} tidak bisa di bawah ${bawahMek.minQty} - ${bawahMek.prosesSesudah} komponen ini sudah ${bawahMek.pctSesudah}%.\n\nKalau memang mau koreksi turun, turunkan ${bawahMek.prosesSesudah} dulu (urutan koreksi: dari tahap paling akhir ke POTONG), baru ${proses}.\n\nAngka dikembalikan ke nilai yang tersimpan.`);
+      pulihkanKomponenDariServer(panelId,kode);
+      return;
+    }
     const floor=getLockedFloor(panelId,kode,proses);
     if(typedVal<floor){
       const ok=window.confirm(`Nilai ${typedVal} lebih rendah dari progress ${proses} yang sudah tercatat sebelumnya (${floor}). Ini akan MENGOREKSI progress ke bawah - yakin?`);
@@ -1628,9 +1658,14 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       byPanel.get(r.panelId)!.push(r);
     });
     let gagal=0;
+    const gagalPanel:{nama:string;jumlah:number;alasan:string;ditolakServer:boolean}[]=[];
     for(const[panelId,panelRows] of byPanel){
       const panel=panelsMap[panelId];
-      if(!panel){gagal+=panelRows.length;continue;}
+      if(!panel){
+        gagal+=panelRows.length;
+        gagalPanel.push({nama:"Panel #"+panelId,jumlah:panelRows.length,alasan:"data panel tidak termuat di layar - muat ulang aplikasi",ditolakServer:false});
+        continue;
+      }
       const newChecklist={...panel.checklist};
       const checkpointEntries:any[]=[];
       const ccpEntriesPanel:any[]=[];
@@ -1652,10 +1687,16 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       const partial:Record<string,any>={};
       panelRows.forEach((r:any)=>{ if(newChecklist[r.kode])partial[r.kode]=newChecklist[r.kode]; });
       try{
-        const{error:cpErr}=await withRetry(()=>supabase.from("progress_checkpoint_log").insert(checkpointEntries));
-        if(cpErr)throw cpErr;
+        // FIX (29 Sep 2026) - pola sama lockSingleKomponen: checklist DULU, baru checkpoint log.
+        // Dulu log di-insert duluan -> tiap Simpan Section yang DITOLAK server tetap ninggalin
+        // baris checkpoint palsu.
         const{error:panelErr}=await withRetry(()=>mergePanelChecklist(Number(panelId),partial));
         if(panelErr)throw panelErr;
+        // Checklist (history section) SUDAH tersimpan - log checkpoint best-effort, di-log kalau gagal.
+        try{
+          const{error:cpErr}=await withRetry(()=>supabase.from("progress_checkpoint_log").insert(checkpointEntries));
+          if(cpErr)console.error(`[Simpan Section ${proses}] tersimpan, tapi insert progress_checkpoint_log gagal:`,cpErr);
+        }catch(cpErr){console.error(`[Simpan Section ${proses}] tersimpan, tapi insert progress_checkpoint_log gagal (retry habis):`,cpErr);}
         setPanelsMap((prev:any)=>({...prev,[panelId]:{...prev[panelId],checklist:newChecklist}}));
         // Best-effort, TIDAK gagalin Simpan Progress-nya sendiri (checkpoint+checklist di atas
         // sudah sukses). sudahDisimpan100=r.pct>=100, baris history barusan commit ITU SENDIRI
@@ -1668,12 +1709,20 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (simpanSectionPaintingRendam):",error);})
             .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (simpanSectionPaintingRendam) - ccp bisa nyangkut basi:",err))
         ));
-      }catch{
+      }catch(err){
+        // FIX (29 Sep 2026) - dulu catch polos & pesan selalu "koneksi bermasalah" (luput dari
+        // perbaikan ff74471 karena kalimatnya beda) - sekarang detail di-log + alasan per panel.
+        console.error(`[Simpan Section ${proses}] panel ${panel.nama||panelId} gagal simpan:`,err);
         gagal+=panelRows.length;
+        gagalPanel.push({nama:panel.nama||("Panel #"+panelId),jumlah:panelRows.length,alasan:ringkasAlasanGagal(err),ditolakServer:klasifikasiErrorSimpan(err).jenis==="server"});
       }
     }
     if(gagal>0){
-      alert(`${gagal} komponen gagal tersimpan (koneksi bermasalah) - sisanya sudah tersimpan sebagai Section ${sectionNum}. Coba klik Simpan Progress lagi buat yang gagal.`);
+      const adaDitolakServer=gagalPanel.some(g=>g.ditolakServer);
+      alert(`${gagal} komponen gagal tersimpan - sisanya sudah tersimpan sebagai Section ${sectionNum}.\n\n`
+        +gagalPanel.map(g=>`- ${g.nama} (${g.jumlah} komponen): ${g.alasan}`).join("\n")
+        +(adaDitolakServer?"\n\nPanel yang DITOLAK SERVER bukan masalah koneksi - periksa angka yang diisi, atau laporkan ke admin beserta pesan ini."
+          :"\n\nCoba klik Simpan Progress lagi buat yang gagal."));
       return;
     }
     // Section ditutup - bersihin koleksi & carry-over snapshot punya proses ini, siap collect lagi buat section berikutnya.
@@ -3466,6 +3515,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                       const floor=getLockedFloor(r.panelId,r.kode,proses);
                       const qtyLocked=PROSES_QTY_LOCK_SEBELUM_MULAI.includes(proses)&&!r.sudahPernahMulai;
                       const capMek=capQtyMekanik(r.panelId,r.kode,proses);
+                      const bawahMek=batasBawahMekanik(r.panelId,r.kode,proses);
                       const lanjutanPct=(proses==="POTONG"||proses==="RENDAM"||proses==="PAINTING")?carryOverPct[`${proses}_${r.panelId}_${r.kode}`]:undefined;
                       return(
                         <>
@@ -3500,6 +3550,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                               {!qtyLocked&&capMek&&capMek.capQty<r.qtyKomp&&(
                                 <span style={{fontSize:9,color:"#b45309",fontWeight:700,whiteSpace:"nowrap"}} title={`Tidak boleh melebihi progress ${capMek.prosesSebelum}`}>
                                   maks {capMek.capQty} · {capMek.prosesSebelum} {capMek.pctSebelum}%
+                                </span>
+                              )}
+                              {!qtyLocked&&bawahMek&&r.qtyProses<r.qtyKomp&&(
+                                <span style={{fontSize:9,color:"#b45309",fontWeight:700,whiteSpace:"nowrap"}} title={`Tidak boleh di bawah progress ${bawahMek.prosesSesudah} - koreksi turun: turunkan ${bawahMek.prosesSesudah} dulu`}>
+                                  min {bawahMek.minQty} · {bawahMek.prosesSesudah} {bawahMek.pctSesudah}%
                                 </span>
                               )}
                             </div>
@@ -3644,6 +3699,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                               const floor=getLockedFloor(r.panelId,r.kode,proses);
                               const qtyLocked=PROSES_QTY_LOCK_SEBELUM_MULAI.includes(proses)&&!r.sudahPernahMulai;
                               const capMek=capQtyMekanik(r.panelId,r.kode,proses);
+                              const bawahMek=batasBawahMekanik(r.panelId,r.kode,proses);
                               return(
                                 <>
                                   {isQtyBased&&(
@@ -3678,6 +3734,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                                           {!qtyLocked&&capMek&&capMek.capQty<r.qtyKomp&&(
                                             <span style={{fontSize:9,color:"#b45309",fontWeight:700,whiteSpace:"nowrap"}} title={`Tidak boleh melebihi progress ${capMek.prosesSebelum}`}>
                                               maks {capMek.capQty} · {capMek.prosesSebelum} {capMek.pctSebelum}%
+                                            </span>
+                                          )}
+                                          {!qtyLocked&&bawahMek&&r.qtyProses<r.qtyKomp&&(
+                                            <span style={{fontSize:9,color:"#b45309",fontWeight:700,whiteSpace:"nowrap"}} title={`Tidak boleh di bawah progress ${bawahMek.prosesSesudah} - koreksi turun: turunkan ${bawahMek.prosesSesudah} dulu`}>
+                                              min {bawahMek.minQty} · {bawahMek.prosesSesudah} {bawahMek.pctSesudah}%
                                             </span>
                                           )}
                                         </div>

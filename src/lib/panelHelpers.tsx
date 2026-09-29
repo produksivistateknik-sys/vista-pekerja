@@ -67,6 +67,25 @@ export function maxQtyUntukPct(qtyKomp:number,pctMaks:number):number{
   while(q>0&&Math.min(100,Math.round((q/qtyKomp)*100))>pctMaks)q--;
   return q;
 }
+// Batas BAWAH (29 Sep 2026) - pasangan dari getMekanikCap, dari trigger yang SAMA (pasangan
+// tahap N-1 vs N dicek dua arah): tahap ini gak boleh DI BAWAH tahap SESUDAHNYA (mis. koreksi
+// turun POTONG sampai di bawah BENDING ditolak server). null = gak ada tahap sesudahnya yang
+// relevan (tahap terakhir / gak relevan) atau tahap sesudahnya masih 0% (gak membatasi apa-apa).
+export function getMekanikFloor(kode:string,tipe:string,proses:string,progress:any,relevanSet:Set<string>):{prosesSesudah:string;pctSesudah:number}|null{
+  const urut=getMekanikUrutanRelevan(kode,tipe,relevanSet);
+  const i=urut.indexOf(proses);
+  if(i<0||i>=urut.length-1)return null;
+  const pctSesudah=Number(progress?.[urut[i+1]])||0;
+  if(pctSesudah<=0)return null;
+  return{prosesSesudah:urut[i+1],pctSesudah};
+}
+// Qty terkecil yang pct-nya (rumus sama maxQtyUntukPct) sudah >= pctMin.
+export function minQtyUntukPct(qtyKomp:number,pctMin:number):number{
+  if(pctMin<=0)return 0;
+  let q=0;
+  while(q<qtyKomp&&Math.min(100,Math.round((q/qtyKomp)*100))<pctMin)q++;
+  return q;
+}
 
 // ─────────────────────────────────────────────────────────────────────────────
 // HELPERS panel/checklist/progress - dipisah dari App.tsx (Sprint 5, 5 Agu 2026)
