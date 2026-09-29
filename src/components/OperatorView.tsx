@@ -15,6 +15,7 @@ import {
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { Badge, Card, Lbl, Inp, Btn } from "./ui/Primitives";
 import { WoUrgentBanner } from "./WoUrgentBanner";
+import { getUrgencyBadge, targetTerdekat, urutkanKartuMendesak, type UrgensiDeadline } from "../lib/urgensiDeadline";
 
 // Warna status pipeline (readiness per-komponen, dari computeProsesStatus) - cermin dari
 // STATUS_PIPELINE_STYLE di RencanaHarian.tsx Vista Teknik, biar konsisten dilihat operator vs admin.
@@ -2439,6 +2440,25 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         //   dinamis per tahap di tombol PCT_STEPS + trigger DB, bukan lock kartu).
         const rowNotYetTanpaTimer=(r:any)=>r.pipelineStatus==="NOT YET"&&!rowHasActiveTimer(r);
         const isRowLocked=(r:any)=>proses!=="BUSBAR"&&rowNotYetTanpaTimer(r);
+        // TANDA MENDESAK (29 Sep 2026) - SATU fungsi dipakai kartu grid PANEL & grid KOMPONEN (lihat
+        // lib/urgensiDeadline.ts). Urgensi = Target TERDEKAT di antara baris kartu itu (kartu komponen
+        // gabungan banyak panel). bisaNaik=false kalau kartu udah tuntas, atau gak ada satupun baris
+        // yang masih bisa dikerjakan (semua Done / Not Yet terkunci) -> tanda tetap tampil (pudar),
+        // tapi gak ikut naik ke atas. Prioritas (Tinggi/Sedang/Rendah) TIDAK disentuh sama sekali.
+        const infoUrgensiKartu=(groupRows:any[],sudahTuntas:boolean):{urgensi:UrgensiDeadline|null;bisaNaik:boolean}=>{
+          const urgensi=getUrgencyBadge(targetTerdekat(groupRows.map((r:any)=>woTargetMap[r.task.wo_id||r.task.woId])));
+          const bisaNaik=!sudahTuntas&&groupRows.some((r:any)=>!isRowLocked(r)&&r.pipelineStatus!=="DONE");
+          return{urgensi,bisaNaik};
+        };
+        const badgeMendesak=(u:UrgensiDeadline,pudar:boolean)=>(
+          <span title={u.judul} style={{flexShrink:0,background:u.bg,color:u.warna,border:`1px solid ${u.border}`,
+            borderRadius:20,padding:"0 6px",fontSize:8.5,fontWeight:800,letterSpacing:.2,lineHeight:"15px",opacity:pudar?0.55:1}}>
+            {u.label}
+          </span>
+        );
+        // Garis kiri berwarna lewat box-shadow inset - gak bentrok sama `border` kartu yang sudah ada
+        // (selected/tuntas) & gak ngubah ukuran kartu.
+        const garisMendesak=(u:UrgensiDeadline|null,pudar:boolean)=>u?`inset 4px 0 0 ${pudar?u.border:u.warna}`:undefined;
         const bulkTargetRows=visibleRows.filter((r:any)=>!rowNotYetTanpaTimer(r));
         // Isi popup pilih komponen/panel ikut tab status aktif (dulu cuma BUSBAR, fix 2 Sep 2026 -
         // sekarang semua proses): yang UDAH dikumpulkan tetap kelihatan apapun tab-nya, sisanya
@@ -2601,8 +2621,16 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                       </div>
                     );
                   }
-                  return jenisList.map((jg:any)=>{
+                  // Siapkan per kartu (baris grup + tuntas + urgensi) lalu urutkan: kartu mendesak yang
+                  // masih bisa dikerjakan naik ke atas (Target terdekat duluan), sisanya urutan asli.
+                  const kartuJenis=jenisList.map((jg:any)=>{
                     const groupRows=chipSourceRows.filter((r:any)=>(r.item?.nama||r.kode)===jg.namaKomponen);
+                    // Sama kayak panelSudahTuntas versi lama, cuma sekarang di-agregat per jenis komponen.
+                    const groupAllRows=groupRows.filter((r:any)=>r.qtyKomp>0);
+                    const groupSudahTuntas=groupAllRows.length>0&&groupAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
+                    return{jg,groupRows,groupSudahTuntas,...infoUrgensiKartu(groupRows,groupSudahTuntas)};
+                  });
+                  return urutkanKartuMendesak(kartuJenis,(k:any)=>k).map(({jg,groupRows,groupSudahTuntas,urgensi,bisaNaik}:any)=>{
                     const panelCount=new Set(groupRows.map((r:any)=>r.panelId)).size;
                     const selRows=groupRows.filter((r:any)=>(selectedKomponen[`${proses}_${r.panelId}`]||[]).includes(r.kode));
                     const selCount=selRows.length;
@@ -2611,9 +2639,6 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                     const dikerjakanCount=dikerjakanRows.length;
                     const dikerjakanPcs=dikerjakanRows.reduce((s:number,r:any)=>s+(r.qtyProses||0),0);
                     const selesaiCount=selRows.filter((r:any)=>(r.pct||0)>=100).length;
-                    // Sama kayak panelSudahTuntas versi lama, cuma sekarang di-agregat per jenis komponen.
-                    const groupAllRows=groupRows.filter((r:any)=>r.qtyKomp>0);
-                    const groupSudahTuntas=groupAllRows.length>0&&groupAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
                     return(
                       <button key={jg.namaKomponen} disabled={groupSudahTuntas}
                         onClick={()=>{
@@ -2626,8 +2651,16 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                         style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
                           padding:"6px 12px",borderRadius:8,border:groupSudahTuntas?"1px solid #e2e8f0":selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
                           background:groupSudahTuntas?"#f8fafc":selCount>0?"#eef2ff":"#fff",
-                          cursor:groupSudahTuntas?"not-allowed":"pointer",textAlign:"left",opacity:groupSudahTuntas?0.5:1}}>
-                        <span style={{fontSize:9,color:"#94a3b8"}}>{panelCount} panel</span>
+                          cursor:groupSudahTuntas?"not-allowed":"pointer",textAlign:"left",opacity:groupSudahTuntas?0.5:1,
+                          boxShadow:garisMendesak(urgensi,!bisaNaik)}}>
+                        {urgensi?(
+                          <span style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,width:"100%"}}>
+                            <span style={{fontSize:9,color:"#94a3b8"}}>{panelCount} panel</span>
+                            {badgeMendesak(urgensi,!bisaNaik)}
+                          </span>
+                        ):(
+                          <span style={{fontSize:9,color:"#94a3b8"}}>{panelCount} panel</span>
+                        )}
                         <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{jg.namaKomponen}</span>
                         {groupSudahTuntas?(
                           <span style={{fontSize:9,color:"#16a34a",fontWeight:600}}>✅ Selesai semua</span>
@@ -2663,7 +2696,19 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                       </div>
                     );
                   }
-                  return panelList.map((pg:any)=>{
+                  // Siapkan per kartu (tuntas + urgensi) lalu urutkan - pola SAMA grid komponen di atas.
+                  const kartuPanel=panelList.map((pg:any)=>{
+                    // Panel di-disable kalau SEMUA komponen relevannya (qtyKomp>0) di proses ini
+                    // udah 100% DAN sudah disimpan - gak ada kerjaan tersisa. Berlaku semua
+                    // proses yang make popup ini (dulu cuma POTONG/BENDING/STEL, proses lain
+                    // yang lewat sini - RAKIT/PASANG KOMPONEN/WIRING CONTROL/WIRING POWER/BUSBAR -
+                    // gak pernah dapet efek ini).
+                    const panelAllRows=chipSourceRows.filter((r:any)=>r.panelId===pg.panelId&&r.qtyKomp>0);
+                    const panelSudahTuntas=panelAllRows.length>0&&panelAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
+                    const groupRowsPanel=chipSourceRows.filter((r:any)=>r.panelId===pg.panelId);
+                    return{pg,panelSudahTuntas,...infoUrgensiKartu(groupRowsPanel,panelSudahTuntas)};
+                  });
+                  return urutkanKartuMendesak(kartuPanel,(k:any)=>k).map(({pg,panelSudahTuntas,urgensi,bisaNaik}:any)=>{
                     const panelKey=`${proses}_${pg.panelId}`;
                     const selKodeList=selectedKomponen[panelKey]||[];
                     const selCount=selKodeList.length;
@@ -2673,21 +2718,22 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                     const dikerjakanCount=dikerjakanRows.length;
                     const dikerjakanPcs=dikerjakanRows.reduce((s:number,r:any)=>s+(r.qtyProses||0),0);
                     const selesaiCount=selRows.filter((r:any)=>(r.pct||0)>=100).length;
-                    // Panel di-disable kalau SEMUA komponen relevannya (qtyKomp>0) di proses ini
-                    // udah 100% DAN sudah disimpan - gak ada kerjaan tersisa. Berlaku semua
-                    // proses yang make popup ini (dulu cuma POTONG/BENDING/STEL, proses lain
-                    // yang lewat sini - RAKIT/PASANG KOMPONEN/WIRING CONTROL/WIRING POWER/BUSBAR -
-                    // gak pernah dapet efek ini).
-                    const panelAllRows=chipSourceRows.filter((r:any)=>r.panelId===pg.panelId&&r.qtyKomp>0);
-                    const panelSudahTuntas=panelAllRows.length>0&&panelAllRows.every((r:any)=>r.pct===100&&r.sudahDisimpan100);
                     return(
                       <button key={pg.panelId} disabled={panelSudahTuntas}
                         onClick={()=>{setKomponenPopup({proses,panelId:pg.panelId});setTempSelectedKomponen(selectedKomponen[panelKey]||[]);}}
                         style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:2,
                           padding:"6px 12px",borderRadius:8,border:panelSudahTuntas?"1px solid #e2e8f0":selCount>0?"1.5px solid #6366f1":"1px solid #e2e8f0",
                           background:panelSudahTuntas?"#f8fafc":selCount>0?"#eef2ff":"#fff",
-                          cursor:panelSudahTuntas?"not-allowed":"pointer",textAlign:"left",opacity:panelSudahTuntas?0.5:1}}>
-                        <span style={{fontSize:9,color:"#94a3b8"}}>{pg.proyek}</span>
+                          cursor:panelSudahTuntas?"not-allowed":"pointer",textAlign:"left",opacity:panelSudahTuntas?0.5:1,
+                          boxShadow:garisMendesak(urgensi,!bisaNaik)}}>
+                        {urgensi?(
+                          <span style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,width:"100%"}}>
+                            <span style={{fontSize:9,color:"#94a3b8"}}>{pg.proyek}</span>
+                            {badgeMendesak(urgensi,!bisaNaik)}
+                          </span>
+                        ):(
+                          <span style={{fontSize:9,color:"#94a3b8"}}>{pg.proyek}</span>
+                        )}
                         <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{pg.panel.nama}</span>
                         {panelSudahTuntas?(
                           <span style={{fontSize:9,color:"#16a34a",fontWeight:600}}>✅ Selesai semua</span>
