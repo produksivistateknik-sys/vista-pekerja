@@ -363,9 +363,16 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       return;
     }
     setSavingKey(key);
+    // (29 Sep 2026) langkah yang lagi jalan - dipakai pesan gagal biar operator tau progress-nya
+    // SUDAH tersimpan atau belum (dulu cuma "Gagal simpan: <pesan>" apapun langkahnya).
+    let langkah="baca data panel";
+    let progressTersimpan=false;
     try{
-      const{data:freshRow}=await supabase.from("panels").select("checklist").eq("id",panel.id).single();
-      const freshChecklist=freshRow?.checklist||panel.checklist;
+      // FIX (29 Sep 2026) - dulu tanpa cek error: gagal baca -> diam-diam lanjut pakai checklist
+      // lokal (bisa basi & nimpa balik perubahan operator lain, persis yang mau dicegah refetch ini).
+      const{data:freshRow,error:freshErr}=await withRetry(()=>supabase.from("panels").select("checklist").eq("id",panel.id).single());
+      if(freshErr)throw freshErr;
+      const freshChecklist=freshRow?.checklist||panel.checklist||{};
       const freshCl=freshChecklist[kode]||{};
       const combined=isTahap?(freshCl.progress?.["PASANG KOMPONEN"]||pct):pct;
       const prevHist=freshCl.history?.["PASANG KOMPONEN"]||[];
@@ -379,12 +386,19 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         const newEntry={pct:combined,tanggal:TODAY,ts:new Date().toISOString()};
         newChecklist[kode]={...freshCl,history:{...(freshCl.history||{}),"PASANG KOMPONEN":[...prevHist,newEntry]}};
       }
-      const{error:cpErr}=await withRetry(()=>supabase.from("progress_checkpoint_log").insert({
-        panel_id:panel.id,kode_komponen:kode,proses:"PASANG KOMPONEN",checkpoint:combined,pekerja_nama:user.nama,tanggal:TODAY,
-      }));
-      if(cpErr)throw cpErr;
+      // FIX (29 Sep 2026) - pola sama OperatorView.lockSingleKomponen: checklist DULU, baru
+      // checkpoint log (best-effort, di-log). Dulu log di-insert duluan -> simpan yang ditolak
+      // server tetap ninggalin baris checkpoint palsu.
+      langkah="simpan progress";
       const{error:panelErr}=await withRetry(()=>mergePanelChecklist(panel.id,{[kode]:newChecklist[kode]}));
       if(panelErr)throw panelErr;
+      progressTersimpan=true;
+      try{
+        const{error:cpErr}=await withRetry(()=>supabase.from("progress_checkpoint_log").insert({
+          panel_id:panel.id,kode_komponen:kode,proses:"PASANG KOMPONEN",checkpoint:combined,pekerja_nama:user.nama,tanggal:TODAY,
+        }));
+        if(cpErr)console.error(`[Simpan Pasang Komponen ${kode}] tersimpan, tapi insert progress_checkpoint_log gagal:`,cpErr);
+      }catch(cpErr){console.error(`[Simpan Pasang Komponen ${kode}] tersimpan, tapi insert progress_checkpoint_log gagal (retry habis):`,cpErr);}
       setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
 
       // Dua galeri foto koeksis (8 Agu 2026): fotoPemasangan per-komponen (baru, WAJIB diisi
@@ -397,12 +411,17 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         ?{pasangKomponenTahap:{[tugas.tahap]:freshCl.pasangKomponenTahap?.[tugas.tahap]||{progress:pct,sudahDisimpan100:pct>=100}},
            fotoPemasangan:freshCl.fotoPemasangan||[],pasang_komponen_photos:panel.pasang_komponen_photos||[]}
         :{progress:pct,fotoPemasangan:freshCl.fotoPemasangan||[],pasang_komponen_photos:panel.pasang_komponen_photos||[]};
+      langkah="arsipkan";
       const{error:arsipErr}=await withRetry(()=>supabase.from("panel_seksi_archived").upsert({
         panel_id:panel.id,wo_id:panel.wo_id||null,seksi:tugas.seksi,kode,komponen_nama:nama,data:archiveData,
         panel_nama:panel.nama,panel_tipe:panel.tipe,proyek_snapshot:wo?.proyek||null,wo_number_snapshot:wo?.wo||null,
         diarsipkan_pada:new Date().toISOString(),diarsipkan_oleh:user.nama,
       },{onConflict:"panel_id,seksi,kode"}));
       if(arsipErr)throw arsipErr;
+      // (29 Sep 2026) Mulai sini SEMUA langkah best-effort - progress & arsip di atas SUDAH sukses.
+      // Dulu masih di try yang sama: kalau langkah tambahan ini timeout (withRetry melempar),
+      // operator dapat "Gagal simpan" padahal progress + arsipnya sudah masuk.
+      try{
       // FASE 2 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, sinkron sama
       // panel_seksi_archived di atas (checkpoint FINAL, bukan cuma progress berjalan kayak
       // updatePctLive - makanya sudahDisimpan100 dihitung dari combined>=100 di sini, sama
@@ -433,7 +452,11 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       // ketinggalan snapshot foto lama walau progress tahap dia sendiri gak berubah.
       const{data:siblingRow}=await supabase.from("panel_seksi_archived").select("data").eq("panel_id",panel.id).eq("seksi",siblingSeksi).eq("kode",kode).maybeSingle();
       if(siblingRow){
-        await withRetry(()=>supabase.from("panel_seksi_archived").update({data:{...siblingRow.data,fotoPemasangan:freshCl.fotoPemasangan||[]}}).eq("panel_id",panel.id).eq("seksi",siblingSeksi).eq("kode",kode));
+        const{error:sibErr}=await withRetry(()=>supabase.from("panel_seksi_archived").update({data:{...siblingRow.data,fotoPemasangan:freshCl.fotoPemasangan||[]}}).eq("panel_id",panel.id).eq("seksi",siblingSeksi).eq("kode",kode));
+        if(sibErr)console.error(`[Simpan Pasang Komponen ${kode}] arsip tersimpan, tapi segarkan foto arsip seksi ${siblingSeksi} gagal:`,sibErr);
+      }
+      }catch(err){
+        console.error(`[Simpan Pasang Komponen ${kode}] progress & arsip tersimpan, langkah tambahan (ccp/arsip seksi sebelah) gagal:`,err);
       }
       // BUG FIX (8 Agu 2026): update arsipMap OPTIMISTIC di sini (jangan nunggu round-trip
       // realtime) - biar begitu operator dismiss alert, kartu ini LANGSUNG hilang dari
@@ -443,7 +466,23 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       setArsipMap(prev=>({...prev,[`${panel.id}|${kode}`]:pct}));
       alert("Progress tersimpan & diarsipkan.");
     }catch(err:any){
-      alert("Gagal simpan: "+(err?.message||"koneksi bermasalah, coba lagi."));
+      // (29 Sep 2026) dulu "Gagal simpan: <pesan>" / "koneksi bermasalah" apapun langkahnya.
+      // Sekarang lewat helper bersama (server vs koneksi + console.error) + sebut langkah yang
+      // gagal & status progress-nya. Semua yang bisa melempar di try ini sekarang langkah Supabase/
+      // withRetry; kalau ternyata error lain (bukan dari Supabase & bukan timeout), pesan aslinya
+      // yang ditampilkan - jangan sampai bug kode dilabeli "koneksi".
+      const dariSupabase=err&&typeof err==="object"&&("code" in err||/^Request timeout/.test(String(err.message||"")));
+      const status=progressTersimpan
+        ?"Progress SUDAH tersimpan, tapi BELUM diarsipkan - tekan Simpan Progress lagi untuk mengarsipkan."
+        :"Progress BELUM tersimpan - data di layar TETAP ADA, tekan Simpan Progress lagi.";
+      if(dariSupabase){
+        alertGagalSimpan(err,`Simpan Pasang Komponen ${kode} panel ${panel.id} (langkah: ${langkah})`,{
+          aksi:langkah,catatanServer:status+" Kalau terulang, laporkan ke admin beserta pesan ini.",catatanKoneksi:status,
+        });
+      }else{
+        console.error(`[Simpan Pasang Komponen ${kode} panel ${panel.id}] error tak terduga (langkah: ${langkah}):`,err);
+        alert(`Gagal ${langkah}: ${err?.message||String(err)}\n\n${status}`);
+      }
     }
     setSavingKey(null);
   };
