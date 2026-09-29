@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { TODAY } from "../lib/dateHelpers";
-import { withRetry } from "../lib/koneksi";
+import { withRetry, alertGagalSimpan, ringkasAlasanGagal, klasifikasiErrorSimpan } from "../lib/koneksi";
 import { fetchAllPanels } from "../lib/panelHelpers";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { uploadToR2 } from "../lib/r2Client";
@@ -78,8 +78,17 @@ export function NameplateView({user,registerBackHandler}:any){
     const panel=panelsList.find((p:any)=>p.id===panelId);
     if(!panel)return;
     const newFoto=(panel[t.fotoField]||[]).filter((f:any)=>f.url!==fotoUrl);
-    await hapusFotoDariStorage("nameplate-photos",fotoUrl);
-    await supabase.from("panels").update({[t.fotoField]:newFoto}).eq("id",panelId);
+    // FIX (29 Sep 2026) - sama persis KomponenProgressView.hapusFotoTersimpan: dulu file storage
+    // dihapus DULUAN lalu update DB tanpa cek hasil (DB gagal -> panel nunjuk file yang udah
+    // hilang, layar pura-pura sukses). Sekarang DB dulu (dicek), storage cuma kalau DB sukses.
+    let dbErr:any=null;
+    try{
+      const{error}=await withRetry(()=>supabase.from("panels").update({[t.fotoField]:newFoto}).eq("id",panelId));
+      dbErr=error||null;
+    }catch(err){dbErr=err;}
+    if(dbErr){alertGagalSimpan(dbErr,`Hapus foto ${t.field} panel ${panelId}`,{ulangi:"hapus foto"});return;}
+    try{await hapusFotoDariStorage("nameplate-photos",fotoUrl);}
+    catch(err){console.error(`[Hapus foto ${t.field}] data tersimpan, tapi file storage gagal dihapus:`,err);}
     setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,[t.fotoField]:newFoto}:p));
   };
 
@@ -118,12 +127,26 @@ export function NameplateView({user,registerBackHandler}:any){
         [t.historyField]:newHist,
         [t.fotoField]:newFoto,
       };
-      await supabase.from("panels").update(patch).eq("id",p.id);
-      dirtyProgressRef.current.delete(key);
-      setPanelsList(prev=>prev.map((pp:any)=>pp.id===p.id?{...pp,...patch}:pp));
-      staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
-      setStagedFotos(prev=>{const next={...prev};delete next[key];return next;});
+      // FIX (29 Sep 2026) - sama persis KomponenProgressView.simpanProgressPanel: dulu hasil update
+      // gak dicek (gagal pun dianggap sukses, dirty & foto staged ikut dibuang).
+      let dbErr:any=null;
+      try{
+        const{error}=await withRetry(()=>supabase.from("panels").update(patch).eq("id",p.id));
+        dbErr=error||null;
+      }catch(err){dbErr=err;}
+      if(dbErr){
+        alertGagalSimpan(dbErr,`Simpan Progress ${t.field} panel ${p.id}`,{
+          catatanKoneksi:"Progress & foto BELUM tersimpan, data di layar TETAP ADA - coba tekan Simpan Progress lagi.",
+        });
+      }else{
+        dirtyProgressRef.current.delete(key);
+        setPanelsList(prev=>prev.map((pp:any)=>pp.id===p.id?{...pp,...patch}:pp));
+        staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
+        setStagedFotos(prev=>{const next={...prev};delete next[key];return next;});
+      }
     }catch(err:any){
+      // Error di luar simpan DB (kompres/proses foto dst) - bukan dari Supabase, pesan asli.
+      console.error(`[Simpan Progress ${t.field} panel ${p.id}] error:`,err);
       alert("Terjadi kesalahan: "+err.message);
     }
     setUploadProgress(null);
@@ -201,7 +224,7 @@ export function NameplateView({user,registerBackHandler}:any){
   const kunciProgress=async(panelList:any[])=>{
     setLockLoading(true);
     let count=0;
-    const gagal:string[]=[];
+    const gagal:{nama:string;err:any}[]=[];
     for(const p of panelList){
       const npHist=p.nameplate_history||[];
       const ymHist=p.yellowmark_history||[];
@@ -230,13 +253,20 @@ export function NameplateView({user,registerBackHandler}:any){
         dirtyProgressRef.current.delete(`${p.id}_nameplate`);
         dirtyProgressRef.current.delete(`${p.id}_yellowmark`);
         count++;
-      }catch{
-        gagal.push(p.nama||("Panel #"+p.id));
+      }catch(err){
+        // FIX (29 Sep 2026) - sama persis KomponenProgressView.kunciProgress: detail di-log + alasan
+        // per panel, bukan selalu "koneksi lambat/putus".
+        console.error(`[Kunci Progress Nameplate/Yellowmark] panel ${p.nama||p.id} gagal simpan:`,err);
+        gagal.push({nama:p.nama||("Panel #"+p.id),err});
       }
     }
     setLockLoading(false);
     if(gagal.length>0){
-      alert(count+" panel berhasil dikunci.\n\nGAGAL simpan "+gagal.length+" panel (koneksi lambat/putus): "+gagal.join(", ")+" - data yang sudah diketik TETAP ADA, coba tombol Kunci Progress lagi.");
+      const adaDitolakServer=gagal.some(g=>klasifikasiErrorSimpan(g.err).jenis==="server");
+      alert(count+" panel berhasil dikunci.\n\nGAGAL simpan "+gagal.length+" panel:\n"
+        +gagal.map(g=>"- "+g.nama+": "+ringkasAlasanGagal(g.err)).join("\n")
+        +"\n\nData yang sudah diketik TETAP ADA."
+        +(adaDitolakServer?" Panel yang DITOLAK SERVER bukan masalah koneksi - laporkan ke admin beserta pesan ini.":" Coba tombol Kunci Progress lagi."));
     }else{
       alert(count>0?`${count} panel berhasil dikunci`:"Tidak ada perubahan untuk dikunci");
       fetchData();
