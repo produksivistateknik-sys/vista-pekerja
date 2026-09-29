@@ -2,7 +2,7 @@ import { useState, useMemo, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVISI_CONFIG, QC_ITEMS, BUSBAR_KOMPONEN_VALID } from "../lib/panelTypes";
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
-import { withRetry } from "../lib/koneksi";
+import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal } from "../lib/koneksi";
 import { mergePanelChecklist } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress } from "../lib/componentProcessProgress";
 import {
@@ -718,6 +718,25 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // sempat re-render) gak jalan interleaved dan saling timpa, tapi antre satu-satu.
   const pekerjaPerKomponenQueue=useRef<Record<number,Promise<any>>>({});
 
+  // (29 Sep 2026) Kembalikan SATU komponen di state lokal ke nilai yang BENAR-BENAR tersimpan di
+  // server - dipakai kalau server MENOLAK simpan (trigger cap/RLS/constraint), biar layar gak terus
+  // nampilin angka optimistic yang sebenarnya gak pernah masuk DB (kasus AGIS: layar 12/100%, DB
+  // tetap 8%). Kalau fetch-nya sendiri gagal, state lokal dibiarkan (cuma di-log).
+  const pulihkanKomponenDariServer=async(panelId:number,kode:string)=>{
+    try{
+      const{data,error}=await withRetry(()=>supabase.from("panels").select("checklist").eq("id",panelId).single());
+      if(error)throw error;
+      const clServer=(data as any)?.checklist?.[kode];
+      setPanelsMap(prev=>{
+        const p=prev[panelId];
+        if(!p)return prev;
+        const cl={...(p.checklist||{})};
+        if(clServer===undefined)delete cl[kode];else cl[kode]=clServer;
+        return{...prev,[panelId]:{...p,checklist:cl}};
+      });
+    }catch(err){console.error(`[pulihkan ${panelId}/${kode}] gagal ambil nilai server:`,err);}
+  };
+
   // Update qty proses ke local state (instan) + Supabase (di-debounce di background)
   // skipFloor (6 Sep 2026) - dipakai saat operator MENGETIK (onChange), biar angka yang lagi
   // diketik gak "snap back" ke floor tiap huruf/digit (UX buruk, kerasa kayak field gak bisa
@@ -757,7 +776,29 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     if(qtyWriteTimers.current[debounceKey])clearTimeout(qtyWriteTimers.current[debounceKey]);
     qtyWriteTimers.current[debounceKey]=setTimeout(async()=>{
       delete qtyWriteTimers.current[debounceKey];
-      await mergePanelChecklist(panelId,{[kode]:newChecklist[kode]});
+      // FIX (29 Sep 2026) - dulu hasil merge GAK PERNAH dicek: penolakan server (mis. trigger cap
+      // Mekanik "BENDING tidak boleh melebihi POTONG") ketelan diam-diam, layar tetap nampilin
+      // angka baru, checkpoint log tetap di-insert (log palsu), operator baru "tahu" pas Kunci
+      // Progress dan itu pun dibilang "koneksi lambat". Sekarang: cek hasil (+retry singkat utk
+      // kasus koneksi, konsisten jalur simpan lain); kalau gagal STOP (gak insert checkpoint/ccp),
+      // server menolak -> kembalikan angka ke nilai tersimpan; koneksi -> angka dibiarkan (pola
+      // optimistic lama, Kunci Progress nanti ikut bawa nilainya).
+      let mergeErr:any=null;
+      try{
+        const{error}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
+        if(error)mergeErr=error;
+      }catch(err){mergeErr=err;}
+      if(mergeErr){
+        const ditolakServer=klasifikasiErrorSimpan(mergeErr).jenis==="server";
+        // Operator mungkin sudah ngetik angka baru selama request ini jalan (timer debounce baru
+        // sudah terpasang) - jangan timpa ketikan terbarunya, request berikutnya yang menentukan.
+        if(ditolakServer&&!qtyWriteTimers.current[debounceKey])await pulihkanKomponenDariServer(panelId,kode);
+        alertGagalSimpan(mergeErr,`Ketik qty ${proses} ${kode}`,{
+          catatanServer:"Angka dikembalikan ke nilai yang tersimpan di server.",
+          catatanKoneksi:"Angka yang diketik TETAP ADA di layar tapi BELUM tersimpan - ketik ulang angkanya saat sinyal membaik.",
+        });
+        return;
+      }
       // FIX akar masalah "operator kosong" (audit investigasi-operator-kosong.md) - path INI
       // (ketik qty manual) persist LANGSUNG ke DB kayak PCT_STEPS lama, gak lewat "Kunci
       // Progress" yang nyatet progress_checkpoint_log - jadi progress bisa kesimpen tanpa jejak
@@ -1137,8 +1178,15 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updatePctManual):",error);})
           .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (updatePctManual) - ccp bisa nyangkut basi:",err));
       }
-    }catch{
-      alert("Gagal simpan progress ke server - koneksi lambat. Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.");
+    }catch(err){
+      // FIX (29 Sep 2026) - sama kelas bug dgn updateQtyProses/lockSingleKomponen: dulu SEMUA
+      // error dibilang "koneksi lambat". Penolakan server -> kembalikan pilihan ke nilai tersimpan
+      // (pilihan optimistic itu memang gak akan pernah bisa masuk); koneksi -> tetap pola lama.
+      if(klasifikasiErrorSimpan(err).jenis==="server")await pulihkanKomponenDariServer(panelId,kode);
+      alertGagalSimpan(err,`Pilih persentase ${proses} ${kode}`,{
+        catatanServer:"Persentase dikembalikan ke nilai yang tersimpan di server.",
+        catatanKoneksi:"Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.",
+      });
     }
   };
 
@@ -1176,11 +1224,19 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     }
     // Retry singkat dulu, BARU update state lokal kalau beneran sukses (bukan optimistic di sini -
     // ini aksi "kunci"/final, konsisten sama prinsip timer: confirm ke server dulu).
+    // FIX (29 Sep 2026) - urutan dibalik: checklist DULU, baru progress_checkpoint_log. Dulu log
+    // di-insert duluan, jadi tiap percobaan yang DITOLAK server tetap ninggalin baris checkpoint
+    // palsu (kasus AGIS: 35 baris "BENDING 100%" padahal progress-nya gak pernah tersimpan).
     try{
-      const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert([checkpointEntry]));
-      if(cpErr)throw cpErr;
       const{error:panelErr}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
       if(panelErr)throw panelErr;
+      // Checklist (termasuk history "terkunci") SUDAH tersimpan di atas - log checkpoint jadi
+      // best-effort: kalau gagal, JANGAN suruh operator ulangi (kunci ulang dgn pct sama langsung
+      // return true di atas tanpa insert lagi, jadi saran "tekan lagi" gak akan nolong).
+      try{
+        const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert([checkpointEntry]));
+        if(cpErr)console.error("[Kunci Progress] progress tersimpan, tapi insert progress_checkpoint_log gagal:",cpErr);
+      }catch(cpErr){console.error("[Kunci Progress] progress tersimpan, tapi insert progress_checkpoint_log gagal (retry habis):",cpErr);}
       // FASE 3 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, KHUSUS WIRING
       // CONTROL/POWER (guard sama persis updatePctManual - fungsi "Kunci Progress" ini generik
       // dipakai SEMUA proses qty+timer mode, cuma WIRING CONTROL/POWER yang ikut ke tabel baru
@@ -1200,8 +1256,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (lockSingleKomponen):",error);})
           .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (lockSingleKomponen) - ccp bisa nyangkut basi:",err));
       }
-    }catch{
-      alert('Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Kunci Progress lagi.');
+    }catch(err){
+      alertGagalSimpan(err,`Kunci Progress ${proses} ${kode}`,{ulangi:"Kunci Progress"});
       return false;
     }
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
@@ -1286,14 +1342,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // BUKAN network) - Postgrest/Postgres error kirim balik {code,message,details,hint} yang
   // BEDA dari error timeout polos (Error biasa tanpa .code) yang dilempar withTimeout(). Log
   // detail lengkapnya ke console + bedakan pesan biar gak salah diagnosis lagi ke depannya.
-  const alertGagalSimpanBusbar=(err:any,label:string)=>{
-    console.error(`[BUSBAR ${label}] gagal simpan:`,err);
-    if(err&&typeof err==='object'&&'code'in err){
-      alert(`Gagal simpan progress - server menolak data (kode ${err.code}): ${err.message||'tidak ada pesan'}. Ini BUKAN masalah koneksi, laporkan ke admin beserta kode error ini.`);
-    } else {
-      alert("Gagal simpan progress ke server - koneksi lambat/putus. Coba tekan Simpan Progress lagi.");
-    }
-  };
+  // (29 Sep 2026) Logika pembeda server-vs-koneksi dipindah ke helper bersama alertGagalSimpan
+  // (lib/koneksi.ts) - dipakai juga Kunci Progress/ketik qty/pilih persentase. Patokan sekarang
+  // `code` NON-KOSONG (dulu cukup ada properti `code` - fetch gagal dari supabase-js bawa code:""
+  // jadi dulu salah terbaca "server menolak").
+  const alertGagalSimpanBusbar=(err:any,label:string)=>
+    alertGagalSimpan(err,`BUSBAR ${label}`,{ulangi:"Simpan Progress",catatanServer:"Laporkan ke admin beserta kode error ini."});
   // Update progress tahap AKTIF secara live (tiap klik PCT_STEPS) - langsung ke-refleksi ke
   // progress.BUSBAR gabungan juga, tapi belum bikin checkpoint log / pindah tahap (itu baru
   // kejadian pas "Simpan Progress" diklik).
@@ -1606,7 +1660,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     let count=0;
     const newLocked={...lockedCells};
     const checkpointLogEntries:any[]=[];
-    const panelGagal:string[]=[];
+    const panelGagal:{nama:string;err:any}[]=[];
     // FASE 3 (21 Sep 2026) - kandidat dual-write component_process_progress, KHUSUS WIRING
     // CONTROL/POWER. lockProgress ini jalur BULK "Kunci Progress Hari Ini" - TERPISAH TOTAL dari
     // lockSingleKomponen (reimplementasi sendiri, bukan manggil lockSingleKomponen per kartu) -
@@ -1785,8 +1839,15 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           const{error}=await withRetry(()=>supabase.from("panels").update({busbar_progress:busbarProgressUpdate}).eq("id",Number(panelId)));
           if(error)throw error;
         }
-      }catch{
-        panelGagal.push(panel.nama||("Panel #"+panelId));
+      }catch(err){
+        // FIX (29 Sep 2026) - dulu error ditelan (catch polos) & dirangkum jadi "koneksi
+        // lambat/putus" apapun penyebabnya. Sekarang detail asli di-log + alasan per panel dibawa
+        // ke alert rangkuman. Checkpoint/ccp panel yang GAGAL ini juga dibuang dari antrean flush
+        // di akhir fungsi - dulu tetap ke-insert walau checklist-nya ditolak (log palsu).
+        console.error(`[Kunci Progress Hari Ini] panel ${panel.nama||panelId} gagal simpan:`,err);
+        panelGagal.push({nama:panel.nama||("Panel #"+panelId),err});
+        for(let i=checkpointLogEntries.length-1;i>=0;i--)if(checkpointLogEntries[i].panel_id===Number(panelId))checkpointLogEntries.splice(i,1);
+        for(let i=ccpEntries.length-1;i>=0;i--)if(ccpEntries[i].panelId===Number(panelId))ccpEntries.splice(i,1);
         continue;
       }
       setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist,
@@ -1896,7 +1957,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         setLockMsg(true);
         setTimeout(()=>setLockMsg(false),2500);
       }else{
-        alert("Sebagian progress berhasil dikunci. GAGAL simpan "+panelGagal.length+" panel (koneksi lambat/putus): "+panelGagal.join(", ")+" - data yang sudah dipilih TETAP ADA, coba tekan Kunci Progress lagi.");
+        const adaDitolakServer=panelGagal.some(g=>klasifikasiErrorSimpan(g.err).jenis==="server");
+        alert("Sebagian progress berhasil dikunci. GAGAL simpan "+panelGagal.length+" panel:\n\n"
+          +panelGagal.map(g=>"- "+g.nama+": "+ringkasAlasanGagal(g.err)).join("\n")
+          +"\n\nData yang sudah dipilih TETAP ADA di layar."
+          +(adaDitolakServer?" Panel yang DITOLAK SERVER bukan masalah koneksi - periksa angka yang diisi, atau laporkan ke admin beserta pesan ini.":" Coba tekan Kunci Progress lagi."));
       }
     }
     // Selalu set pernahDikunci=true setiap kali tombol diklik (terlepas ada perubahan atau tidak)
