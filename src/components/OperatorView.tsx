@@ -1921,7 +1921,13 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
             // Progress busbar disimpan di checklist dengan key nama komponen
             const cl=newChecklist[komp]||panel.checklist?.[komp];
             const pct=cl?.progress?.["BUSBAR"]||getProgressOnDate(cl,"BUSBAR",viewDate)||0;
-            newBusbarProgress[komp]=pct;
+            // FIX (30 Sep 2026) - JANGAN simpan key bernilai 0: key 0 yang nyangkut (komponen
+            // pernah dijadwal lalu dihapus dari jadwal tanpa dikerjakan) dulu muncul sebagai
+            // baris BUSBAR "TO DO" hantu di vista-teknik & narik % BUSBAR panel. Key DIHAPUS
+            // (bukan dilewati) kalau 0, biar koreksi ke 0 tetap gak ninggalin nilai lama >0 -
+            // pembaca (getBusbarProgress) anggap key hilang = 0, sama persis kayak nilai 0.
+            if(pct>0) newBusbarProgress[komp]=pct;
+            else delete newBusbarProgress[komp];
           });
         });
         busbarProgressUpdate=newBusbarProgress;
