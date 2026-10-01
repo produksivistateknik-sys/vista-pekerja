@@ -498,7 +498,7 @@ export default function App(){
         )}
         <div style={{flex:1,overflowY:"auto"}}>
           {user.divisi==="gudang"?<GudangHome user={user} onLogout={doLogout}/>
-            :activeBottomTab==="proses"?<ProsesAktifView user={user}/>
+            :activeBottomTab==="proses"?<ProsesAktifView user={user} tahapPasangKomponen={komponenPasangTugas?.tahap||null}/>
             :activeBottomTab==="jadwal"?<JadwalPengirimanView/>
             :activeBottomTab==="akun"?<AkunView user={user} isTimerDivisi={!!isOperatorDivisi} proses={prosesRiwayat} onLogout={doLogout}
               notifCount={notifCount} onBukaPermintaan={()=>{setActiveBottomTab("beranda");setSelectedMenu("permintaan");setPermintaanNavTarget(notifTargets);}}/>
