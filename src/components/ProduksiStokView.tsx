@@ -97,7 +97,7 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
 
   const simpan=async(b:any,t:any,komp:any)=>{
     const key=`${b.id}_${t.tahap}`;
-    const qty=qtyInput[key]??1;
+    const qty=qtyInput[key]??0;
     const reject=Math.min(rejectInput[key]??0,qty);
     if(qty<=0){alert("Jumlah selesai sesi ini minimal 1.");return;}
     setSaving(key);
@@ -145,7 +145,7 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
         ):kartu.map(({b,t,th})=>{
           const key=`${b.id}_${t.tahap}`;
           const komp=namaKomp(b.komponen_id,data.komponen);
-          const qty=Math.min(qtyInput[key]??1,t.tersedia);
+          const qty=Math.min(qtyInput[key]??0,t.tersedia); // default 0 (revisi 2 Okt 2026) - operator tekan + sendiri
           const reject=Math.min(rejectInput[key]??0,qty);
           const idx=th.findIndex((x:any)=>x.tahap===t.tahap);
           const sebelum=idx>0?th[idx-1]:null;
@@ -191,15 +191,22 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
               </div>
               <div style={{padding:"12px 13px"}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#c2410c",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"7px 10px",marginBottom:10}}>⚠ {alasan}</div>
-                {/* Gaya SAMA PERSIS tombol start timer WO (toolbar POTONG OperatorView: solid hijau,
-                    teks putih, minHeight 48). Perilaku tetap: cuma catat waktu mulai sesi. */}
-                <button onClick={()=>mulaiKerja(key)}
-                  style={{width:"100%",marginBottom:10,minHeight:48,padding:"10px",borderRadius:10,border:"none",
-                    background:"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
-                  {mulai[key]?`⏱ Sesi berjalan ${durasi(mulai[key])} · Mulai Ulang`:"▶ Mulai Kerja"}
-                </button>
+                {/* Tombol "▶ Mulai" - pill hijau solid ala tombol start timer WO (revisi 2 Okt 2026,
+                    diminta user: bukan banner full-width). Teks tetap "▶ Mulai"; status sesi yang
+                    berjalan ditampilkan sbg keterangan kecil di sebelahnya. Perilaku sama: catat
+                    waktu mulai sesi (ditekan ulang = mulai sesi baru). */}
+                <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
+                  <button onClick={()=>mulaiKerja(key)}
+                    style={{display:"inline-flex",alignItems:"center",gap:6,border:"none",borderRadius:999,padding:"9px 18px",
+                      background:"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:"0 1px 2px rgba(22,163,74,.35)"}}>
+                    ▶ Mulai
+                  </button>
+                  {mulai[key]
+                    ?<span style={{fontSize:11,color:"#16a34a",fontWeight:700}}>⏱ Sesi berjalan {durasi(mulai[key])}</span>
+                    :<span style={{fontSize:11,color:"#94a3b8"}}>Tekan saat mulai mengerjakan</span>}
+                </div>
                 {[
-                  {lbl:`Jumlah selesai sesi ini (maks. ${t.tersedia})`,val:qty,set:(v:number)=>setQtyInput(p=>({...p,[key]:Math.max(1,Math.min(t.tersedia,v))})),min:1,max:t.tersedia},
+                  {lbl:`Jumlah selesai sesi ini (maks. ${t.tersedia})`,val:qty,set:(v:number)=>setQtyInput(p=>({...p,[key]:Math.max(0,Math.min(t.tersedia,v))})),min:0,max:t.tersedia},
                   {lbl:`Di antaranya reject (maks. ${qty})`,val:reject,set:(v:number)=>setRejectInput(p=>({...p,[key]:Math.max(0,Math.min(qty,v))})),min:0,max:qty},
                 ].map((s,i)=>(
                   <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",border:"1px solid #eef0f3",borderRadius:10,padding:"8px 12px",marginBottom:8}}>
@@ -210,19 +217,30 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
                   </div>
                 ))}
                 {reject>0&&<div style={{fontSize:10.5,color:"#b91c1c",marginBottom:8}}>Reject tidak diteruskan ke tahap berikutnya dan akan diganti dari {th[0].tahap} (tidak ada perbaikan/rework).</div>}
-                <div style={{display:"flex",gap:6,marginBottom:10}}>
-                  {PCT_CHIP.map(c=>(
-                    <span key={c} style={{flex:1,textAlign:"center" as const,padding:"8px 3px",borderRadius:8,fontWeight:700,fontSize:10.5,
-                      background:pctTersimpan>=c?WARNA:"#f1f5f9",color:pctTersimpan>=c?"#fff":"#94a3b8"}}>{pctTersimpan>=c?"✓":`${c}%`}</span>
-                  ))}
+                {/* Chip = INDIKATOR pasif (revisi 2 Okt 2026, diminta user) - bukan tombol: tanpa kotak
+                    berlatar ala tombol disabled, cuma label + titik. Tercapai = hijau. */}
+                <div style={{marginBottom:10}}>
+                  <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",letterSpacing:0.3,marginBottom:4}}>PROGRESS TERSIMPAN {t.tahap}: {pctTersimpan}%</div>
+                  <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:4}}>
+                    {PCT_CHIP.map(c=>{
+                      const capai=pctTersimpan>=c;
+                      return(
+                        <span key={c} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:capai?800:600,
+                          color:capai?WARNA:"#cbd5e1",cursor:"default",userSelect:"none" as const}}>
+                          <span style={{width:8,height:8,borderRadius:99,background:capai?WARNA:"transparent",border:`1.5px solid ${capai?WARNA:"#cbd5e1"}`}}/>
+                          {c}%
+                        </span>
+                      );
+                    })}
+                  </div>
                 </div>
                 <input value={catatan[key]||""} onChange={e=>setCatatan(p=>({...p,[key]:e.target.value}))} placeholder="Catatan (opsional)"
                   style={{width:"100%",boxSizing:"border-box" as const,fontSize:12,padding:"8px 10px",borderRadius:8,border:"1px solid #e2e8f0",marginBottom:10,fontFamily:"inherit"}}/>
-                <button onClick={()=>simpan(b,t,komp)} disabled={sedangSimpan}
+                <button onClick={()=>simpan(b,t,komp)} disabled={sedangSimpan||qty<=0}
                   style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,width:"100%",border:"none",borderRadius:10,padding:"10px",fontSize:12,fontWeight:700,
-                    background:sedangSimpan?"#cbd5e1":WARNA,color:"#fff",cursor:sedangSimpan?"not-allowed":"pointer"}}>
+                    background:sedangSimpan||qty<=0?"#cbd5e1":WARNA,color:"#fff",cursor:sedangSimpan||qty<=0?"not-allowed":"pointer"}}>
                   <i className={sedangSimpan?"ti ti-loader-2":"ti ti-device-floppy"} style={{fontSize:14}}/>
-                  {sedangSimpan?"Menyimpan...":`Simpan Progress (${qty} pcs${reject>0?`, ${reject} reject`:""})`}
+                  {sedangSimpan?"Menyimpan...":qty<=0?"Simpan Progress (isi jumlah dulu)":`Simpan Progress (${qty} pcs${reject>0?`, ${reject} reject`:""})`}
                 </button>
               </div>
             </div>
