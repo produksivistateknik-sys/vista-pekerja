@@ -39,6 +39,25 @@ export const produksiStokService = {
     const komponen = kids.length ? await ambilSemua((a, b) => supabase.from('komponen_stok').select('id,nama,kode').in('id', kids).range(a, b)) : []
     return { log: log || [], batch, komponen }
   },
+  // Sesi berjalan (2 Okt 2026, migration 20261002050000): Mulai/Stop ditulis ke produksi_stok_sesi
+  // supaya Admin bisa lihat siapa yang sedang mengerjakan (panel + toast di vista-teknik). Jam mulai
+  // = jam server. Mulai dobel (tap 2x / HP lain) mengembalikan sesi yang sama, tidak reset.
+  async ambilSesiTerbukaSaya(operatorNama: string) {
+    return await ambilSemua((a, b) => supabase.from('produksi_stok_sesi').select('*')
+      .eq('operator_nama', operatorNama).is('selesai_at', null).order('mulai_at').range(a, b))
+  },
+  async mulaiSesi(p: { batchId: number; tahap: string; operatorId: number | null; operatorNama: string; subBagian: string | null }) {
+    const { data, error } = await supabase.rpc('mulai_sesi_produksi_stok', {
+      p_batch_id: p.batchId, p_tahap: p.tahap, p_operator_id: p.operatorId, p_operator_nama: p.operatorNama, p_sub_bagian: p.subBagian,
+    })
+    if (error) throw error
+    return data
+  },
+  async stopSesi(sesiId: number, oleh: string) {
+    const { data, error } = await supabase.rpc('stop_sesi_produksi_stok', { p_sesi_id: sesiId, p_cara: 'stop', p_oleh: oleh })
+    if (error) throw error
+    return data
+  },
   async simpanProgress(p: {
     batchId: number; tahap: string; qty: number; qtyReject: number; fotoUrls: string[]
     operatorId: number | null; operatorNama: string; catatan: string | null; mulaiAt: string | null

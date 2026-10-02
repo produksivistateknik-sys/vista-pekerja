@@ -17,7 +17,7 @@ import { labelDurasiTimer } from "../lib/timerHelpers";
 //   kenyamanan, server tetap menolak kalau lewat (mis. diambil operator lain duluan).
 // - Chip 25-100% = indikator visual otomatis dari progress YANG SUDAH TERSIMPAN (qty baik tahap ini
 //   di DB), BUKAN dari angka stepper yang belum disimpan (revisi 2 Okt 2026, diminta user).
-// - "Mulai Kerja" cuma mencatat waktu mulai sesi (dikirim ke log), tidak terhubung ke timer WO /
+// - Mulai/Stop mencatat sesi ke produksi_stok_sesi (dilihat Admin), tidak terhubung ke timer WO /
 //   Proses Aktif. Gaya tombolnya SAMA dgn tombol start timer WO (solid hijau, toolbar POTONG
 //   OperatorView) - revisi 2 Okt 2026, dulu varian hijau muda yang kebaca kayak link.
 // - Foto TIDAK wajib & tidak ada di Produksi Stok (revisi 2 Okt 2026, diminta user - beda dgn WO).
@@ -27,10 +27,11 @@ import { labelDurasiTimer } from "../lib/timerHelpers";
 const PCT_CHIP=[25,50,75,90,100];
 const WARNA="#059669";
 
-const bacaMulai=():Record<string,string>=>{try{return JSON.parse(localStorage.getItem("vista_produksi_stok_mulai")||"{}");}catch{return {};}};
 const bacaBerhenti=():Record<string,{mulai:string;menit:number}>=>{try{return JSON.parse(localStorage.getItem("vista_produksi_stok_berhenti")||"{}");}catch{return {};}};
 const tulisBerhenti=(v:Record<string,{mulai:string;menit:number}>)=>{try{localStorage.setItem("vista_produksi_stok_berhenti",JSON.stringify(v));}catch{/* private mode - abaikan */}};
-const tulisMulai=(v:Record<string,string>)=>{try{localStorage.setItem("vista_produksi_stok_mulai",JSON.stringify(v));}catch{/* private mode - abaikan */}};
+// Sesi versi lama (sebelum 2 Okt 2026 sore) disimpan di localStorage key ini - sekarang sesi berjalan
+// ada di server (produksi_stok_sesi), key lama dibuang saat modul dimuat.
+try{localStorage.removeItem("vista_produksi_stok_mulai");}catch{/* private mode - abaikan */}
 
 export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>boolean)|null)=>void}){
   const cfg=(DIVISI_CONFIG as any)[user?.divisi];
@@ -43,7 +44,12 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
   const [qtyInput,setQtyInput]=useState<Record<string,number>>({});
   const [rejectInput,setRejectInput]=useState<Record<string,number>>({});
   const [catatan,setCatatan]=useState<Record<string,string>>({});
-  const [mulai,setMulai]=useState<Record<string,string>>(bacaMulai);
+  // Sesi berjalan milik operator ini, per kartu "<batch>_<tahap>" - SUMBER = tabel produksi_stok_sesi
+  // (migration 20261002050000), jadi sama di semua HP & kelihatan Admin. id null = baru ditekan,
+  // RPC belum balas (tampil optimistic dulu biar tombol langsung jadi Stop).
+  const [sesi,setSesi]=useState<Record<string,{id:number|null;mulai_at:string}>>({});
+  const mulai:Record<string,string>=Object.fromEntries(Object.entries(sesi).map(([k,v])=>[k,v.mulai_at]));
+  const namaOp=user?.nama||user?.name||"-";
   const [berhenti,setBerhenti]=useState<Record<string,{mulai:string;menit:number}>>(bacaBerhenti); // sesi yang sudah di-Stop, belum disimpan
   const [saving,setSaving]=useState<string|null>(null);
   const [flash,setFlash]=useState<string|null>(null);
@@ -51,7 +57,14 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
 
   const muat=async()=>{
     try{
-      setData(await produksiStokService.ambilAktif());
+      const [d,terbuka]=await Promise.all([produksiStokService.ambilAktif(),produksiStokService.ambilSesiTerbukaSaya(namaOp)]);
+      setData(d);
+      setSesi(prev=>{
+        const n:Record<string,{id:number|null;mulai_at:string}>={};
+        for(const r of terbuka)n[`${r.batch_id}_${r.tahap}`]={id:r.id,mulai_at:r.mulai_at};
+        for(const [k,v] of Object.entries(prev))if(v.id===null&&!n[k])n[k]=v; // masih menunggu RPC
+        return n;
+      });
       setErrMuat(null);
     }catch(err:any){
       console.error("[ProduksiStok] gagal memuat:",err);
@@ -68,6 +81,7 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
     const ch=supabase.channel("realtime-produksi-stok-operator-"+(user?.id??"x"))
       .on("postgres_changes",{event:"*",schema:"public",table:"produksi_stok_tahap"},muatUlang)
       .on("postgres_changes",{event:"*",schema:"public",table:"produksi_stok_batch"},muatUlang)
+      .on("postgres_changes",{event:"*",schema:"public",table:"produksi_stok_sesi"},muatUlang) // ditutup Admin / HP lain
       .subscribe();
     const onVisible=()=>{if(document.visibilityState==="visible")muat();};
     document.addEventListener("visibilitychange",onVisible);
@@ -94,15 +108,35 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
   // Timer sesi (revisi 2 Okt 2026): Mulai -> Stop merah + durasi berdetak tiap detik, label durasi
   // dari helper YANG SAMA dgn timer WO (labelDurasiTimer, lib/timerHelpers.ts). Tetap TIDAK menulis
   // fcs_timer_kerja (terikat panel/WO) - waktu mulai sesi dikirim ke log Produksi Stok saat Simpan.
-  const mulaiKerja=(key:string)=>{
-    const baru={...mulai,[key]:new Date().toISOString()};setMulai(baru);tulisMulai(baru);
+  // Mulai/Stop ditulis ke server (RPC) - tombol berubah seketika (optimistic), kalau RPC gagal
+  // dikembalikan + alertGagalSimpan (gak boleh diam-diam cuma jalan di HP).
+  const mulaiKerja=async(b:any,t:any)=>{
+    const key=`${b.id}_${t.tahap}`;
+    setSesi(p=>({...p,[key]:{id:null,mulai_at:new Date().toISOString()}}));
     setBerhenti(p=>{const n={...p};delete n[key];tulisBerhenti(n);return n;});
+    try{
+      const r=await produksiStokService.mulaiSesi({batchId:b.id,tahap:t.tahap,operatorId:user?.id||null,operatorNama:namaOp,subBagian:user?.sub_bagian||cfg?.label||null});
+      setSesi(p=>({...p,[key]:{id:r.id,mulai_at:r.mulai_at}})); // jam server
+    }catch(err:any){
+      setSesi(p=>{const n={...p};delete n[key];return n;});
+      alertGagalSimpan(err,`Mulai sesi Produksi Stok batch ${b.id} ${t.tahap}`,{ulangi:"▶ Mulai"});
+    }
   };
-  const stopKerja=(key:string)=>{
-    if(!mulai[key])return;
-    const menit=(Date.now()-new Date(mulai[key]).getTime())/60000;
-    setBerhenti(p=>{const n={...p,[key]:{mulai:mulai[key],menit}};tulisBerhenti(n);return n;});
-    const m={...mulai};delete m[key];setMulai(m);tulisMulai(m);
+  const stopKerja=async(b:any,t:any)=>{
+    const key=`${b.id}_${t.tahap}`;
+    const s0=sesi[key];
+    if(!s0)return;
+    if(s0.id===null){alert("Sesi masih dicatat ke server, tunggu sebentar lalu tekan Stop lagi.");return;}
+    const menit=(Date.now()-new Date(s0.mulai_at).getTime())/60000;
+    setBerhenti(p=>{const n={...p,[key]:{mulai:s0.mulai_at,menit}};tulisBerhenti(n);return n;});
+    setSesi(p=>{const n={...p};delete n[key];return n;});
+    try{
+      await produksiStokService.stopSesi(s0.id,namaOp);
+    }catch(err:any){
+      setSesi(p=>({...p,[key]:s0}));
+      setBerhenti(p=>{const n={...p};delete n[key];tulisBerhenti(n);return n;});
+      alertGagalSimpan(err,`Stop sesi Produksi Stok batch ${b.id} ${t.tahap}`,{ulangi:"⏹ Stop"});
+    }
   };
   const menitBerjalan=(iso?:string)=>iso?Math.max(0,(Date.now()-new Date(iso).getTime())/60000):0;
 
@@ -115,13 +149,13 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
     try{
       await produksiStokService.simpanProgress({
         batchId:b.id,tahap:t.tahap,qty,qtyReject:reject,fotoUrls:[],
-        operatorId:user?.id||null,operatorNama:user?.nama||user?.name||"-",
+        operatorId:user?.id||null,operatorNama:namaOp,
         catatan:(catatan[key]||"").trim()||null,mulaiAt:mulai[key]||berhenti[key]?.mulai||null,
       });
       setQtyInput(prev=>{const n={...prev};delete n[key];return n;});
       setRejectInput(prev=>{const n={...prev};delete n[key];return n;});
       setCatatan(prev=>{const n={...prev};delete n[key];return n;});
-      const m={...mulai};delete m[key];setMulai(m);tulisMulai(m);
+      setSesi(p=>{const n={...p};delete n[key];return n;}); // RPC simpan sudah menutup sesinya di server
       setBerhenti(p=>{const n={...p};delete n[key];tulisBerhenti(n);return n;});
       setFlash(`✅ ${komp?.nama||"Batch #"+b.id} · ${t.tahap}: ${qty} pcs tersimpan`);
       setTimeout(()=>setFlash(null),3000);
@@ -211,13 +245,13 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
                     waktu mulainya tetap dikirim ke log saat Simpan Progress. */}
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
                   {mulai[key]?(
-                    <button onClick={()=>stopKerja(key)}
+                    <button onClick={()=>stopKerja(b,t)}
                       style={{display:"inline-flex",alignItems:"center",gap:6,border:"none",borderRadius:999,padding:"9px 18px",
                         background:"#dc2626",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:"0 1px 2px rgba(220,38,38,.35)",fontVariantNumeric:"tabular-nums" as const}}>
                       ⏹ Stop · {labelDurasiTimer(menitBerjalan(mulai[key]))}
                     </button>
                   ):(
-                    <button onClick={()=>mulaiKerja(key)}
+                    <button onClick={()=>mulaiKerja(b,t)}
                       style={{display:"inline-flex",alignItems:"center",gap:6,border:"none",borderRadius:999,padding:"9px 18px",
                         background:"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:"0 1px 2px rgba(22,163,74,.35)"}}>
                       ▶ Mulai
