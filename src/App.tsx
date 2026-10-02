@@ -33,6 +33,10 @@ const MomFatView = lazy(() => import("./components/MomFatView").then(m => ({ def
 import { AkunView } from "./components/AkunView";
 import { ProyekLuarView } from "./components/ProyekLuarView";
 import { WoDigitalView } from "./components/WoDigitalView";
+import { ProduksiStokView } from "./components/ProduksiStokView";
+// Tahap yang mungkin dipakai Produksi Stok (sama dgn CHECK tabel produksi_stok_tahap) - dipakai
+// nentuin sub-bagian mana yang dapat tile menu-nya.
+const TAHAP_PRODUKSI_STOK=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING"];
 // Sprint 5-7 (5 Agu 2026): seluruh komponen/const yang tadinya nempel di App.tsx dipindah
 // keluar ke src/lib/ dan src/components/ - struktur/nama fungsi/isi PERSIS SAMA, cuma
 // lokasinya pindah. App.tsx sekarang murni shell (routing halaman + header/nav).
@@ -241,6 +245,9 @@ export default function App(){
       // Proyek Luar (30 Agu 2026) - fitur laporan proyek eksternal, BERDIRI SENDIRI dari WO/
       // panel manapun. Cuma qc/wiring_ctrl/wiring_pwr/assembling (mekanik/painting TIDAK).
       ...(["wiring_ctrl","wiring_pwr","assembling"].includes(user.divisi)?[{key:"proyekluar",label:"Proyek Luar",icon:"building"}]:[]),
+      // Produksi Stok (2 Okt 2026) - produksi komponen setengah jadi utk stok, TERPISAH dari WO
+      // (lihat ProduksiStokView.tsx). Cuma sub-bagian yang pegang salah satu tahapnya (Mekanik/Painting).
+      ...(prosesRiwayat.some(p=>TAHAP_PRODUKSI_STOK.includes(p))?[{key:"produksistok",label:"Produksi Stok",icon:"building-factory-2"}]:[]),
       {key:"wodigital",label:"WO Digital",icon:"file-type-pdf"},
     ];
   })();
@@ -562,6 +569,7 @@ export default function App(){
                   :selectedMenu==="proyekluar"?<ProyekLuarView user={user}/>
                   :selectedMenu==="momfat"?<ErrorBoundary label="MOM FAT"><Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat...</div>}><MomFatView user={user} registerBackHandler={registerBackHandler}/></Suspense></ErrorBoundary>
                   :selectedMenu==="wodigital"?<WoDigitalView registerBackHandler={registerBackHandler}/>
+                  :selectedMenu==="produksistok"?<ProduksiStokView user={user} registerBackHandler={registerBackHandler}/>
                   :user.divisi==="nameplate"?<NameplateView user={user} registerBackHandler={registerBackHandler}/>
                   :user.divisi==="qc"?<QCChecklistTab user={user} registerBackHandler={registerBackHandler}/>
                   :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS} registerBackHandler={registerBackHandler}/>
