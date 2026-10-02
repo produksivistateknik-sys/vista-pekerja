@@ -3,7 +3,7 @@ import { supabase } from "../lib/supabase";
 import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan } from "../lib/koneksi";
-import { mergePanelChecklist } from "../lib/checklistHelpers";
+import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip, updateComponentProcessProgressPhotos } from "../lib/componentProcessProgress";
 import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
@@ -335,7 +335,9 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     }
     const newChecklist={...freshChecklist,[kode]:newCl};
     setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
-    await withRetry(()=>mergePanelChecklist(panel.id,{[kode]:newCl}));
+    // Cek error (2 Okt 2026) - dulu hasil RPC diabaikan (silent fail, CLAUDE.md A.2).
+    const{error:clErr}=await withRetry(()=>mergePanelChecklistDalam(panel.id,{[kode]:{lama:freshChecklist[kode],baru:newCl}}));
+    if(clErr){alertGagalSimpan(clErr,`Simpan persen Pasang Komponen ${kode} panel ${panel.id}`,{aksi:"simpan persen"});return;}
     // FASE 2 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, checklist di atas TETAP
     // sumber kebenaran yang dibaca semua consumer lama (Task Monitoring dkk BELUM diubah).
     // Best-effort SENGAJA (console.error, TIDAK alert/blok operator) - checklist di atas sudah
@@ -395,7 +397,7 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       // checkpoint log (best-effort, di-log). Dulu log di-insert duluan -> simpan yang ditolak
       // server tetap ninggalin baris checkpoint palsu.
       langkah="simpan progress";
-      const{error:panelErr}=await withRetry(()=>mergePanelChecklist(panel.id,{[kode]:newChecklist[kode]}));
+      const{error:panelErr}=await withRetry(()=>mergePanelChecklistDalam(panel.id,{[kode]:{lama:freshChecklist[kode],baru:newChecklist[kode]}}));
       if(panelErr)throw panelErr;
       progressTersimpan=true;
       try{
@@ -546,7 +548,8 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         const cl=panel.checklist?.[kode]||{};
         const newFoto=[...(cl.fotoPemasangan||[]),...fotoTerupload];
         const newEntry={...cl,fotoPemasangan:newFoto};
-        await mergePanelChecklist(panel.id,{[kode]:newEntry});
+        const{error:clErr}=await mergePanelChecklistDalam(panel.id,{[kode]:{lama:panel.checklist?.[kode],baru:newEntry}});
+        if(clErr)throw clErr; // dulu diabaikan (silent fail) - sekarang ditangkap catch di bawah
         setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:{...p.checklist,[kode]:newEntry}}:p));
         // AUDIT (21 Sep 2026) - sinkronkan ccp.photos juga (update, bukan upsert - lihat komentar
         // updateComponentProcessProgressPhotos, no-op kalau baris belum pernah di-dual-write).
@@ -601,7 +604,8 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         const cl=panel.checklist?.[kode]||{};
         const newFotoLive=[...(cl.fotoPemasangan||[]),...fotoTerupload];
         const newEntry={...cl,fotoPemasangan:newFotoLive};
-        await mergePanelChecklist(panel.id,{[kode]:newEntry});
+        const{error:clErr}=await mergePanelChecklistDalam(panel.id,{[kode]:{lama:panel.checklist?.[kode],baru:newEntry}});
+        if(clErr)throw clErr; // dulu diabaikan (silent fail) - sekarang ditangkap catch di bawah
         setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:{...p.checklist,[kode]:newEntry}}:p));
         // AUDIT (21 Sep 2026) - sinkronkan ccp.photos juga (lihat komentar simpanFotoStaged).
         updateComponentProcessProgressPhotos(panel.id,kode,"PASANG KOMPONEN",tahapUntukKode(panel,kode),newFotoLive)
@@ -647,7 +651,8 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       const cl=panel.checklist?.[kode as string]||{};
       const newFoto=(cl.fotoPemasangan||[]).filter((f:any)=>f.url!==fotoUrl);
       const newEntry={...cl,fotoPemasangan:newFoto};
-      await mergePanelChecklist(panel.id,{[kode as string]:newEntry});
+      const{error:clErr}=await mergePanelChecklistDalam(panel.id,{[kode as string]:{lama:panel.checklist?.[kode as string],baru:newEntry}});
+      if(clErr){alertGagalSimpan(clErr,`Hapus foto Pasang Komponen ${kode} panel ${panel.id}`,{aksi:"hapus foto"});return;}
       setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:{...p.checklist,[kode as string]:newEntry}}:p));
       // AUDIT (21 Sep 2026) - sinkronkan ccp.photos juga (lihat komentar simpanFotoStaged).
       updateComponentProcessProgressPhotos(panel.id,kode as string,"PASANG KOMPONEN",tahapUntukKode(panel,kode as string),newFoto)

@@ -4,7 +4,7 @@ import { supabase } from "../lib/supabase";
 import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVISI_CONFIG, QC_ITEMS, BUSBAR_KOMPONEN_VALID } from "../lib/panelTypes";
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal } from "../lib/koneksi";
-import { mergePanelChecklist } from "../lib/checklistHelpers";
+import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress } from "../lib/componentProcessProgress";
 import {
   timerKey, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_ICON, BUSBAR_URUTAN_TAHAP_LENGKAP,
@@ -871,7 +871,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       // optimistic lama, Kunci Progress nanti ikut bawa nilainya).
       let mergeErr:any=null;
       try{
-        const{error}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
+        const{error}=await withRetry(()=>mergePanelChecklistDalam(panelId,{[kode]:{lama:panel.checklist?.[kode],baru:newChecklist[kode]}}));
         if(error)mergeErr=error;
       }catch(err){mergeErr=err;}
       if(mergeErr){
@@ -1255,7 +1255,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // yang udah dipilih user gak hilang/harus pilih ulang) - cuma dikasih tau lewat alert.
     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     try{
-      const{error}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
+      const{error}=await withRetry(()=>mergePanelChecklistDalam(panelId,{[kode]:{lama:panel.checklist?.[kode],baru:newChecklist[kode]}}));
       if(error)throw error;
       // FIX akar masalah "operator kosong": PCT_STEPS ini persist LANGSUNG ke DB seketika diklik,
       // gak lewat "Kunci Progress" (lockSingleKomponen) yang baru nyatet progress_checkpoint_log -
@@ -1334,7 +1334,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // di-insert duluan, jadi tiap percobaan yang DITOLAK server tetap ninggalin baris checkpoint
     // palsu (kasus AGIS: 35 baris "BENDING 100%" padahal progress-nya gak pernah tersimpan).
     try{
-      const{error:panelErr}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
+      const{error:panelErr}=await withRetry(()=>mergePanelChecklistDalam(panelId,{[kode]:{lama:panel.checklist?.[kode],baru:newChecklist[kode]}}));
       if(panelErr)throw panelErr;
       // Checklist (termasuk history "terkunci") SUDAH tersimpan di atas - log checkpoint jadi
       // best-effort: kalau gagal, JANGAN suruh operator ulangi (kunci ulang dgn pct sama langsung
@@ -1491,7 +1491,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // Sama kayak updatePctManual - optimistic, gak di-revert kalau retry akhirnya tetap gagal.
     setPanelsMap(prev=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     try{
-      const{error}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
+      const{error}=await withRetry(()=>mergePanelChecklistDalam(panelId,{[kode]:{lama:panel.checklist?.[kode],baru:newChecklist[kode]}}));
       if(error)throw error;
       // FIX akar masalah "operator kosong" (audit investigasi-operator-kosong.md) - SAMA kayak
       // updatePctManual (non-BUSBAR): tahap ini persist LANGSUNG ke progress.BUSBAR gabungan
@@ -1594,7 +1594,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     try{
       const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert([checkpointEntry]));
       if(cpErr)throw cpErr;
-      const{error:panelErr}=await withRetry(()=>mergePanelChecklist(panelId,{[kode]:newChecklist[kode]}));
+      const{error:panelErr}=await withRetry(()=>mergePanelChecklistDalam(panelId,{[kode]:{lama:panel.checklist?.[kode],baru:newChecklist[kode]}}));
       if(panelErr)throw panelErr;
     }catch(err){
       alertGagalSimpanBusbar(err,'simpanProgressTahapBusbar');
@@ -1744,7 +1744,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         // FIX (29 Sep 2026) - pola sama lockSingleKomponen: checklist DULU, baru checkpoint log.
         // Dulu log di-insert duluan -> tiap Simpan Section yang DITOLAK server tetap ninggalin
         // baris checkpoint palsu.
-        const{error:panelErr}=await withRetry(()=>mergePanelChecklist(Number(panelId),partial));
+        const{error:panelErr}=await withRetry(()=>mergePanelChecklistDalam(Number(panelId),Object.fromEntries(Object.keys(partial).map(k=>[k,{lama:panel.checklist?.[k],baru:partial[k]}]))));
         if(panelErr)throw panelErr;
         // Checklist (history section) SUDAH tersimpan - log checkpoint best-effort, di-log kalau gagal.
         try{
@@ -1980,7 +1980,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       touchedKode.forEach(kode=>{ partial[kode]=newChecklist[kode]; });
       try{
         if(Object.keys(partial).length>0){
-          const{error}=await withRetry(()=>mergePanelChecklist(Number(panelId),partial));
+          const{error}=await withRetry(()=>mergePanelChecklistDalam(Number(panelId),Object.fromEntries(Object.keys(partial).map(k=>[k,{lama:panel.checklist?.[k],baru:partial[k]}]))));
           if(error)throw error;
         }
         if(busbarProgressUpdate){
