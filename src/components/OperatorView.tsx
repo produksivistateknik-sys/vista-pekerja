@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useRef } from "react";
+import { labelDurasiTimer } from "../lib/timerHelpers";
 import { supabase } from "../lib/supabase";
 import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVISI_CONFIG, QC_ITEMS, BUSBAR_KOMPONEN_VALID } from "../lib/panelTypes";
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
@@ -3103,10 +3104,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           const timer=timerAktif[key];
           const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
           const totalMenit=(timerDurasiSelesai[key]||0)+menitBerjalan;
-          const jam=Math.floor(totalMenit/60);
-          const menit=Math.round(totalMenit%60);
-          const detik=Math.max(0,Math.round(totalMenit*60));
-          const label=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
+          const label=labelDurasiTimer(totalMenit);
           return{ada:true,label};
         }
       }
@@ -3352,10 +3350,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                             const timer=timerAktif[runningKeyTahap];
                             const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
                             const totalMenit=(timerDurasiSelesai[runningKeyTahap]||0)+menitBerjalan;
-                            const jam=Math.floor(totalMenit/60);
-                            const menit=Math.round(totalMenit%60);
-                            const detik=Math.max(0,Math.round(totalMenit*60));
-                            durasiLabelTahap=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
+                            durasiLabelTahap=labelDurasiTimer(totalMenit);
                           }
                           const flashKeyTahap=`${r.panelId}_${r.kode}_BUSBAR_${t}`;
                           const flashingTahap=!!savedFlash[flashKeyTahap];
@@ -3487,10 +3482,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                           const timer=timerAktif[runningKey];
                           const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
                           const totalMenit=(timerDurasiSelesai[runningKey]||0)+menitBerjalan;
-                          const jam=Math.floor(totalMenit/60);
-                          const menit=Math.round(totalMenit%60);
-                          const detik=Math.max(0,Math.round(totalMenit*60));
-                          durasiLabel=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
+                          durasiLabel=labelDurasiTimer(totalMenit);
                         }
                         return(
                           <div style={{display:"flex",flexDirection:"column",gap:6}}>
@@ -3859,10 +3851,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                                   if(timer){
                                     const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
                                     const totalMenit=(timerDurasiSelesai[key]||0)+menitBerjalan;
-                                    const jam=Math.floor(totalMenit/60);
-                                    const menit=Math.round(totalMenit%60);
-                                    const detik=Math.max(0,Math.round(totalMenit*60));
-                                    durasiLabel=jam>0?`${jam}j ${menit}m`:totalMenit>=1?`${menit}m`:`${detik}d`;
+                                    durasiLabel=labelDurasiTimer(totalMenit);
                                   }
                                   return(
                                     <div key={w.id} style={{display:"flex",alignItems:"center",gap:5,

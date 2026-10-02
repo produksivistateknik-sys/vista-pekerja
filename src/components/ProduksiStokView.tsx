@@ -4,6 +4,7 @@ import { produksiStokService } from "../lib/produksiStokService";
 import { alertGagalSimpan } from "../lib/koneksi";
 import { DIVISI_CONFIG } from "../lib/panelTypes";
 import { SectionCard, EmptyState } from "./ui/Primitives";
+import { labelDurasiTimer } from "../lib/timerHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PRODUKSI STOK - tampilan operator (2 Okt 2026). Produksi komponen setengah jadi SENGAJA untuk
@@ -27,6 +28,8 @@ const PCT_CHIP=[25,50,75,90,100];
 const WARNA="#059669";
 
 const bacaMulai=():Record<string,string>=>{try{return JSON.parse(localStorage.getItem("vista_produksi_stok_mulai")||"{}");}catch{return {};}};
+const bacaBerhenti=():Record<string,{mulai:string;menit:number}>=>{try{return JSON.parse(localStorage.getItem("vista_produksi_stok_berhenti")||"{}");}catch{return {};}};
+const tulisBerhenti=(v:Record<string,{mulai:string;menit:number}>)=>{try{localStorage.setItem("vista_produksi_stok_berhenti",JSON.stringify(v));}catch{/* private mode - abaikan */}};
 const tulisMulai=(v:Record<string,string>)=>{try{localStorage.setItem("vista_produksi_stok_mulai",JSON.stringify(v));}catch{/* private mode - abaikan */}};
 
 export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>boolean)|null)=>void}){
@@ -41,6 +44,7 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
   const [rejectInput,setRejectInput]=useState<Record<string,number>>({});
   const [catatan,setCatatan]=useState<Record<string,string>>({});
   const [mulai,setMulai]=useState<Record<string,string>>(bacaMulai);
+  const [berhenti,setBerhenti]=useState<Record<string,{mulai:string;menit:number}>>(bacaBerhenti); // sesi yang sudah di-Stop, belum disimpan
   const [saving,setSaving]=useState<string|null>(null);
   const [flash,setFlash]=useState<string|null>(null);
   const [,setTick]=useState(0);
@@ -67,7 +71,7 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
       .subscribe();
     const onVisible=()=>{if(document.visibilityState==="visible")muat();};
     document.addEventListener("visibilitychange",onVisible);
-    const tick=setInterval(()=>setTick(x=>x+1),30000); // durasi sesi di tombol Mulai
+    const tick=setInterval(()=>setTick(x=>x+1),1000); // detak 1 dtk, sama dgn timer WO (OperatorView)
     return()=>{clearTimeout(t);supabase.removeChannel(ch);document.removeEventListener("visibilitychange",onVisible);clearInterval(tick);};
   },[]);
 
@@ -87,13 +91,20 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
     return th.filter(t=>tahapSaya.includes(t.tahap)&&t.tersedia>0).map(t=>({b,t,th}));
   });
 
+  // Timer sesi (revisi 2 Okt 2026): Mulai -> Stop merah + durasi berdetak tiap detik, label durasi
+  // dari helper YANG SAMA dgn timer WO (labelDurasiTimer, lib/timerHelpers.ts). Tetap TIDAK menulis
+  // fcs_timer_kerja (terikat panel/WO) - waktu mulai sesi dikirim ke log Produksi Stok saat Simpan.
   const mulaiKerja=(key:string)=>{
     const baru={...mulai,[key]:new Date().toISOString()};setMulai(baru);tulisMulai(baru);
+    setBerhenti(p=>{const n={...p};delete n[key];tulisBerhenti(n);return n;});
   };
-  const durasi=(iso?:string)=>{
-    if(!iso)return"";const m=Math.max(0,Math.round((Date.now()-new Date(iso).getTime())/60000));
-    return m>=60?`${Math.floor(m/60)}j ${m%60}m`:`${m}m`;
+  const stopKerja=(key:string)=>{
+    if(!mulai[key])return;
+    const menit=(Date.now()-new Date(mulai[key]).getTime())/60000;
+    setBerhenti(p=>{const n={...p,[key]:{mulai:mulai[key],menit}};tulisBerhenti(n);return n;});
+    const m={...mulai};delete m[key];setMulai(m);tulisMulai(m);
   };
+  const menitBerjalan=(iso?:string)=>iso?Math.max(0,(Date.now()-new Date(iso).getTime())/60000):0;
 
   const simpan=async(b:any,t:any,komp:any)=>{
     const key=`${b.id}_${t.tahap}`;
@@ -105,12 +116,13 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
       await produksiStokService.simpanProgress({
         batchId:b.id,tahap:t.tahap,qty,qtyReject:reject,fotoUrls:[],
         operatorId:user?.id||null,operatorNama:user?.nama||user?.name||"-",
-        catatan:(catatan[key]||"").trim()||null,mulaiAt:mulai[key]||null,
+        catatan:(catatan[key]||"").trim()||null,mulaiAt:mulai[key]||berhenti[key]?.mulai||null,
       });
       setQtyInput(prev=>{const n={...prev};delete n[key];return n;});
       setRejectInput(prev=>{const n={...prev};delete n[key];return n;});
       setCatatan(prev=>{const n={...prev};delete n[key];return n;});
       const m={...mulai};delete m[key];setMulai(m);tulisMulai(m);
+      setBerhenti(p=>{const n={...p};delete n[key];tulisBerhenti(n);return n;});
       setFlash(`✅ ${komp?.nama||"Batch #"+b.id} · ${t.tahap}: ${qty} pcs tersimpan`);
       setTimeout(()=>setFlash(null),3000);
       await muat();
@@ -153,9 +165,12 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
           const alasan=sebelum
             ?`${sebelum.tahap} sudah baik ${sebelum.qty_baik} pcs, ${t.tahap} sudah mengerjakan ${t.qty_selesai} → sisa ${t.tersedia} yang boleh dikerjakan`
             :`Target ${b.target_qty} pcs, unit yang sudah berjalan ${t.qty_baik-rejectSesudah} pcs → sisa ${t.tersedia} yang perlu ${t.tahap.toLowerCase()}`;
-          // Chip = progress YANG SUDAH TERSIMPAN (qty baik tahap ini di DB, sama dgn angka header &
-          // progress bar), mulai 0% - angka stepper yang belum disimpan TIDAK ikut dihitung.
+          // Chip (revisi 2 Okt 2026, diminta user): PREVIEW live = (baik tersimpan + stepper sesi ini
+          // dikurangi reject) / target, ikut berubah tiap stepper digeser. Bagian yang SUDAH tersimpan
+          // tetap dibedakan (hijau penuh) dari bagian preview (hijau garis). Nilai di DB tetap cuma
+          // berubah lewat Simpan Progress - ini murni tampilan.
           const pctTersimpan=Math.min(100,Math.round((t.qty_baik/b.target_qty)*100));
+          const pctPreview=Math.min(100,Math.round(((t.qty_baik+qty-reject)/b.target_qty)*100));
           const sedangSimpan=saving===key;
           return(
             <div key={key} style={{border:"1.5px solid #eef0f3",borderRadius:12,marginBottom:12,background:"#fff",overflow:"hidden"}}>
@@ -191,19 +206,28 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
               </div>
               <div style={{padding:"12px 13px"}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#c2410c",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"7px 10px",marginBottom:10}}>⚠ {alasan}</div>
-                {/* Tombol "▶ Mulai" - pill hijau solid ala tombol start timer WO (revisi 2 Okt 2026,
-                    diminta user: bukan banner full-width). Teks tetap "▶ Mulai"; status sesi yang
-                    berjalan ditampilkan sbg keterangan kecil di sebelahnya. Perilaku sama: catat
-                    waktu mulai sesi (ditekan ulang = mulai sesi baru). */}
+                {/* Mulai/Stop (revisi 2 Okt 2026): pill hijau "▶ Mulai" -> pill MERAH "⏹ Stop <durasi>"
+                    yang berdetak tiap detik (labelDurasiTimer, sama dgn timer WO). Stop = sesi ditutup,
+                    waktu mulainya tetap dikirim ke log saat Simpan Progress. */}
                 <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10}}>
-                  <button onClick={()=>mulaiKerja(key)}
-                    style={{display:"inline-flex",alignItems:"center",gap:6,border:"none",borderRadius:999,padding:"9px 18px",
-                      background:"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:"0 1px 2px rgba(22,163,74,.35)"}}>
-                    ▶ Mulai
-                  </button>
+                  {mulai[key]?(
+                    <button onClick={()=>stopKerja(key)}
+                      style={{display:"inline-flex",alignItems:"center",gap:6,border:"none",borderRadius:999,padding:"9px 18px",
+                        background:"#dc2626",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:"0 1px 2px rgba(220,38,38,.35)",fontVariantNumeric:"tabular-nums" as const}}>
+                      ⏹ Stop · {labelDurasiTimer(menitBerjalan(mulai[key]))}
+                    </button>
+                  ):(
+                    <button onClick={()=>mulaiKerja(key)}
+                      style={{display:"inline-flex",alignItems:"center",gap:6,border:"none",borderRadius:999,padding:"9px 18px",
+                        background:"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer",boxShadow:"0 1px 2px rgba(22,163,74,.35)"}}>
+                      ▶ Mulai
+                    </button>
+                  )}
                   {mulai[key]
-                    ?<span style={{fontSize:11,color:"#16a34a",fontWeight:700}}>⏱ Sesi berjalan {durasi(mulai[key])}</span>
-                    :<span style={{fontSize:11,color:"#94a3b8"}}>Tekan saat mulai mengerjakan</span>}
+                    ?<span style={{fontSize:11,color:"#dc2626",fontWeight:700}}>Sesi sedang berjalan</span>
+                    :berhenti[key]
+                      ?<span style={{fontSize:11,color:"#64748b"}}>Sesi terakhir {labelDurasiTimer(berhenti[key].menit)} · belum disimpan</span>
+                      :<span style={{fontSize:11,color:"#94a3b8"}}>Tekan saat mulai mengerjakan</span>}
                 </div>
                 {[
                   {lbl:`Jumlah selesai sesi ini (maks. ${t.tersedia})`,val:qty,set:(v:number)=>setQtyInput(p=>({...p,[key]:Math.max(0,Math.min(t.tersedia,v))})),min:0,max:t.tersedia},
@@ -220,14 +244,19 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
                 {/* Chip = INDIKATOR pasif (revisi 2 Okt 2026, diminta user) - bukan tombol: tanpa kotak
                     berlatar ala tombol disabled, cuma label + titik. Tercapai = hijau. */}
                 <div style={{marginBottom:10}}>
-                  <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",letterSpacing:0.3,marginBottom:4}}>PROGRESS TERSIMPAN {t.tahap}: {pctTersimpan}%</div>
+                  <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",letterSpacing:0.3,marginBottom:4}}>
+                    PROGRESS {t.tahap}: {pctPreview}%
+                    {pctPreview>pctTersimpan&&<span style={{color:WARNA,fontWeight:800}}> · tersimpan {pctTersimpan}%, +{pctPreview-pctTersimpan}% kalau disimpan</span>}
+                  </div>
                   <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:4}}>
                     {PCT_CHIP.map(c=>{
-                      const capai=pctTersimpan>=c;
+                      const tersimpan=pctTersimpan>=c;
+                      const preview=!tersimpan&&pctPreview>=c;
                       return(
-                        <span key={c} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:capai?800:600,
-                          color:capai?WARNA:"#cbd5e1",cursor:"default",userSelect:"none" as const}}>
-                          <span style={{width:8,height:8,borderRadius:99,background:capai?WARNA:"transparent",border:`1.5px solid ${capai?WARNA:"#cbd5e1"}`}}/>
+                        <span key={c} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:tersimpan||preview?800:600,
+                          color:tersimpan||preview?WARNA:"#cbd5e1",cursor:"default",userSelect:"none" as const}}>
+                          <span style={{width:8,height:8,borderRadius:99,background:tersimpan?WARNA:preview?`${WARNA}33`:"transparent",
+                            border:`1.5px ${preview?"dashed":"solid"} ${tersimpan||preview?WARNA:"#cbd5e1"}`}}/>
                           {c}%
                         </span>
                       );
