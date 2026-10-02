@@ -201,6 +201,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   const [statusFilter,setStatusFilter]=useState<"ALL"|ProsesStatus>("ALL");
   const [renhar,setRenhar]=useState<any[]>([]);
   const [panelsMap,setPanelsMap]=useState<Record<number,any>>({});
+  // renhar terbaru utk refreshPanelsSilent (dipanggil dari listener visibilitychange yang closure-nya
+  // dibuat sekali per viewDate - tanpa ref, daftar panel yang di-refresh bisa basi).
+  const renharRef=useRef<any[]>([]);
+  useEffect(()=>{renharRef.current=renhar;},[renhar]);
   // Sinkron manual (bukan lewat dependency effect) biar useEffect subscribe realtime renhar
   // gak perlu depend ke panelsMap - kalau iya, channel-nya bakal resubscribe terus-menerus.
   const panelsMapRef=useRef<Record<number,any>>({});
@@ -459,6 +463,25 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // "selesai IS NULL" di sini juga gak dibatasi tanggal sama sekali), jadi rawan kena cap diam-diam
   // 1000 baris Supabase begitu jumlahnya lewat itu - persis kelas bug renhar/activity_log yang
   // sudah pernah kejadian. Dipakai bareng di 2 useEffect (load awal + refresh abis realtime event).
+  // FIX (2 Okt 2026, insiden P-VAC 2A WM.4: RAKIT 100% hilang ditimpa Simpan Section PAINTING dari HP
+  // yang datanya basi) - semua simpan operator menulis SELURUH entri komponen (semua proses) dari
+  // panelsMap lokal via merge_panel_checklist. panelsMap cuma diperbarui event realtime; kalau HP
+  // dikunci/di-background socket bisa putus diam-diam & event yang terlewat TIDAK pernah diambil
+  // ulang. Sekarang tiap aplikasi balik aktif, data panel tugas hari ini dimuat ulang diam-diam (tanpa
+  // spinner). Panel yang masih punya ketikan unit BELUM terkirim (antrian debounce qtyWriteTimers)
+  // dilewati supaya angka yang baru diketik operator tidak tertimpa.
+  const refreshPanelsSilent=async()=>{
+    const panelIds=[...new Set(renharRef.current.map((t:any)=>t.panel_id||t.panelId).filter(Boolean))];
+    if(!panelIds.length)return;
+    const{data,error}=await supabase.from("panels").select("*").in("id",panelIds as any);
+    if(error){console.error("[refreshPanelsSilent] gagal muat ulang panel:",error);return;}
+    const adaTunda=(id:number)=>Object.keys(qtyWriteTimers.current||{}).some(k=>k.startsWith(id+"_")&&qtyWriteTimers.current[k]);
+    setPanelsMap(prev=>{
+      const next={...prev};
+      (data??[]).forEach((p:any)=>{if(!adaTunda(p.id))next[p.id]=p;});
+      return next;
+    });
+  };
   const refreshTimerData=async()=>{
     let all:any[]=[];
     let from=0;
@@ -581,7 +604,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // nge-trigger refetch. refreshTimerData() silent (gak ada spinner/loadingData), jadi aman
     // dipanggil tiap kali tab balik aktif tanpa bikin UI kedip-kedip kayak loadData() penuh.
     const onVisible=()=>{
-      if(document.visibilityState==="visible")refreshTimerData();
+      if(document.visibilityState==="visible"){refreshTimerData();refreshPanelsSilent();}
     };
     document.addEventListener("visibilitychange",onVisible);
     return()=>{

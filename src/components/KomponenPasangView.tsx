@@ -160,7 +160,12 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         refetchTimer.current=setTimeout(()=>{fetchData(true);},500);
       })
       .subscribe();
-    return()=>{supabase.removeChannel(ch);if(refetchTimer.current)clearTimeout(refetchTimer.current);};
+    // FIX (2 Okt 2026) - event realtime yang terlewat saat HP dikunci/di-background tidak pernah
+    // diambil ulang; muat ulang diam-diam tiap aplikasi balik aktif (sama dgn OperatorView) supaya
+    // simpan berikutnya tidak menulis entri komponen dari data basi.
+    const onVisible=()=>{if(document.visibilityState==="visible")fetchData(true);};
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>{supabase.removeChannel(ch);if(refetchTimer.current)clearTimeout(refetchTimer.current);document.removeEventListener("visibilitychange",onVisible);};
   },[tugas.seksi,panelIdsKey]);
 
   // Timer kerja (18 Sep 2026, FITUR BARU - upgrade Pasang Komponen ke model "proses biasa",
