@@ -34,6 +34,7 @@ import { AkunView } from "./components/AkunView";
 import { ProyekLuarView } from "./components/ProyekLuarView";
 import { WoDigitalView } from "./components/WoDigitalView";
 import { ProduksiStokView } from "./components/ProduksiStokView";
+import { GunakanStokView } from "./components/GunakanStokView";
 // Tahap yang mungkin dipakai Produksi Stok (sama dgn CHECK tabel produksi_stok_tahap) - dipakai
 // nentuin sub-bagian mana yang dapat tile menu-nya.
 const TAHAP_PRODUKSI_STOK=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING"];
@@ -248,6 +249,9 @@ export default function App(){
       // Produksi Stok (2 Okt 2026) - produksi komponen setengah jadi utk stok, TERPISAH dari WO
       // (lihat ProduksiStokView.tsx). Cuma sub-bagian yang pegang salah satu tahapnya (Mekanik/Painting).
       ...(prosesRiwayat.some(p=>TAHAP_PRODUKSI_STOK.includes(p))?[{key:"produksistok",label:"Produksi Stok",icon:"building-factory-2"}]:[]),
+      // Gunakan Stok Komponen (2 Okt 2026) - operator catat pemakaian stok sendiri (transaksi keluar,
+      // RPC yang sama dgn form Admin). Khusus sub-bagian Mekanik (keputusan user).
+      ...(user.divisi==="mekanik"&&user.sub_bagian==="Mekanik"?[{key:"gunakanstok",label:"Gunakan Stok",icon:"package"}]:[]),
       {key:"wodigital",label:"WO Digital",icon:"file-type-pdf"},
     ];
   })();
@@ -570,6 +574,7 @@ export default function App(){
                   :selectedMenu==="momfat"?<ErrorBoundary label="MOM FAT"><Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat...</div>}><MomFatView user={user} registerBackHandler={registerBackHandler}/></Suspense></ErrorBoundary>
                   :selectedMenu==="wodigital"?<WoDigitalView registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="produksistok"?<ProduksiStokView user={user} registerBackHandler={registerBackHandler}/>
+                  :selectedMenu==="gunakanstok"?<GunakanStokView user={user} registerBackHandler={registerBackHandler}/>
                   :user.divisi==="nameplate"?<NameplateView user={user} registerBackHandler={registerBackHandler}/>
                   :user.divisi==="qc"?<QCChecklistTab user={user} registerBackHandler={registerBackHandler}/>
                   :user.divisi==="komponen"&&user.sub_bagian==="QS"?<KomponenProgressView user={user} tugas={TUGAS_QS} registerBackHandler={registerBackHandler}/>
