@@ -2,11 +2,8 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { produksiStokService } from "../lib/produksiStokService";
 import { alertGagalSimpan } from "../lib/koneksi";
-import { compressImageNp } from "../lib/fotoHelpers";
-import { uploadToR2, deleteFromR2, extractR2Key } from "../lib/r2Client";
 import { DIVISI_CONFIG } from "../lib/panelTypes";
 import { SectionCard, EmptyState } from "./ui/Primitives";
-import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PRODUKSI STOK - tampilan operator (2 Okt 2026). Produksi komponen setengah jadi SENGAJA untuk
@@ -17,14 +14,17 @@ import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 //   tersedia. Tahap tiap batch ikut aturan proses WO (dibaca dari bom_proses_relevan saat batch dibuat).
 // - Angka "tersedia" dari view SQL (rumus yang sama dgn validasi RPC) - batas stepper di sini cuma
 //   kenyamanan, server tetap menolak kalau lewat (mis. diambil operator lain duluan).
-// - Chip 25-100% = indikator visual otomatis dari qty (bukan checkpoint). "Mulai Kerja" cuma
-//   mencatat waktu mulai sesi (dikirim ke log), tidak terhubung ke timer WO / Proses Aktif.
+// - Chip 25-100% = indikator visual otomatis dari progress YANG SUDAH TERSIMPAN (qty baik tahap ini
+//   di DB), BUKAN dari angka stepper yang belum disimpan (revisi 2 Okt 2026, diminta user).
+// - "Mulai Kerja" cuma mencatat waktu mulai sesi (dikirim ke log), tidak terhubung ke timer WO /
+//   Proses Aktif. Gaya tombolnya SAMA dgn tombol start timer WO (solid hijau, toolbar POTONG
+//   OperatorView) - revisi 2 Okt 2026, dulu varian hijau muda yang kebaca kayak link.
+// - Foto TIDAK wajib & tidak ada di Produksi Stok (revisi 2 Okt 2026, diminta user - beda dgn WO).
+//   RPC/constraint sudah dilonggarkan (migration 20261002040000), kolom foto_urls dikirim kosong.
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PCT_CHIP=[25,50,75,90,100];
 const WARNA="#059669";
-
-type Staged={file:File;previewUrl:string};
 
 const bacaMulai=():Record<string,string>=>{try{return JSON.parse(localStorage.getItem("vista_produksi_stok_mulai")||"{}");}catch{return {};}};
 const tulisMulai=(v:Record<string,string>)=>{try{localStorage.setItem("vista_produksi_stok_mulai",JSON.stringify(v));}catch{/* private mode - abaikan */}};
@@ -40,7 +40,6 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
   const [qtyInput,setQtyInput]=useState<Record<string,number>>({});
   const [rejectInput,setRejectInput]=useState<Record<string,number>>({});
   const [catatan,setCatatan]=useState<Record<string,string>>({});
-  const [staged,setStaged]=useState<Record<string,Staged[]>>({});
   const [mulai,setMulai]=useState<Record<string,string>>(bacaMulai);
   const [saving,setSaving]=useState<string|null>(null);
   const [flash,setFlash]=useState<string|null>(null);
@@ -88,13 +87,6 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
     return th.filter(t=>tahapSaya.includes(t.tahap)&&t.tersedia>0).map(t=>({b,t,th}));
   });
 
-  const pilihFoto=(key:string,files:FileList)=>{
-    const baru=Array.from(files).filter(f=>f.type.startsWith("image/")).map(f=>({file:f,previewUrl:URL.createObjectURL(f)}));
-    setStaged(prev=>({...prev,[key]:[...(prev[key]||[]),...baru]}));
-  };
-  const buangFoto=(key:string,i:number)=>{
-    setStaged(prev=>{const arr=[...(prev[key]||[])];const [x]=arr.splice(i,1);if(x)URL.revokeObjectURL(x.previewUrl);return{...prev,[key]:arr};});
-  };
   const mulaiKerja=(key:string)=>{
     const baru={...mulai,[key]:new Date().toISOString()};setMulai(baru);tulisMulai(baru);
   };
@@ -107,24 +99,14 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
     const key=`${b.id}_${t.tahap}`;
     const qty=qtyInput[key]??1;
     const reject=Math.min(rejectInput[key]??0,qty);
-    const fotos=staged[key]||[];
     if(qty<=0){alert("Jumlah selesai sesi ini minimal 1.");return;}
-    if(fotos.length===0){alert("Foto hasil wajib diisi minimal 1 sebelum simpan.");return;}
     setSaving(key);
-    const terupload:string[]=[];
     try{
-      for(const s of fotos){
-        const blob=await compressImageNp(s.file);
-        const objectKey=`produksi-stok/${b.id}/${t.tahap}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-        terupload.push(await uploadToR2(blob,objectKey,"image/jpeg"));
-      }
       await produksiStokService.simpanProgress({
-        batchId:b.id,tahap:t.tahap,qty,qtyReject:reject,fotoUrls:terupload,
+        batchId:b.id,tahap:t.tahap,qty,qtyReject:reject,fotoUrls:[],
         operatorId:user?.id||null,operatorNama:user?.nama||user?.name||"-",
         catatan:(catatan[key]||"").trim()||null,mulaiAt:mulai[key]||null,
       });
-      fotos.forEach(s=>URL.revokeObjectURL(s.previewUrl));
-      setStaged(prev=>{const n={...prev};delete n[key];return n;});
       setQtyInput(prev=>{const n={...prev};delete n[key];return n;});
       setRejectInput(prev=>{const n={...prev};delete n[key];return n;});
       setCatatan(prev=>{const n={...prev};delete n[key];return n;});
@@ -133,8 +115,6 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
       setTimeout(()=>setFlash(null),3000);
       await muat();
     }catch(err:any){
-      // Foto yang sudah terlanjur ter-upload dibersihkan biar gak jadi sampah di R2 (best-effort).
-      terupload.forEach(u=>{const k=extractR2Key(u);if(k)deleteFromR2(k).catch(()=>{});});
       alertGagalSimpan(err,`Simpan Produksi Stok batch ${b.id} ${t.tahap}`,{ulangi:"Simpan Progress",
         catatanServer:"Kalau pesannya soal jumlah maksimal, kemungkinan operator lain baru saja mengisi tahap yang sama - angka tersedia sudah diperbarui, sesuaikan lalu simpan lagi."});
       await muat();
@@ -173,8 +153,9 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
           const alasan=sebelum
             ?`${sebelum.tahap} sudah baik ${sebelum.qty_baik} pcs, ${t.tahap} sudah mengerjakan ${t.qty_selesai} → sisa ${t.tersedia} yang boleh dikerjakan`
             :`Target ${b.target_qty} pcs, unit yang sudah berjalan ${t.qty_baik-rejectSesudah} pcs → sisa ${t.tersedia} yang perlu ${t.tahap.toLowerCase()}`;
-          const pctSetelah=Math.min(100,Math.round(((t.qty_baik+qty-reject)/b.target_qty)*100));
-          const fotos=staged[key]||[];
+          // Chip = progress YANG SUDAH TERSIMPAN (qty baik tahap ini di DB, sama dgn angka header &
+          // progress bar), mulai 0% - angka stepper yang belum disimpan TIDAK ikut dihitung.
+          const pctTersimpan=Math.min(100,Math.round((t.qty_baik/b.target_qty)*100));
           const sedangSimpan=saving===key;
           return(
             <div key={key} style={{border:"1.5px solid #eef0f3",borderRadius:12,marginBottom:12,background:"#fff",overflow:"hidden"}}>
@@ -210,10 +191,12 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
               </div>
               <div style={{padding:"12px 13px"}}>
                 <div style={{fontSize:11,fontWeight:700,color:"#c2410c",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:8,padding:"7px 10px",marginBottom:10}}>⚠ {alasan}</div>
+                {/* Gaya SAMA PERSIS tombol start timer WO (toolbar POTONG OperatorView: solid hijau,
+                    teks putih, minHeight 48). Perilaku tetap: cuma catat waktu mulai sesi. */}
                 <button onClick={()=>mulaiKerja(key)}
-                  style={{width:"100%",marginBottom:10,fontSize:13,fontWeight:700,border:"none",borderRadius:10,padding:"11px 14px",minHeight:44,cursor:"pointer",
-                    background:"#f0fdf4",color:"#16a34a"}}>
-                  {mulai[key]?`⏱ Sesi berjalan ${durasi(mulai[key])} · tap untuk mulai ulang`:"▶ Mulai Kerja"}
+                  style={{width:"100%",marginBottom:10,minHeight:48,padding:"10px",borderRadius:10,border:"none",
+                    background:"#16a34a",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+                  {mulai[key]?`⏱ Sesi berjalan ${durasi(mulai[key])} · Mulai Ulang`:"▶ Mulai Kerja"}
                 </button>
                 {[
                   {lbl:`Jumlah selesai sesi ini (maks. ${t.tersedia})`,val:qty,set:(v:number)=>setQtyInput(p=>({...p,[key]:Math.max(1,Math.min(t.tersedia,v))})),min:1,max:t.tersedia},
@@ -230,41 +213,16 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
                 <div style={{display:"flex",gap:6,marginBottom:10}}>
                   {PCT_CHIP.map(c=>(
                     <span key={c} style={{flex:1,textAlign:"center" as const,padding:"8px 3px",borderRadius:8,fontWeight:700,fontSize:10.5,
-                      background:pctSetelah>=c?WARNA:"#f1f5f9",color:pctSetelah>=c?"#fff":"#94a3b8"}}>{pctSetelah>=c?"✓":`${c}%`}</span>
+                      background:pctTersimpan>=c?WARNA:"#f1f5f9",color:pctTersimpan>=c?"#fff":"#94a3b8"}}>{pctTersimpan>=c?"✓":`${c}%`}</span>
                   ))}
-                </div>
-                <div style={{display:"flex",alignItems:"center",gap:5,fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.3}}>
-                  <i className="ti ti-camera" style={{fontSize:11}}/> FOTO HASIL (WAJIB)
-                </div>
-                {fotos.length===0?(
-                  <div style={{fontSize:11,color:"#cbd5e1",padding:"2px 0 8px",fontStyle:"italic" as const}}>Belum ada foto</div>
-                ):(
-                  <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
-                    {fotos.map((s,si)=>(
-                      <div key={si} style={{position:"relative" as const}}>
-                        <img src={s.previewUrl} style={{width:52,height:52,borderRadius:8,objectFit:"cover" as const,border:`1.5px dashed ${WARNA}`}}/>
-                        <button onClick={()=>buangFoto(key,si)}
-                          style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                          <i className="ti ti-x" style={{fontSize:10}}/>
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-                <div style={{marginBottom:10}}>
-                  <MediaPickerSheet disabled={sedangSimpan}
-                    triggerStyle={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:WARNA,background:`${WARNA}0f`,border:`1px dashed ${WARNA}55`,borderRadius:8,padding:"7px 11px",cursor:"pointer"}}
-                    onFiles={(files)=>pilihFoto(key,files)}>
-                    + Tambah Foto
-                  </MediaPickerSheet>
                 </div>
                 <input value={catatan[key]||""} onChange={e=>setCatatan(p=>({...p,[key]:e.target.value}))} placeholder="Catatan (opsional)"
                   style={{width:"100%",boxSizing:"border-box" as const,fontSize:12,padding:"8px 10px",borderRadius:8,border:"1px solid #e2e8f0",marginBottom:10,fontFamily:"inherit"}}/>
-                <button onClick={()=>simpan(b,t,komp)} disabled={sedangSimpan||fotos.length===0}
+                <button onClick={()=>simpan(b,t,komp)} disabled={sedangSimpan}
                   style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,width:"100%",border:"none",borderRadius:10,padding:"10px",fontSize:12,fontWeight:700,
-                    background:sedangSimpan||fotos.length===0?"#cbd5e1":WARNA,color:"#fff",cursor:sedangSimpan||fotos.length===0?"not-allowed":"pointer"}}>
+                    background:sedangSimpan?"#cbd5e1":WARNA,color:"#fff",cursor:sedangSimpan?"not-allowed":"pointer"}}>
                   <i className={sedangSimpan?"ti ti-loader-2":"ti ti-device-floppy"} style={{fontSize:14}}/>
-                  {sedangSimpan?"Menyimpan...":fotos.length===0?"Simpan Progress (tambah foto dulu)":`Simpan Progress (${qty} pcs${reject>0?`, ${reject} reject`:""})`}
+                  {sedangSimpan?"Menyimpan...":`Simpan Progress (${qty} pcs${reject>0?`, ${reject} reject`:""})`}
                 </button>
               </div>
             </div>
