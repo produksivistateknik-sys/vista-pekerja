@@ -1688,7 +1688,24 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         if(!cl)return;
         const prevHist=cl.history?.[proses]||[];
         const newEntry={pct:r.pct,tanggal:viewDate,shift,ts:nowIso,section:sectionNum,sectionMulai};
-        newChecklist[r.kode]={...cl,history:{...(cl.history||{}),[proses]:[...prevHist,newEntry]}};
+        // FIX (2 Okt 2026, diminta user) - dulu Simpan Section CUMA nambah entri history; kalau persen
+        // section lebih tinggi dari hitungan unit (qtyProses) - mis. CJI Bingkai Lantai PAINTING 100%
+        // tapi unit tercatat 4/20 - halaman yang baca unit (Outstanding, validasi sisa Raw Schedule,
+        // generator FCS) menganggap belum dicat. Sekarang unit/progress/progressByDate hari ini ikut
+        // disamakan ke persen section, TAPI tidak pernah diturunkan (koreksi turun tetap lewat
+        // input unit + konfirmasi floor, jalur yang sudah ada).
+        const qtyKomp=Number(cl.qty)||0;
+        const unitLama=Number(cl.qtyProses?.[proses])||0;
+        const unitBaru=Math.max(unitLama,qtyKomp>0?Math.round((Number(r.pct)||0)/100*qtyKomp):0);
+        const pctLama=Number(cl.progress?.[proses])||0;
+        const byDateLama=(cl.progressByDate||{})[proses]||{};
+        newChecklist[r.kode]={...cl,
+          history:{...(cl.history||{}),[proses]:[...prevHist,newEntry]},
+          qtyProses:{...(cl.qtyProses||{}),[proses]:unitBaru},
+          qtyProsesByDate:{...(cl.qtyProsesByDate||{}),[proses]:{...((cl.qtyProsesByDate||{})[proses]||{}),[viewDate]:Math.max(Number(((cl.qtyProsesByDate||{})[proses]||{})[viewDate])||0,unitBaru)}},
+          progress:{...(cl.progress||{}),[proses]:Math.max(pctLama,Number(r.pct)||0)},
+          progressByDate:{...(cl.progressByDate||{}),[proses]:{...byDateLama,[viewDate]:Math.max(Number(byDateLama[viewDate])||0,Number(r.pct)||0)}},
+        };
         const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
         const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
         const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(", "):user.nama;
@@ -1696,7 +1713,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         // FASE 5 (21 Sep 2026) - kandidat dual-write component_process_progress. Satu-satunya
         // titik commit utk POTONG/RENDAM/PAINTING (lockSingleKomponen sengaja gak dipakai buat
         // 3 proses ini - lihat FASE5_PROSES_BIASA_DESIGN.md poin 3), jadi WAJIB ditambal di sini.
-        ccpEntriesPanel.push({kode:r.kode,pct:r.pct,qtyDone:cl.qtyProses?.[proses]??null,qtyTotal:cl.qty||0,operatorNama:pekerjaNamaLog});
+        ccpEntriesPanel.push({kode:r.kode,pct:r.pct,qtyDone:unitBaru,qtyTotal:cl.qty||0,operatorNama:pekerjaNamaLog});
       });
       const partial:Record<string,any>={};
       panelRows.forEach((r:any)=>{ if(newChecklist[r.kode])partial[r.kode]=newChecklist[r.kode]; });
