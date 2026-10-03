@@ -2,12 +2,16 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { uploadToR2 } from "../lib/r2Client";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
-import { ocrDocument, detectFileType, OCR_CONFIDENCE_THRESHOLD } from "../lib/ocrHelpers";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { SectionCard, EmptyState } from "./ui/Primitives";
+import { alertGagalSimpan } from "../lib/koneksi";
 
 // ─────────────────────────────────────────────────────────────────────────────
+// REVISI ALUR (3 Okt 2026, diminta user): QC TIDAK upload dokumen / edit poin lagi - Admin &
+// Engineering yang upload MOM + menyusun poin di vista-teknik (Report Produksi > MOM FAT, OCR +
+// koreksi). Di sini QC cuma lihat dokumen, CENTANG poin & tambah foto. (Upload QC dulu sering gagal
+// "Failed to send a request to the Edge Function" dari HP.) Keterangan asli di bawah:
 // MOM FAT (30 Agu 2026) - OCR checklist utk QC, dari dokumen Minutes of Meeting Factory
 // Acceptance Test (PDF/foto scan). BERDIRI SENDIRI (bukan terkait WO/panel manapun), dan
 // SEMUA QC bisa lihat+lanjutkan dokumen yang diupload QC lain (dikonfirmasi: dokumen ini
@@ -22,7 +26,7 @@ type MomFat={id:number,judul:string,file_url:string,file_type:string,status:stri
 type Poin={id:number,mom_fat_id:number,urutan:number,teks:string,selesai:boolean,ocr_confidence:number|null,dicentang_oleh:string|null,foto:FotoViewerPekerja[]};
 
 export function MomFatView({user,registerBackHandler}:{user:any,registerBackHandler?:(fn:(()=>boolean)|null)=>void}){
-  const[mode,setMode]=useState<"list"|"upload"|"detail"|"arsip">("list");
+  const[mode,setMode]=useState<"list"|"detail"|"arsip">("list");
   // Navigasi Kembali per-level (7 Sep 2026) - lihat komentar sama di KomponenPasangView.tsx.
   // "upload"/"arsip" itu TAB (peer), bukan level - cuma "detail" yang perlu mundur ke "list".
   const[loading,setLoading]=useState(true);
@@ -56,72 +60,6 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
     return()=>{supabase.removeChannel(ch);};
   },[]);
 
-  // ── Upload ──
-  const[uploadFile,setUploadFile]=useState<File|null>(null);
-  const[judul,setJudul]=useState("");
-  const[uploading,setUploading]=useState(false);
-  const[ocrProgress,setOcrProgress]=useState(0);
-  const[ocrStage,setOcrStage]=useState<""|"upload"|"ocr"|"simpan">("");
-
-  const pilihFile=(files:FileList|null)=>{
-    if(!files||files.length===0)return;
-    const f=files[0];
-    if(!detectFileType(f)){alert("File harus berupa PDF atau foto (JPG/PNG).");return;}
-    setUploadFile(f);
-  };
-
-  const prosesUpload=async()=>{
-    if(!uploadFile){alert("Pilih dokumen dulu (PDF/foto).");return;}
-    if(!judul.trim()){alert("Judul/nama dokumen wajib diisi.");return;}
-    const fileType=detectFileType(uploadFile);
-    if(!fileType)return;
-    setUploading(true);
-
-    // Upload dokumen + insert record - dipisah dari try/catch OCR di bawah (BUG FIX 30 Agu
-    // 2026) - dulu 1 blok try/catch yang sama, jadi kalau UPLOAD-nya yang gagal (bukan OCR),
-    // pesan errornya tetap keliru bilang "Gagal proses OCR" - bikin diagnosis salah arah.
-    let momFatId:number|null=null;
-    try{
-      setOcrStage("upload");
-      const ext=fileType==="pdf"?"pdf":(uploadFile.type.split("/")[1]||"jpg");
-      const key=`mom-fat/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
-      const fileUrl=await uploadToR2(uploadFile,key,uploadFile.type);
-
-      const{data:row,error}=await supabase.from("mom_fat" as any).insert({
-        judul:judul.trim(),file_url:fileUrl,file_type:fileType,status:"processing",
-        pekerja_id:user.id,operator_nama:user.nama||user.name||"Operator",
-      }).select().single();
-      if(error||!row)throw new Error(error?.message||"unknown error");
-      momFatId=(row as any).id;
-    }catch(err:any){
-      alert("Gagal upload dokumen: "+(err?.message||"unknown error")+"\n\nCoba lagi - dokumen belum tersimpan sama sekali.");
-      setUploading(false);setOcrStage("");
-      return;
-    }
-
-    // OCR - kegagalan di sini TIDAK menghilangkan dokumen (sudah tersimpan di atas), cuma
-    // checklist-nya kosong. Operator bisa isi manual lewat tombol "+ Tambah Poin".
-    try{
-      setOcrStage("ocr");
-      const lines=await ocrDocument(uploadFile,setOcrProgress);
-
-      setOcrStage("simpan");
-      if(lines.length>0){
-        const rows=lines.map((l,i)=>({mom_fat_id:momFatId,urutan:i+1,teks:l.teks,ocr_confidence:l.confidence}));
-        await supabase.from("mom_fat_poin" as any).insert(rows);
-      }
-      await supabase.from("mom_fat" as any).update({status:"ready",updated_at:new Date().toISOString()}).eq("id",momFatId);
-    }catch(err:any){
-      await supabase.from("mom_fat" as any).update({status:"error"}).eq("id",momFatId);
-      alert("Dokumen tersimpan, tapi gagal proses OCR: "+(err?.message||"unknown error")+"\n\nCoba lagi, atau isi checklist manual lewat tombol \"+ Tambah Poin\" di halaman detail dokumen.");
-    }
-
-    setUploadFile(null);setJudul("");setOcrProgress(0);setOcrStage("");
-    setMode("list");
-    fetchList();
-    setUploading(false);
-  };
-
   // ── Detail/checklist ──
   const[activeMomFat,setActiveMomFat]=useState<MomFat|null>(null);
   useEffect(()=>{
@@ -132,9 +70,6 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
     return()=>registerBackHandler?.(null);
   },[mode]);
   const[poinList,setPoinList]=useState<Poin[]>([]);
-  const[editingId,setEditingId]=useState<number|null>(null);
-  const[editText,setEditText]=useState("");
-  const[tambahText,setTambahText]=useState("");
   const[uploadingPoinId,setUploadingPoinId]=useState<number|null>(null);
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
 
@@ -157,68 +92,20 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[mode,activeMomFat?.id]);
 
-  const toggleArsip=async()=>{
-    if(!activeMomFat)return;
-    const arsipBaru=!activeMomFat.is_archived;
-    await supabase.from("mom_fat" as any).update({is_archived:arsipBaru}).eq("id",activeMomFat.id);
-    setActiveMomFat({...activeMomFat,is_archived:arsipBaru});
-    fetchList();
-  };
-
-  // Hapus dokumen MOM FAT (24 Sep 2026) - utk koreksi kalau QC salah/kurang upload. Hapus file
-  // R2 dulu (dokumen asli + semua foto poin), BARU hapus row mom_fat - mom_fat_poin ikut hilang
-  // otomatis lewat ON DELETE CASCADE (migration 20260830030000), gak perlu hapus manual satu-satu.
-  // Storage cleanup dibungkus try/catch (hapusFotoDariStorage bisa gagal krn network) supaya
-  // kegagalan hapus 1 file storage TIDAK bikin dokumennya nyangkut selamanya di list.
-  const[deletingMomFat,setDeletingMomFat]=useState(false);
-  const hapusMomFat=async()=>{
-    if(!activeMomFat)return;
-    if(!confirm(`Hapus dokumen "${activeMomFat.judul}"?\n\nSemua checklist & foto di dalamnya ikut terhapus permanen dan TIDAK BISA dibatalkan.`))return;
-    setDeletingMomFat(true);
-    try{
-      await hapusFotoDariStorage("mom-fat-photos",activeMomFat.file_url);
-      for(const p of poinList){
-        for(const f of (p.foto||[])){
-          await hapusFotoDariStorage("mom-fat-photos",f.url);
-        }
-      }
-    }catch(err:any){
-      console.error("Gagal hapus sebagian file storage MOM FAT:",err);
-    }
-    const{error}=await supabase.from("mom_fat" as any).delete().eq("id",activeMomFat.id);
-    if(error){
-      alert("Gagal menghapus dokumen: "+error.message);
-      setDeletingMomFat(false);
-      return;
-    }
-    setDeletingMomFat(false);
-    setMode("list");setActiveMomFat(null);
-    fetchList();
-  };
-
   const toggleCentang=async(p:Poin)=>{
     const selesaiBaru=!p.selesai;
     setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,selesai:selesaiBaru}:x));
-    await supabase.from("mom_fat_poin" as any).update({
+    // Cek error (3 Okt 2026) - centang sekarang satu-satunya tugas QC di MOM FAT; dulu hasil
+    // diabaikan, centang yang gagal tersimpan tetap kelihatan tercentang.
+    const{error}=await supabase.from("mom_fat_poin" as any).update({
       selesai:selesaiBaru,
       dicentang_oleh:selesaiBaru?(user.nama||user.name||"Operator"):null,
       dicentang_at:selesaiBaru?new Date().toISOString():null,
     }).eq("id",p.id);
-  };
-
-  const mulaiEdit=(p:Poin)=>{setEditingId(p.id);setEditText(p.teks);};
-  const simpanEdit=async(p:Poin)=>{
-    const teksBaru=editText.trim();
-    setEditingId(null);
-    if(!teksBaru||teksBaru===p.teks)return;
-    setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,teks:teksBaru}:x));
-    await supabase.from("mom_fat_poin" as any).update({teks:teksBaru}).eq("id",p.id);
-  };
-
-  const hapusPoin=async(p:Poin)=>{
-    if(!confirm("Hapus poin ini? (biasanya dipakai buat buang baris hasil OCR yang bukan checklist, misal header/tanda tangan)"))return;
-    setPoinList(prev=>prev.filter(x=>x.id!==p.id));
-    await supabase.from("mom_fat_poin" as any).delete().eq("id",p.id);
+    if(error){
+      setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,selesai:p.selesai}:x));
+      alertGagalSimpan(error,`Centang MOM FAT poin ${p.id}`,{aksi:"simpan centang",ulangi:"centang"});
+    }
   };
 
   const uploadFotoPoin=async(p:Poin,files:FileList)=>{
@@ -233,7 +120,8 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
       }
       const newFoto=[...(p.foto||[]),...fotoBaru];
       setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,foto:newFoto}:x));
-      await supabase.from("mom_fat_poin" as any).update({foto:newFoto}).eq("id",p.id);
+      const{error:fErr}=await supabase.from("mom_fat_poin" as any).update({foto:newFoto}).eq("id",p.id);
+      if(fErr)throw fErr;
     }catch(err:any){
       alert("Gagal upload foto: "+(err?.message||"unknown error"));
     }
@@ -245,16 +133,8 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
     const newFoto=(p.foto||[]).filter(f=>f.url!==fotoUrl);
     setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,foto:newFoto}:x));
     await hapusFotoDariStorage("mom-fat-photos",fotoUrl);
-    await supabase.from("mom_fat_poin" as any).update({foto:newFoto}).eq("id",p.id);
-  };
-
-  const tambahPoin=async()=>{
-    if(!tambahText.trim()||!activeMomFat)return;
-    const urutanBaru=poinList.length>0?Math.max(...poinList.map(p=>p.urutan))+1:1;
-    const teks=tambahText.trim();
-    setTambahText("");
-    await supabase.from("mom_fat_poin" as any).insert({mom_fat_id:activeMomFat.id,urutan:urutanBaru,teks,ocr_confidence:null});
-    fetchPoin(activeMomFat.id);
+    const{error}=await supabase.from("mom_fat_poin" as any).update({foto:newFoto}).eq("id",p.id);
+    if(error){fetchPoin(p.mom_fat_id);alertGagalSimpan(error,`Hapus foto MOM FAT poin ${p.id}`,{aksi:"hapus foto"});}
   };
 
   const statusLabel:any={processing:{bg:"#fffbeb",color:"#d97706",label:"Proses OCR..."},ready:{bg:"#f0fdf4",color:"#16a34a",label:"Siap"},error:{bg:"#fef2f2",color:"#dc2626",label:"Gagal OCR"}};
@@ -268,35 +148,19 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
           <button onClick={()=>{setMode("list");setActiveMomFat(null);}} style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:"#2563eb",fontWeight:700,fontSize:13,cursor:"pointer",padding:0}}>
             <i className="ti ti-arrow-left"/> Kembali
           </button>
-          <div style={{display:"flex",alignItems:"center",gap:14}}>
-            <button onClick={toggleArsip} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"#64748b",fontWeight:600,fontSize:12,cursor:"pointer",padding:0}}>
-              <i className={"ti "+(activeMomFat.is_archived?"ti-archive-off":"ti-archive")}/> {activeMomFat.is_archived?"Batalkan Arsip":"Arsipkan"}
-            </button>
-            <button onClick={hapusMomFat} disabled={deletingMomFat} style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"#dc2626",fontWeight:600,fontSize:12,cursor:deletingMomFat?"default":"pointer",padding:0,opacity:deletingMomFat?.6:1}}>
-              <i className={"ti "+(deletingMomFat?"ti-loader-2":"ti-trash")}/> Hapus
-            </button>
-          </div>
         </div>
-        <SectionCard icon="📋" title={activeMomFat.judul} subtitle={`${done}/${total} poin selesai · oleh ${activeMomFat.operator_nama}`}>
+        <SectionCard icon="📋" title={activeMomFat.judul} subtitle={`${done}/${total} poin selesai · diupload ${activeMomFat.operator_nama}`}>
           <a href={activeMomFat.file_url} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,color:"#2563eb",marginBottom:14,textDecoration:"none"}}>
             <i className="ti ti-file-description"/> Lihat dokumen asli
           </a>
           <div style={{display:"flex",flexDirection:"column",gap:8}}>
             {poinList.map(p=>{
-              const kurangYakin=p.ocr_confidence!=null&&p.ocr_confidence<OCR_CONFIDENCE_THRESHOLD;
               return(
                 <div key={p.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 12px",background:p.selesai?"#f0fdf4":"#f8fafc",borderRadius:10,border:"1px solid "+(p.selesai?"#bbf7d0":"#e2e8f0")}}>
                   <input type="checkbox" checked={p.selesai} onChange={()=>toggleCentang(p)} style={{width:18,height:18,marginTop:1,flexShrink:0,cursor:"pointer"}}/>
                   <div style={{flex:1,minWidth:0}}>
-                    {editingId===p.id?(
-                      <input autoFocus value={editText} onChange={e=>setEditText(e.target.value)} onBlur={()=>simpanEdit(p)}
-                        onKeyDown={e=>{if(e.key==="Enter")(e.target as HTMLInputElement).blur();}}
-                        style={{width:"100%",padding:"6px 8px",borderRadius:6,border:"1.5px solid #2563eb",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
-                    ):(
-                      <div onClick={()=>mulaiEdit(p)} style={{fontSize:13,color:p.selesai?"#16a34a":"#1e293b",textDecoration:p.selesai?"line-through":"none",cursor:"text",lineHeight:1.5}}>{p.teks}</div>
-                    )}
+                    <div onClick={()=>toggleCentang(p)} style={{fontSize:13,color:p.selesai?"#16a34a":"#1e293b",textDecoration:p.selesai?"line-through":"none",cursor:"pointer",lineHeight:1.5}}>{p.teks}</div>
                     <div style={{display:"flex",gap:6,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
-                      {kurangYakin&&<span style={{fontSize:9.5,fontWeight:800,color:"#d97706",background:"#fffbeb",borderRadius:20,padding:"1px 8px"}}>⚠️ Cek manual (hasil OCR kurang yakin)</span>}
                       {p.dicentang_oleh&&<span style={{fontSize:10,color:"#94a3b8"}}>✓ {p.dicentang_oleh}</span>}
                     </div>
                     <div style={{marginTop:6}}>
@@ -325,18 +189,9 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
                       )}
                     </div>
                   </div>
-                  <button onClick={()=>hapusPoin(p)} style={{background:"none",border:"none",color:"#cbd5e1",cursor:"pointer",padding:2,flexShrink:0}} title="Hapus poin">
-                    <i className="ti ti-x" style={{fontSize:14}}/>
-                  </button>
                 </div>
               );
             })}
-          </div>
-          <div style={{display:"flex",gap:8,marginTop:14}}>
-            <input value={tambahText} onChange={e=>setTambahText(e.target.value)} placeholder="Tambah poin manual..."
-              onKeyDown={e=>{if(e.key==="Enter")tambahPoin();}}
-              style={{flex:1,padding:"10px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
-            <button onClick={tambahPoin} style={{padding:"10px 16px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>+ Tambah</button>
           </div>
         </SectionCard>
         {fotoViewer&&<FotoZoomViewerPekerja fotos={fotoViewer.fotos} startIndex={fotoViewer.startIndex} label={fotoViewer.label} onClose={()=>setFotoViewer(null)}/>}
@@ -351,48 +206,13 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
           fontSize:12.5,fontWeight:700,background:mode==="list"?"#1d4ed8":"#e2e8f0",color:mode==="list"?"#fff":"#64748b"}}>
           📋 Daftar Dokumen
         </button>
-        <button onClick={()=>setMode("upload")} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
-          fontSize:12.5,fontWeight:700,background:mode==="upload"?"#1d4ed8":"#e2e8f0",color:mode==="upload"?"#fff":"#64748b"}}>
-          ➕ Upload Dokumen
-        </button>
         <button onClick={()=>setMode("arsip")} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
           fontSize:12.5,fontWeight:700,background:mode==="arsip"?"#1d4ed8":"#e2e8f0",color:mode==="arsip"?"#fff":"#64748b"}}>
           🗄️ Arsip
         </button>
       </div>
 
-      {mode==="upload"?(
-        <SectionCard icon="📄" title="Upload Dokumen MOM FAT">
-          <div style={{display:"flex",flexDirection:"column",gap:12}}>
-            <div>
-              <label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:4}}>Judul Dokumen</label>
-              <input value={judul} onChange={e=>setJudul(e.target.value)} placeholder="mis. FAT CIMORY CITEUREUP - 19 Agustus 2026" disabled={uploading}
-                style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
-            </div>
-            <div>
-              <label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:4}}>Dokumen (PDF atau Foto)</label>
-              <MediaPickerSheet onFiles={pilihFile} allowAnyFile multiple={false} disabled={uploading}
-                triggerStyle={{display:"flex",alignItems:"center",gap:8,padding:"14px",borderRadius:10,border:"1.5px dashed #cbd5e1",background:"#f8fafc",cursor:uploading?"default":"pointer"}}>
-                <i className="ti ti-upload" style={{fontSize:18,color:"#64748b"}}/>
-                <span style={{fontSize:12.5,color:"#64748b",fontWeight:600}}>{uploadFile?uploadFile.name:"Pilih file PDF atau foto scan..."}</span>
-              </MediaPickerSheet>
-            </div>
-            {uploading&&(
-              <div style={{textAlign:"center",padding:16,background:"#eff6ff",borderRadius:10}}>
-                <div style={{fontSize:12.5,fontWeight:700,color:"#1d4ed8",marginBottom:6}}>
-                  {ocrStage==="upload"?"Mengupload dokumen...":ocrStage==="ocr"?`Membaca dokumen (OCR)... ${ocrProgress}%`:"Menyimpan checklist..."}
-                </div>
-                <div style={{fontSize:11,color:"#64748b"}}>Proses ini bisa makan waktu sampai ~30 detik tergantung ukuran dokumen.</div>
-              </div>
-            )}
-            <button onClick={prosesUpload} disabled={uploading}
-              style={{width:"100%",padding:13,fontSize:14,fontWeight:700,color:"#fff",background:"#1d4ed8",
-                border:"none",borderRadius:10,cursor:uploading?"default":"pointer",fontFamily:"inherit",opacity:uploading?.7:1}}>
-              {uploading?"Memproses...":"Upload & Baca Dokumen"}
-            </button>
-          </div>
-        </SectionCard>
-      ):(()=>{
+      {(()=>{
         const isArsip=mode==="arsip";
         const q=search.trim().toLowerCase();
         const filteredList=list.filter(m=>{
@@ -407,7 +227,7 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
           {loading?(
             <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
           ):filteredList.length===0?(
-            <EmptyState title={isArsip?"Belum ada dokumen diarsip":"Belum ada dokumen"} description={isArsip?"Dokumen yang diarsipkan dari halaman detail akan muncul di sini.":(q?"Tidak ada dokumen yang cocok.":'Upload dokumen MOM FAT pertama lewat tab "Upload Dokumen".')} variant="box-paper"/>
+            <EmptyState title={isArsip?"Belum ada dokumen diarsip":"Belum ada dokumen"} description={isArsip?"Dokumen yang diarsipkan Admin/Engineering akan muncul di sini.":(q?"Tidak ada dokumen yang cocok.":'Dokumen MOM FAT diupload oleh Admin/Engineering di Vista Teknik - akan muncul di sini.')} variant="box-paper"/>
           ):filteredList.map(m=>{
             const st=statusLabel[m.status]||statusLabel.processing;
             const prog=progressMap[m.id]||{done:0,total:0};
