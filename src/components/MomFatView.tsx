@@ -153,13 +153,13 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
           <a href={activeMomFat.file_url} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,color:"#2563eb",marginBottom:14,textDecoration:"none"}}>
             <i className="ti ti-file-description"/> Lihat dokumen asli
           </a>
-          <div style={{display:"flex",flexDirection:"column",gap:8}}>
+          <div style={{display:"flex",flexDirection:"column",gap:8,textAlign:"left"}}>
             {poinList.map(p=>{
               return(
                 <div key={p.id} style={{display:"flex",alignItems:"flex-start",gap:10,padding:"10px 12px",background:p.selesai?"#f0fdf4":"#f8fafc",borderRadius:10,border:"1px solid "+(p.selesai?"#bbf7d0":"#e2e8f0")}}>
                   <input type="checkbox" checked={p.selesai} onChange={()=>toggleCentang(p)} style={{width:18,height:18,marginTop:1,flexShrink:0,cursor:"pointer"}}/>
-                  <div style={{flex:1,minWidth:0}}>
-                    <div onClick={()=>toggleCentang(p)} style={{fontSize:13,color:p.selesai?"#16a34a":"#1e293b",textDecoration:p.selesai?"line-through":"none",cursor:"pointer",lineHeight:1.5}}>{p.teks}</div>
+                  <div style={{flex:1,minWidth:0,textAlign:"left"}}>
+                    <div onClick={()=>toggleCentang(p)} style={{textAlign:"left",fontSize:13,color:p.selesai?"#16a34a":"#1e293b",textDecoration:p.selesai?"line-through":"none",cursor:"pointer",lineHeight:1.5}}>{p.teks}</div>
                     <div style={{display:"flex",gap:6,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
                       {p.dicentang_oleh&&<span style={{fontSize:10,color:"#94a3b8"}}>✓ {p.dicentang_oleh}</span>}
                     </div>
