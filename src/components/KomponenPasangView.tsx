@@ -4,7 +4,7 @@ import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan } from "../lib/koneksi";
 import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
-import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip, updateComponentProcessProgressPhotos } from "../lib/componentProcessProgress";
+import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip, updateComponentProcessProgressPhotos, batalkanSudahDisimpan100 } from "../lib/componentProcessProgress";
 import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
 import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
@@ -369,6 +369,16 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       alert("Belum bisa disimpan - upload minimal 1 foto pemasangan dulu.");
       return;
     }
+    // KONFIRMASI ARSIP (3 Okt 2026, KHUSUS Assembling Luar - permintaan user, Wiring Control
+    // sengaja tidak diubah) - insiden GILANG P-VAC 3B: Groundplate terpencet 100% padahal ada
+    // komponen kurang, lalu "Arsipkan Komponen" (label tombol berganti otomatis di 100%) ikut
+    // ditekan tanpa sadar -> langsung terarsip. Koreksinya lewat koreksiArsip di bawah.
+    if(tugas.seksi==="assembling_luar"&&pct>=100){
+      const panelNama=(panelsRaw.find((x:any)=>x.id===panel.id)||panel).nama;
+      if(!window.confirm(`Arsipkan ${nama} panel ${panelNama} di 100%?
+
+Pastikan SEMUA komponen benar-benar sudah terpasang. Kalau ternyata salah, arsip bisa dibuka lagi lewat tombol "Koreksi".`))return;
+    }
     setSavingKey(key);
     // (29 Sep 2026) langkah yang lagi jalan - dipakai pesan gagal biar operator tau progress-nya
     // SUDAH tersimpan atau belum (dulu cuma "Gagal simpan: <pesan>" apapun langkahnya).
@@ -492,6 +502,46 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       }
     }
     setSavingKey(null);
+  };
+
+  // KOREKSI ARSIP (3 Okt 2026, KHUSUS Assembling Luar) - escape hatch (CLAUDE.md G.3): dulu
+  // komponen yang sudah diarsip cuma bisa ditambah foto, progress-nya terkunci tanpa jalan
+  // koreksi. Hapus baris arsip seksi ini SAJA (progress, foto, arsip seksi sebelah TIDAK
+  // disentuh) -> kartu balik aktif di persen yang sama, operator turunkan sendiri lalu arsip
+  // ulang nanti. Baris ccp ditandai sudah_disimpan_100=false (checkpoint final batal).
+  const koreksiArsip=async(panel:any,kode:string,nama:string,isTahap:boolean)=>{
+    if(tugas.seksi!=="assembling_luar")return;
+    if(!window.confirm(`Buka lagi arsip ${nama} panel ${panel.nama}?
+
+Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persennya ke yang benar.`))return;
+    const key=`koreksi_${panel.id}_${kode}`;
+    setSavingKey(key);
+    try{
+      const{data:terhapus,error}=await withRetry(()=>supabase.from("panel_seksi_archived").delete()
+        .eq("panel_id",panel.id).eq("seksi",tugas.seksi).eq("kode",kode).select("id"));
+      if(error)throw error;
+      if(!terhapus||terhapus.length===0){
+        alert("Arsip tidak ditemukan / tidak bisa dibuka (mungkin sudah dibuka operator lain). Muat ulang halaman.");
+        console.error(`[Koreksi arsip ${kode} panel ${panel.id}] delete 0 baris`);
+        await fetchArsip();
+        return;
+      }
+      setArsipMap(prev=>{const n={...prev};delete n[`${panel.id}|${kode}`];return n;});
+      const ccpTahap=isTahap?tugas.tahap:null;
+      batalkanSudahDisimpan100(panel.id,kode,"PASANG KOMPONEN",ccpTahap)
+        .then(({error:e})=>{if(e)console.error("batalkan sudah_disimpan_100 ccp gagal (koreksiArsip):",e);})
+        .catch(e=>console.error("batalkan sudah_disimpan_100 ccp GAGAL TOTAL (koreksiArsip):",e));
+      const wo=woMap[panel.wo_id];
+      supabase.from("activity_log").insert({
+        user_name:user.nama,action:"KOREKSI ARSIP PASANG KOMPONEN",module:"assembling_luar",halaman:"Vista Pekerja - Komponen",panel:panel.nama||null,proyek:wo?.proyek||null,wo_number:wo?.wo||null,
+        description:`Buka arsip ${nama} (${kode}) panel ${panel.nama}${wo?` - ${wo.proyek} WO ${wo.wo}`:""} (progress saat dibuka ${getProgress(panel,kode,isTahap)}%)`,
+      }).then(({error:e})=>{if(e)console.error("log koreksi arsip gagal:",e);});
+      alert("Arsip dibuka. Turunkan persen ke yang benar, lalu simpan/arsipkan lagi kalau sudah selesai.");
+    }catch(err:any){
+      alertGagalSimpan(err,`Koreksi arsip ${kode} panel ${panel.id}`,{aksi:"buka arsip"});
+    }finally{
+      setSavingKey(null);
+    }
   };
 
   const pilihFotoStaged=(key:string,fileList:FileList|null)=>{
@@ -1033,6 +1083,12 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
                                 <button onClick={()=>simpanFotoArsipTambahan(p,r.kode,key)} disabled={savingFoto}
                                   style={{fontSize:11,fontWeight:700,color:"#fff",background:"#16a34a",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>
                                   {savingFoto?"⏳ Menyimpan...":"💾 Simpan Foto"}
+                                </button>
+                              )}
+                              {tugas.seksi==="assembling_luar"&&(
+                                <button onClick={()=>koreksiArsip(p,r.kode,r.nama,r.isTahap)} disabled={savingKey===`koreksi_${p.id}_${r.kode}`}
+                                  style={{marginLeft:"auto",fontSize:11,fontWeight:700,color:"#b45309",background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"7px 11px",cursor:"pointer"}}>
+                                  {savingKey===`koreksi_${p.id}_${r.kode}`?"⏳ Membuka...":"↩ Koreksi"}
                                 </button>
                               )}
                             </div>

@@ -89,6 +89,20 @@ export async function updateComponentProcessProgressPhotos(
   );
 }
 
+// Koreksi arsip Assembling Luar (3 Okt 2026) - arsip komponen dibuka lagi oleh operator
+// (salah tekan 100%), tandai checkpoint final-nya batal. UPDATE (bukan upsert) dgn alasan
+// sama spt updateComponentProcessProgressPhotos: no-op kalau baris belum pernah ada.
+export async function batalkanSudahDisimpan100(
+  panelId: number, kode: string, proses: string, tahap: string | null
+) {
+  return withRetry(() =>
+    supabase.from("component_process_progress")
+      .update({ sudah_disimpan_100: false, updated_at: new Date().toISOString() })
+      .eq("panel_id", panelId).eq("kode_komponen", kode).eq("proses", proses)
+      .eq("tahap_key", tahap ?? "")
+  );
+}
+
 // Query validasi arsip (dipakai tombol "Arsipkan Komponen" yang SUDAH ADA di KomponenPasangView -
 // WO-072 restructuring, bukan tombol/alur baru). bool_and kosong (0 baris) dianggap FALSE lewat
 // ?? false - kode yang belum pernah di-dual-write (mis. sebelum backfill Fase 2 jalan) gak
