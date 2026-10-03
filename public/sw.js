@@ -1,4 +1,4 @@
-const CACHE_NAME = 'vista-pekerja-shell-v2';
+const CACHE_NAME = 'vista-pekerja-shell-v3'; // v3 (3 Okt 2026): cache v2 lama dibuang saat activate
 
 self.addEventListener('install', () => {
   self.skipWaiting();
@@ -46,8 +46,12 @@ self.addEventListener('fetch', (event) => {
   // index.html/manifest/ikon dll - network-first biar versi APLIKASI TERBARU yang kepakai kalau
   // online, cache cuma fallback pas sinyal lemot/putus biar shell tetap kebuka (bukan network-only,
   // beda dari sebelumnya yang caches.match-nya gak pernah ke-isi sama sekali).
+  // FIX LOOP (3 Okt 2026): halaman (navigate) diambil tanpa cache HTTP browser sama sekali -
+  // cache SW cuma dipakai kalau benar-benar offline. (Request mode navigate gak boleh diberi
+  // init, jadi fetch lewat URL-nya.)
+  const ambil = req.mode === 'navigate' ? fetch(req.url, { cache: 'no-store', credentials: 'same-origin' }) : fetch(req);
   event.respondWith(
-    fetch(req).then((res) => {
+    ambil.then((res) => {
       if (res && res.ok) {
         const clone = res.clone();
         caches.open(CACHE_NAME).then((c) => c.put(req, clone));
