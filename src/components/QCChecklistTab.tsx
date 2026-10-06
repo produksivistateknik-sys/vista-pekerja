@@ -5,6 +5,7 @@ import { getUrgensiPanel } from "../lib/progressHelpers";
 import { fetchAllPanels } from "../lib/panelHelpers";
 import { hapusFotoDariStorage, compressImageNp } from "../lib/fotoHelpers";
 import { uploadToR2 } from "../lib/r2Client";
+import { alertGagalSimpan } from "../lib/koneksi";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { isVideoFoto, isGenericFoto } from "../lib/mediaThumb";
@@ -78,7 +79,10 @@ export function QCChecklistTab({user,registerBackHandler}:any){
     if(status==="to_do")newGlobal.todo_at=now;
     if(status==="complete")newGlobal.complete_at=now;
     const newChecklist={...(panel?.qc_checklist||{}),_global:newGlobal};
-    await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
+    // Cek error (6 Okt 2026) - dulu gagal simpan diam-diam: layar QC sudah ganti status padahal
+    // DB tidak berubah (admin Task Monitoring/Detail Progres tetap baca status lama).
+    const{error}=await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
+    if(error){alertGagalSimpan(error,`Ubah status QC panel ${panelId} ke ${status}`,{aksi:"simpan status QC"});return;}
     setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));
   };
 
@@ -86,7 +90,8 @@ export function QCChecklistTab({user,registerBackHandler}:any){
     const panel=panelsList.find((p:any)=>p.id===panelId);
     const prevData=panel?.qc_checklist?.[itemKey]||{};
     const newChecklist={...(panel?.qc_checklist||{}),[itemKey]:{...prevData,catatan}};
-    await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
+    const{error}=await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
+    if(error){alertGagalSimpan(error,`Simpan catatan QC ${itemKey} panel ${panelId}`,{aksi:"simpan catatan"});return;}
     setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));
   };
 
@@ -111,7 +116,8 @@ export function QCChecklistTab({user,registerBackHandler}:any){
       const prevData=panel?.qc_checklist?.[itemKey]||{status:"to_do",catatan:""};
       const newFoto=[...(prevData.foto||[]),{url:publicUrl,name:file.name,mime:file.type,uploaded_by:user.nama,uploaded_at:new Date().toISOString()}];
       const newChecklist={...(panel?.qc_checklist||{}),[itemKey]:{...prevData,foto:newFoto}};
-      await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
+      const{error}=await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
+      if(error){alertGagalSimpan(error,`Simpan foto QC ${itemKey} panel ${panelId}`,{aksi:"simpan foto",ulangi:"upload foto"});setUploadingId(null);return;}
       setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));
     }catch(err:any){
       alert("Terjadi kesalahan: "+err.message);
@@ -127,18 +133,24 @@ export function QCChecklistTab({user,registerBackHandler}:any){
     const newChecklist={...(panel?.qc_checklist||{}),[itemKey]:{...prevData,foto:newFoto}};
     // BUG FIX (6 Agu 2026): sebelumnya cuma hapus referensi di DB, file di Storage gak pernah
     // ikut kehapus - buang storage sia-sia. Sekarang hapus dua-duanya.
+    // Cek error (6 Okt 2026): referensi di DB dihapus DULU, file storage baru dihapus kalau DB
+    // berhasil - dulu urutannya kebalik & error DB diabaikan, foto bisa jadi link rusak.
+    const{error}=await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
+    if(error){alertGagalSimpan(error,`Hapus foto QC ${itemKey} panel ${panelId}`,{aksi:"hapus foto"});return;}
     await hapusFotoDariStorage("qc-photos",fotoUrl);
-    await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
     setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));
   };
 
   const togglePacking=async(panelId:number,currentVal:boolean)=>{
     const newVal=!currentVal;
-    await supabase.from("panels").update({
+    // Cek error (6 Okt 2026) - dulu gagal simpan diam-diam: layar tetap "sudah packing" padahal DB
+    // tidak berubah.
+    const{error}=await supabase.from("panels").update({
       packing_done:newVal,
       packing_done_by:newVal?user.nama:null,
       packing_done_at:newVal?new Date().toISOString():null,
     }).eq("id",panelId);
+    if(error){alertGagalSimpan(error,`${newVal?"Tandai":"Batalkan"} packing panel ${panelId}`,{aksi:"simpan status packing"});return;}
     setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,packing_done:newVal,packing_done_by:newVal?user.nama:null}:p));
   };
 
