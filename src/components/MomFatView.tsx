@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { uploadToR2 } from "../lib/r2Client";
-import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
+import { hapusFotoDariStorage } from "../lib/fotoHelpers";
+import { unggahMediaKeR2 } from "../lib/siapkanMedia";
+import { isVideoFoto } from "../lib/mediaThumb";
+import { ThumbMedia } from "./ui/ThumbMedia";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { SectionCard, EmptyState } from "./ui/Primitives";
@@ -108,23 +110,29 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
     }
   };
 
+  // Foto/video (6 Okt 2026) - tiap file dicoba sendiri-sendiri: yang berhasil TETAP disimpan walau
+  // ada yang gagal (dulu 1 gagal = semua batal, file yang sudah naik jadi yatim di R2), yang gagal
+  // disebutkan namanya supaya operator tahu harus pilih ulang.
   const uploadFotoPoin=async(p:Poin,files:FileList)=>{
     setUploadingPoinId(p.id);
-    try{
-      const fotoBaru:FotoViewerPekerja[]=[];
-      for(const file of Array.from(files)){
-        const blob=await compressImageNp(file);
-        const key=`mom-fat/${p.mom_fat_id}/${p.id}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-        const publicUrl=await uploadToR2(blob,key,"image/jpeg");
-        fotoBaru.push({url:publicUrl,uploaded_by:user.nama||user.name||"Operator",uploaded_at:new Date().toISOString()});
+    const fotoBaru:FotoViewerPekerja[]=[];
+    const gagal:string[]=[];
+    for(const file of Array.from(files)){
+      try{
+        const m=await unggahMediaKeR2(file,`mom-fat/${p.mom_fat_id}/${p.id}`);
+        fotoBaru.push({url:m.url,mime:m.mime,name:m.name,uploaded_by:user.nama||user.name||"Operator",uploaded_at:new Date().toISOString()});
+      }catch(err:any){
+        console.error("Upload dokumentasi MOM FAT gagal:",file.name,err);
+        gagal.push("• "+file.name+" - "+(err?.message||"unknown error"));
       }
-      const newFoto=[...(p.foto||[]),...fotoBaru];
-      setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,foto:newFoto}:x));
-      const{error:fErr}=await supabase.from("mom_fat_poin" as any).update({foto:newFoto}).eq("id",p.id);
-      if(fErr)throw fErr;
-    }catch(err:any){
-      alert("Gagal upload foto: "+(err?.message||"unknown error"));
     }
+    if(fotoBaru.length>0){
+      const newFoto=[...(p.foto||[]),...fotoBaru];
+      const{error:fErr}=await supabase.from("mom_fat_poin" as any).update({foto:newFoto}).eq("id",p.id);
+      if(fErr)alertGagalSimpan(fErr,`Simpan foto MOM FAT poin ${p.id}`,{aksi:"simpan foto/video",ulangi:"Tambah Foto"});
+      else setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,foto:newFoto}:x));
+    }
+    if(gagal.length>0)alert(`${gagal.length} foto/video gagal diunggah:\n${gagal.join("\n")}\n\nPilih ulang lewat "Tambah Foto".`);
     setUploadingPoinId(null);
   };
 
@@ -132,9 +140,11 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
     if(!window.confirm("Hapus foto ini?"))return;
     const newFoto=(p.foto||[]).filter(f=>f.url!==fotoUrl);
     setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,foto:newFoto}:x));
-    await hapusFotoDariStorage("mom-fat-photos",fotoUrl);
+    // Referensi DB dihapus DULU, file storage baru dihapus kalau DB berhasil (6 Okt 2026 - dulu
+    // kebalik: DB gagal = foto masih tercatat tapi filenya sudah hilang, jadi tautan rusak).
     const{error}=await supabase.from("mom_fat_poin" as any).update({foto:newFoto}).eq("id",p.id);
-    if(error){fetchPoin(p.mom_fat_id);alertGagalSimpan(error,`Hapus foto MOM FAT poin ${p.id}`,{aksi:"hapus foto"});}
+    if(error){fetchPoin(p.mom_fat_id);alertGagalSimpan(error,`Hapus foto MOM FAT poin ${p.id}`,{aksi:"hapus foto"});return;}
+    await hapusFotoDariStorage("mom-fat-photos",fotoUrl);
   };
 
   const statusLabel:any={processing:{bg:"#fffbeb",color:"#d97706",label:"Proses OCR..."},ready:{bg:"#f0fdf4",color:"#16a34a",label:"Siap"},error:{bg:"#fef2f2",color:"#dc2626",label:"Gagal OCR"}};
@@ -166,7 +176,7 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
                     <div style={{marginTop:6}}>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
                         {(p.foto||[]).length>0&&<span style={{fontSize:9.5,fontWeight:600,color:"#64748b"}}>Foto {p.foto.length}</span>}
-                        <MediaPickerSheet
+                        <MediaPickerSheet allowVideo disabled={uploadingPoinId===p.id}
                           triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:10.5,fontWeight:600,marginLeft:"auto"}}
                           onFiles={(files)=>uploadFotoPoin(p,files)}>
                           <i className={uploadingPoinId===p.id?"ti ti-loader-2":"ti ti-camera-plus"} style={{fontSize:12}}/>
@@ -178,7 +188,7 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
                           {p.foto.map((f,fi)=>(
                             <div key={fi} style={{position:"relative",aspectRatio:"1",borderRadius:7,overflow:"hidden",cursor:"pointer",background:"#f1f5f9"}}
                               onClick={()=>setFotoViewer({fotos:p.foto,startIndex:fi,label:p.teks})}>
-                              <img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                              <ThumbMedia url={f.url} video={isVideoFoto(f)}/>
                               <button onClick={(e)=>{e.stopPropagation();hapusFotoPoin(p,f.url);}}
                                 style={{position:"absolute",top:2,right:2,width:15,height:15,borderRadius:99,background:"rgba(15,23,42,0.6)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                 <i className="ti ti-x" style={{fontSize:8}}/>

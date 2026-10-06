@@ -7,8 +7,10 @@ import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip, updateComponentProcessProgressPhotos, batalkanSudahDisimpan100 } from "../lib/componentProcessProgress";
 import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
-import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
-import { uploadToR2 } from "../lib/r2Client";
+import { hapusFotoDariStorage } from "../lib/fotoHelpers";
+import { unggahMediaKeR2, isFileVideo } from "../lib/siapkanMedia";
+import { isVideoFoto } from "../lib/mediaThumb";
+import { ThumbMedia } from "./ui/ThumbMedia";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 
@@ -572,17 +574,17 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
       const objectPathPrefix=key.startsWith("panelfoto_")?`${pathPrefix}/panelfoto`:pathPrefix;
       for(const s of staged){
         try{
-          const blob=await compressImageNp(s.file);
-          const objectKey=`${folderFoto}/${objectPathPrefix}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-          const publicUrl=await uploadToR2(blob,objectKey,"image/jpeg");
-          fotoTerupload.push({url:publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+          const m=await unggahMediaKeR2(s.file,`${folderFoto}/${objectPathPrefix}`);
+          fotoTerupload.push({url:m.url,mime:m.mime,name:m.name,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
         }catch(fotoErr:any){
+          console.error("Upload dokumentasi Pasang Komponen gagal:",s.file.name,fotoErr);
           gagal.push(s);
         }
       }
       if(key.startsWith("panelfoto_")){
         const newFoto=[...(panel.pasang_komponen_photos||[]),...fotoTerupload];
-        await supabase.from("panels").update({pasang_komponen_photos:newFoto}).eq("id",panel.id);
+        const{error:pfErr}=await supabase.from("panels").update({pasang_komponen_photos:newFoto}).eq("id",panel.id);
+        if(pfErr)throw pfErr; // 6 Okt 2026 - dulu diabaikan; sekarang ditangkap catch (staged tetap di layar)
         setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,pasang_komponen_photos:newFoto}:p));
       } else {
         // BUG FIX (18 Sep 2026, dilaporkan user - foto "hilang" di CIMORY CITEUREUP) - dulu
@@ -618,7 +620,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
         return next;
       });
       if(gagal.length>0){
-        alert(`${gagal.length} dari ${staged.length} foto GAGAL diupload (kemungkinan storage penuh atau koneksi bermasalah). Foto yang gagal TETAP ada di layar - coba tap Simpan lagi.`);
+        alert(`${gagal.length} dari ${staged.length} foto/video GAGAL diupload (kemungkinan koneksi bermasalah atau video terlalu besar). File yang gagal TETAP ada di layar - coba tap Simpan lagi.`);
       }
     }catch(err:any){
       alert("Terjadi kesalahan: "+err.message);
@@ -642,11 +644,10 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
       const folderFoto=tugas.fotoBucket.replace(/-photos$/,"");
       for(const s of staged){
         try{
-          const blob=await compressImageNp(s.file);
-          const objectKey=`${folderFoto}/${panel.id}/${kode}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-          const publicUrl=await uploadToR2(blob,objectKey,"image/jpeg");
-          fotoTerupload.push({url:publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+          const m=await unggahMediaKeR2(s.file,`${folderFoto}/${panel.id}/${kode}`);
+          fotoTerupload.push({url:m.url,mime:m.mime,name:m.name,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
         }catch(fotoErr:any){
+          console.error("Upload dokumentasi arsip Pasang Komponen gagal:",s.file.name,fotoErr);
           gagal.push(s);
         }
       }
@@ -664,14 +665,16 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
         const{data:arsipRow}=await supabase.from("panel_seksi_archived").select("data").eq("panel_id",panel.id).eq("seksi",tugas.seksi).eq("kode",kode).maybeSingle();
         if(arsipRow){
           const newFotoArsip=[...(arsipRow.data?.fotoPemasangan||[]),...fotoTerupload];
-          await supabase.from("panel_seksi_archived").update({data:{...arsipRow.data,fotoPemasangan:newFotoArsip}}).eq("panel_id",panel.id).eq("seksi",tugas.seksi).eq("kode",kode);
+          const{error:eArsip}=await supabase.from("panel_seksi_archived").update({data:{...arsipRow.data,fotoPemasangan:newFotoArsip}}).eq("panel_id",panel.id).eq("seksi",tugas.seksi).eq("kode",kode);
+          if(eArsip)alertGagalSimpan(eArsip,`Tempel foto ke arsip ${kode} panel ${panel.id}`,{aksi:"tempel foto ke arsip",catatanKoneksi:"Foto/video sudah tersimpan di data komponen, tapi belum muncul di tab Arsip - laporkan ke admin."});
         }
         // BUG FIX (14 Agu 2026): sama kayak di simpanProgress - sekalian tambahin foto baru ini
         // ke row arsip seksi sebelah juga kalau ada, biar gak divergen (lihat siblingSeksi).
         const{data:siblingRow}=await supabase.from("panel_seksi_archived").select("data").eq("panel_id",panel.id).eq("seksi",siblingSeksi).eq("kode",kode).maybeSingle();
         if(siblingRow){
           const newFotoSibling=[...(siblingRow.data?.fotoPemasangan||[]),...fotoTerupload];
-          await supabase.from("panel_seksi_archived").update({data:{...siblingRow.data,fotoPemasangan:newFotoSibling}}).eq("panel_id",panel.id).eq("seksi",siblingSeksi).eq("kode",kode);
+          const{error:eSibling}=await supabase.from("panel_seksi_archived").update({data:{...siblingRow.data,fotoPemasangan:newFotoSibling}}).eq("panel_id",panel.id).eq("seksi",siblingSeksi).eq("kode",kode);
+          if(eSibling)console.error("Tempel foto ke arsip seksi sebelah gagal:",panel.id,kode,eSibling);
         }
       }
       const berhasilSet=new Set(staged.filter(s=>!gagal.includes(s)));
@@ -683,7 +686,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
         return next;
       });
       if(gagal.length>0){
-        alert(`${gagal.length} dari ${staged.length} foto GAGAL diupload (kemungkinan storage penuh atau koneksi bermasalah). Foto yang gagal TETAP ada di layar - coba tap Simpan lagi.`);
+        alert(`${gagal.length} dari ${staged.length} foto/video GAGAL diupload (kemungkinan koneksi bermasalah atau video terlalu besar). File yang gagal TETAP ada di layar - coba tap Simpan lagi.`);
       }
     }catch(err:any){
       alert("Terjadi kesalahan: "+err.message);
@@ -692,10 +695,13 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
   };
   const hapusFotoTersimpan=async(panel:any,kode:string|null,fotoUrl:string)=>{
     if(!window.confirm("Hapus foto ini?"))return;
-    await hapusFotoDariStorage(tugas.fotoBucket,fotoUrl);
+    // 6 Okt 2026 - referensi DB dihapus DULU (dicek), file storage baru dihapus kalau DB berhasil
+    // (dulu kebalik & hasil DB panelfoto diabaikan -> foto tercatat tapi filenya sudah hilang).
     if(kode===null){
       const newFoto=(panel.pasang_komponen_photos||[]).filter((f:any)=>f.url!==fotoUrl);
-      await supabase.from("panels").update({pasang_komponen_photos:newFoto}).eq("id",panel.id);
+      const{error:pfErr}=await supabase.from("panels").update({pasang_komponen_photos:newFoto}).eq("id",panel.id);
+      if(pfErr){alertGagalSimpan(pfErr,`Hapus foto panel Pasang Komponen ${panel.id}`,{aksi:"hapus foto"});return;}
+      await hapusFotoDariStorage(tugas.fotoBucket,fotoUrl);
       setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,pasang_komponen_photos:newFoto}:p));
     } else {
       const cl=panel.checklist?.[kode as string]||{};
@@ -703,6 +709,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
       const newEntry={...cl,fotoPemasangan:newFoto};
       const{error:clErr}=await mergePanelChecklistDalam(panel.id,{[kode as string]:{lama:panel.checklist?.[kode as string],baru:newEntry}});
       if(clErr){alertGagalSimpan(clErr,`Hapus foto Pasang Komponen ${kode} panel ${panel.id}`,{aksi:"hapus foto"});return;}
+      await hapusFotoDariStorage(tugas.fotoBucket,fotoUrl);
       setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:{...p.checklist,[kode as string]:newEntry}}:p));
       // AUDIT (21 Sep 2026) - sinkronkan ccp.photos juga (lihat komentar simpanFotoStaged).
       updateComponentProcessProgressPhotos(panel.id,kode as string,"PASANG KOMPONEN",tahapUntukKode(panel,kode as string),newFoto)
@@ -979,8 +986,8 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                               <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
                                 {fotoKodeArr.map((f:any,fi:number)=>(
                                   <div key={`saved_${fi}`} style={{position:"relative" as const}}>
-                                    <img onClick={()=>setFotoViewer({fotos:fotoKodeArr,startIndex:fi,label:`${r.nama}_${p.nama}`})}
-                                      src={f.url} loading="lazy" style={{width:52,height:52,borderRadius:8,objectFit:"cover" as const,border:"1px solid #eef0f3",cursor:"pointer"}}/>
+                                    <div onClick={()=>setFotoViewer({fotos:fotoKodeArr,startIndex:fi,label:`${r.nama}_${p.nama}`})}
+                                      style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:"1px solid #eef0f3",cursor:"pointer"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
                                     <button onClick={(e:any)=>{e.stopPropagation();hapusFotoTersimpan(p,r.kode,f.url);}}
                                       style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                       <i className="ti ti-trash" style={{fontSize:10}}/>
@@ -989,7 +996,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                                 ))}
                                 {stagedKodeFoto.map((s,si)=>(
                                   <div key={`staged_${si}`} style={{position:"relative" as const}}>
-                                    <img src={s.previewUrl} style={{width:52,height:52,borderRadius:8,objectFit:"cover" as const,border:`1.5px dashed ${tugas.color}`}}/>
+                                    <div style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:`1.5px dashed ${tugas.color}`}}><ThumbMedia url={s.previewUrl} video={isFileVideo(s.file)}/></div>
                                     <button onClick={()=>batalkanFotoStaged(key,si)}
                                       style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                       <i className="ti ti-x" style={{fontSize:10}}/>
@@ -999,7 +1006,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                               </div>
                             )}
                             <div style={{display:"flex",gap:6,flexWrap:"wrap" as const,marginBottom:10}}>
-                              <MediaPickerSheet disabled={saving}
+                              <MediaPickerSheet allowVideo disabled={saving}
                                 triggerStyle={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:tugas.color,background:`${tugas.color}0f`,border:`1px dashed ${tugas.color}55`,borderRadius:8,padding:"7px 11px",cursor:"pointer"}}
                                 onFiles={(files)=>pilihFotoStaged(key,files)}>
                                 + Tambah Foto
@@ -1059,12 +1066,12 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                             ):(
                               <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
                                 {fotoKodeArr.map((f:any,fi:number)=>(
-                                  <img key={`saved_${fi}`} onClick={()=>setFotoViewer({fotos:fotoKodeArr,startIndex:fi,label:`${r.nama}_${p.nama}`})}
-                                    src={f.url} loading="lazy" style={{width:52,height:52,borderRadius:8,objectFit:"cover" as const,border:"1px solid #eef0f3",cursor:"pointer"}}/>
+                                  <div key={`saved_${fi}`} onClick={()=>setFotoViewer({fotos:fotoKodeArr,startIndex:fi,label:`${r.nama}_${p.nama}`})}
+                                    style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:"1px solid #eef0f3",cursor:"pointer"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
                                 ))}
                                 {stagedKodeFoto.map((s,si)=>(
                                   <div key={`staged_${si}`} style={{position:"relative" as const}}>
-                                    <img src={s.previewUrl} style={{width:52,height:52,borderRadius:8,objectFit:"cover" as const,border:"1.5px dashed #16a34a"}}/>
+                                    <div style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:"1.5px dashed #16a34a"}}><ThumbMedia url={s.previewUrl} video={isFileVideo(s.file)}/></div>
                                     <button onClick={()=>batalkanFotoStaged(key,si)}
                                       style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                       <i className="ti ti-x" style={{fontSize:10}}/>
@@ -1074,7 +1081,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                               </div>
                             )}
                             <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
-                              <MediaPickerSheet disabled={savingFoto}
+                              <MediaPickerSheet allowVideo disabled={savingFoto}
                                 triggerStyle={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:"#16a34a",background:"#16a34a0f",border:"1px dashed #16a34a55",borderRadius:8,padding:"7px 11px",cursor:"pointer"}}
                                 onFiles={(files)=>pilihFotoStaged(key,files)}>
                                 + Tambah Foto
@@ -1110,8 +1117,8 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                         <div style={{display:"flex",flexWrap:"wrap" as const,gap:8,marginBottom:12}}>
                           {fotoPanelArr.map((f:any,fi:number)=>(
                             <div key={`saved_${fi}`} style={{position:"relative" as const}}>
-                              <img onClick={()=>setFotoViewer({fotos:fotoPanelArr,startIndex:fi,label:p.nama})}
-                                src={f.url} loading="lazy" style={{width:62,height:62,borderRadius:10,objectFit:"cover" as const,border:"1px solid #eef0f3",cursor:"pointer"}}/>
+                              <div onClick={()=>setFotoViewer({fotos:fotoPanelArr,startIndex:fi,label:p.nama})}
+                                style={{width:62,height:62,borderRadius:10,overflow:"hidden",border:"1px solid #eef0f3",cursor:"pointer"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
                               <button onClick={(e:any)=>{e.stopPropagation();hapusFotoTersimpan(p,null,f.url);}}
                                 style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                 <i className="ti ti-trash" style={{fontSize:10}}/>
@@ -1120,7 +1127,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                           ))}
                           {stagedPanel.map((s,si)=>(
                             <div key={`staged_${si}`} style={{position:"relative" as const}}>
-                              <img src={s.previewUrl} style={{width:62,height:62,borderRadius:10,objectFit:"cover" as const,border:`1.5px dashed ${tugas.color}`}}/>
+                              <div style={{width:62,height:62,borderRadius:10,overflow:"hidden",border:`1.5px dashed ${tugas.color}`}}><ThumbMedia url={s.previewUrl} video={isFileVideo(s.file)}/></div>
                               <button onClick={()=>batalkanFotoStaged(stagedPanelKey,si)}
                                 style={{position:"absolute" as const,top:-6,right:-6,width:19,height:19,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                 <i className="ti ti-x" style={{fontSize:10}}/>
@@ -1129,7 +1136,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                           ))}
                         </div>
                       )}
-                      <MediaPickerSheet disabled={savingPanelFoto}
+                      <MediaPickerSheet allowVideo disabled={savingPanelFoto}
                         triggerStyle={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:tugas.color,background:`${tugas.color}0f`,border:`1.5px dashed ${tugas.color}55`,borderRadius:10,padding:"9px 13px",cursor:"pointer"}}
                         onFiles={(files)=>pilihFotoStaged(stagedPanelKey,files)}>
                         <i className="ti ti-camera-plus" style={{fontSize:14}}/> Tambah Foto

@@ -57,7 +57,9 @@ export const downloadFotoNp=async(url:string,label:string)=>{
     const blobUrl=URL.createObjectURL(blob);
     const a=document.createElement("a");
     a.href=blobUrl;
-    a.download=`${label}_${Date.now()}.jpg`;
+    // Ekstensi dari tipe file asli (6 Okt 2026, dukungan video) - dulu selalu ".jpg", video ikut jadi .jpg.
+    const ext=blob.type.startsWith("video/")?(blob.type.includes("quicktime")?"mov":"mp4"):blob.type==="image/png"?"png":"jpg";
+    a.download=`${label.replace(/\.[a-z0-9]{2,5}$/i,"")}_${Date.now()}.${ext}`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);

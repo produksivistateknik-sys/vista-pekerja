@@ -2,6 +2,8 @@ import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { Card } from "./ui/Primitives";
 import { FotoZoomViewerPekerja } from "./FotoZoomViewerPekerja";
+import { ThumbMedia } from "./ui/ThumbMedia";
+import { isVideoFoto } from "../lib/mediaThumb";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ARSIP SEKSI - tab "Arsip" per divisi (Warehouse/QS/QC/Pasang Komponen), read-only browsing.
@@ -167,8 +169,8 @@ export function ArsipSeksiView({seksi}:{seksi:string}){
                           ):(
                             <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
                               {fotoList.map((f:any,fi:number)=>(
-                                <img key={fi} src={f.url} loading="lazy" onClick={()=>setLightbox({fotos:fotoList,startIndex:fi,label:r.panel_nama})}
-                                  style={{width:56,height:56,borderRadius:6,objectFit:"cover" as const,border:"1px solid #e2e8f0",cursor:"pointer"}}/>
+                                <div key={fi} onClick={()=>setLightbox({fotos:fotoList,startIndex:fi,label:r.panel_nama})}
+                                  style={{width:56,height:56,borderRadius:6,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
                               ))}
                             </div>
                           )}

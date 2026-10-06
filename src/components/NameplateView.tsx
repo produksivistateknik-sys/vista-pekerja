@@ -3,8 +3,10 @@ import { supabase } from "../lib/supabase";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, ringkasAlasanGagal, klasifikasiErrorSimpan } from "../lib/koneksi";
 import { fetchAllPanels } from "../lib/panelHelpers";
-import { compressImageNp, hapusFotoDariStorage } from "../lib/fotoHelpers";
-import { uploadToR2 } from "../lib/r2Client";
+import { hapusFotoDariStorage } from "../lib/fotoHelpers";
+import { unggahMediaKeR2, isFileVideo } from "../lib/siapkanMedia";
+import { isVideoFoto } from "../lib/mediaThumb";
+import { ThumbMedia } from "./ui/ThumbMedia";
 import { getUrgensiPanel, fmtTanggalDeadlineNp, STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
@@ -104,16 +106,19 @@ export function NameplateView({user,registerBackHandler}:any){
     setSavingKey(key);
     try{
       const fotoTerupload:any[]=[];
+      // Foto/video (6 Okt 2026) - sama persis KomponenProgressView: file yang gagal tetap di layar
+      // ("belum disimpan") untuk diulang, bukan terbuang setelah simpan.
+      const gagal:{s:{file:File,previewUrl:string},alasan:string}[]=[];
       for(let i=0;i<staged.length;i++){
         setUploadProgress({current:i+1,total:staged.length});
         const s=staged[i];
-        const blob=await compressImageNp(s.file);
-        const objectKey=`nameplate/${p.id}/${t.field}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-        let publicUrl:string;
         try{
-          publicUrl=await uploadToR2(blob,objectKey,"image/jpeg");
-        }catch(upErr:any){alert(`Gagal upload salah satu foto: ${upErr.message}`);continue;}
-        fotoTerupload.push({url:publicUrl,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+          const m=await unggahMediaKeR2(s.file,`nameplate/${p.id}/${t.field}`);
+          fotoTerupload.push({url:m.url,mime:m.mime,name:m.name,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+        }catch(upErr:any){
+          console.error(`Upload dokumentasi ${t.field} panel ${p.id} gagal:`,s.file.name,upErr);
+          gagal.push({s,alasan:String(upErr?.message||upErr)});
+        }
       }
       setUploadProgress(null);
       const newFoto=[...existingFoto,...fotoTerupload];
@@ -141,8 +146,10 @@ export function NameplateView({user,registerBackHandler}:any){
       }else{
         dirtyProgressRef.current.delete(key);
         setPanelsList(prev=>prev.map((pp:any)=>pp.id===p.id?{...pp,...patch}:pp));
-        staged.forEach(s=>URL.revokeObjectURL(s.previewUrl));
-        setStagedFotos(prev=>{const next={...prev};delete next[key];return next;});
+        const sisa=gagal.map(g=>g.s);
+        staged.filter(s=>!sisa.includes(s)).forEach(s=>URL.revokeObjectURL(s.previewUrl));
+        setStagedFotos(prev=>{const next={...prev};const tetap=(prev[key]||[]).filter(s=>!staged.includes(s)||sisa.includes(s));if(tetap.length)next[key]=tetap;else delete next[key];return next;});
+        if(gagal.length>0)alert(`Progress tersimpan, tapi ${gagal.length} foto/video gagal diunggah:\n${gagal.map(g=>"• "+g.s.file.name+" - "+g.alasan).join("\n")}\n\nFile yang gagal masih di layar ("belum disimpan") - tekan Simpan Progress lagi untuk mengulang.`);
       }
     }catch(err:any){
       // Error di luar simpan DB (kompres/proses foto dst) - bukan dari Supabase, pesan asli.
@@ -449,8 +456,10 @@ export function NameplateView({user,registerBackHandler}:any){
                               <div style={{display:"flex",flexWrap:"wrap" as const,gap:8,marginBottom:10}}>
                                 {fotoArr.map((f:any,fi:number)=>(
                                   <div key={`saved_${fi}`} style={{position:"relative" as const}}>
-                                    <img onClick={()=>setFotoViewer({fotos:fotoArr,startIndex:fi,label:`${t.label}_${p.nama}`})}
-                                      src={f.url} loading="lazy" style={{width:60,height:60,borderRadius:10,objectFit:"cover" as const,border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.06)",cursor:"pointer"}}/>
+                                    <div onClick={()=>setFotoViewer({fotos:fotoArr,startIndex:fi,label:`${t.label}_${p.nama}`})}
+                                      style={{width:60,height:60,borderRadius:10,overflow:"hidden",border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.06)",cursor:"pointer"}}>
+                                      <ThumbMedia url={f.url} video={isVideoFoto(f)}/>
+                                    </div>
                                     <button onClick={(e:any)=>{e.stopPropagation();hapusFotoTersimpan(p.id,t,f.url);}}
                                       style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                       <i className="ti ti-trash" style={{fontSize:10}}/>
@@ -460,7 +469,9 @@ export function NameplateView({user,registerBackHandler}:any){
                                 ))}
                                 {staged.map((s,si)=>(
                                   <div key={`staged_${si}`} style={{position:"relative" as const}}>
-                                    <img src={s.previewUrl} style={{width:60,height:60,borderRadius:10,objectFit:"cover" as const,border:`1.5px dashed ${t.color}`}}/>
+                                    <div style={{width:60,height:60,borderRadius:10,overflow:"hidden",border:`1.5px dashed ${t.color}`}}>
+                                      <ThumbMedia url={s.previewUrl} video={isFileVideo(s.file)}/>
+                                    </div>
                                     <button onClick={()=>batalkanFotoStaged(p.id,t.field,si)}
                                       style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}>
                                       <i className="ti ti-x" style={{fontSize:10}}/>
@@ -470,7 +481,7 @@ export function NameplateView({user,registerBackHandler}:any){
                                 ))}
                               </div>
                             )}
-                            <MediaPickerSheet disabled={saving}
+                            <MediaPickerSheet allowVideo disabled={saving}
                               triggerStyle={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:t.color,background:`${t.color}0f`,border:`1.5px dashed ${t.color}55`,borderRadius:10,padding:"9px 13px",
                                 cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}
                               onFiles={(files)=>pilihFotoStaged(p.id,t.field,files)}>

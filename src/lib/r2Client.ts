@@ -4,10 +4,30 @@
 // PUT langsung ke R2 (bukan lewat Edge Function, jadi gak ada limit ukuran file dari sana).
 import { supabase } from './supabase'
 
-export const uploadToR2 = async (file: Blob, key: string, contentType: string): Promise<string> => {
-  const { data, error } = await supabase.functions.invoke('r2-storage', { body: { action: 'presign-upload', key, contentType } })
+// Batas waktu OPSIONAL (6 Okt 2026, dukungan video - salinan pola vista-teknik r2Client) - tanpa opsi,
+// perilaku sama persis seperti dulu (pemanggil lama tidak terpengaruh). Upload video di sinyal lapangan
+// bisa menggantung tanpa akhir (pola insiden BAK DEGREASING 5 Okt) -> dengan batas waktu jadi gagal
+// yang jelas & bisa diulang.
+export type OpsiUploadR2 = { batasWaktuIzinMs?: number; batasWaktuUnggahMs?: number }
+const denganBatasWaktu = <T,>(p: Promise<T>, ms: number | undefined, pesan: string): Promise<T> =>
+  !ms ? p : Promise.race([p, new Promise<T>((_, tolak) => setTimeout(() => tolak(new Error(pesan)), ms))])
+
+export const uploadToR2 = async (file: Blob, key: string, contentType: string, opsi?: OpsiUploadR2): Promise<string> => {
+  const { data, error } = await denganBatasWaktu(
+    supabase.functions.invoke('r2-storage', { body: { action: 'presign-upload', key, contentType } }),
+    opsi?.batasWaktuIzinMs, 'Waktu habis saat meminta izin upload (koneksi lambat)')
   if (error || !data?.uploadUrl || !data?.publicUrl) throw new Error(error?.message || 'Gagal mendapatkan signed URL R2')
-  const putRes = await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file })
+  const pengendali = opsi?.batasWaktuUnggahMs ? new AbortController() : null
+  const pewaktu = pengendali ? setTimeout(() => pengendali.abort(), opsi!.batasWaktuUnggahMs) : null
+  let putRes: Response
+  try {
+    putRes = await fetch(data.uploadUrl, { method: 'PUT', headers: { 'Content-Type': contentType }, body: file, signal: pengendali?.signal })
+  } catch (err: any) {
+    if (pengendali?.signal.aborted) throw new Error('Waktu habis saat mengunggah file (koneksi lambat)')
+    throw err
+  } finally {
+    if (pewaktu) clearTimeout(pewaktu)
+  }
   if (!putRes.ok) throw new Error(`Upload ke R2 gagal (status ${putRes.status})`)
   return data.publicUrl as string
 }

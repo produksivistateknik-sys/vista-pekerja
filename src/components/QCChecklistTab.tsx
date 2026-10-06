@@ -3,8 +3,8 @@ import { supabase } from "../lib/supabase";
 import { QC_ITEMS } from "../lib/panelTypes";
 import { getUrgensiPanel } from "../lib/progressHelpers";
 import { fetchAllPanels } from "../lib/panelHelpers";
-import { hapusFotoDariStorage, compressImageNp } from "../lib/fotoHelpers";
-import { uploadToR2 } from "../lib/r2Client";
+import { hapusFotoDariStorage } from "../lib/fotoHelpers";
+import { unggahMediaKeR2 } from "../lib/siapkanMedia";
 import { alertGagalSimpan } from "../lib/koneksi";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
@@ -99,22 +99,16 @@ export function QCChecklistTab({user,registerBackHandler}:any){
     const uploadKey=`${panelId}_${itemKey}`;
     setUploadingId(uploadKey);
     try{
-      // BUG FIX (7 Agu 2026): jalur ini gak pernah kompres foto (upload file mentah) - foto
-      // kamera HP 3-8MB bikin loading lambat pas ditampilin lagi. QC bisa upload video/file
-      // apapun (allowVideo/allowAnyFile di MediaPickerSheet), jadi kompres CUMA kalau beneran
-      // image - compressImageNp gak bisa proses video/file lain (decode-nya lewat <img>).
-      const isImg=file.type.startsWith("image/");
-      const uploadBlob:Blob=isImg?await compressImageNp(file):file;
-      const contentType=isImg?"image/jpeg":(file.type||"application/octet-stream");
-      const ext=isImg?"jpg":(file.name.split(".").pop()||"bin");
-      const key=`qc/${panelId}/${itemKey}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.${ext}`;
-      let publicUrl:string;
+      // BUG FIX (7 Agu 2026): jalur ini dulu gak pernah kompres foto. 6 Okt 2026: lewat helper
+      // bersama siapkanMedia (foto dikompres, video dikompres ke 720p, file lain apa adanya) +
+      // batas waktu upload, sama dgn fitur dokumentasi lain.
+      let media:{url:string,mime:string,name:string};
       try{
-        publicUrl=await uploadToR2(uploadBlob,key,contentType);
-      }catch(upErr:any){alert("Gagal upload: "+upErr.message);setUploadingId(null);return;}
+        media=await unggahMediaKeR2(file,`qc/${panelId}/${itemKey}`);
+      }catch(upErr:any){alert("Gagal upload "+file.name+": "+upErr.message);setUploadingId(null);return;}
       const panel=panelsList.find((p:any)=>p.id===panelId);
       const prevData=panel?.qc_checklist?.[itemKey]||{status:"to_do",catatan:""};
-      const newFoto=[...(prevData.foto||[]),{url:publicUrl,name:file.name,mime:file.type,uploaded_by:user.nama,uploaded_at:new Date().toISOString()}];
+      const newFoto=[...(prevData.foto||[]),{url:media.url,name:media.name,mime:media.mime,uploaded_by:user.nama,uploaded_at:new Date().toISOString()}];
       const newChecklist={...(panel?.qc_checklist||{}),[itemKey]:{...prevData,foto:newFoto}};
       const{error}=await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
       if(error){alertGagalSimpan(error,`Simpan foto QC ${itemKey} panel ${panelId}`,{aksi:"simpan foto",ulangi:"upload foto"});setUploadingId(null);return;}

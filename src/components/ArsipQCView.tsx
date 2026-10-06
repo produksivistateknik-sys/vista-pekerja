@@ -3,6 +3,8 @@ import { supabase } from "../lib/supabase";
 import { QC_ITEMS } from "../lib/panelTypes";
 import { downloadFotoNp } from "../lib/fotoHelpers";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
+import { ThumbMedia } from "./ui/ThumbMedia";
+import { isVideoFoto } from "../lib/mediaThumb";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ARSIP QC - redesign search-first (17 Agu 2026), KHUSUS divisi QC. Terpisah dari
@@ -161,7 +163,7 @@ export function ArsipQCView(){
                         const sisaFoto=card.fotos.length-4;
                         return(
                           <div key={i} style={{position:"relative" as const,background:"#e2e8f0",overflow:"hidden"}}>
-                            {f&&<img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>}
+                            {f&&<ThumbMedia url={f.url} video={isVideoFoto(f)}/>}
                             {i===3&&sisaFoto>0&&(
                               <div style={{position:"absolute" as const,inset:0,background:"rgba(0,0,0,0.55)",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                 <span style={{color:"#fff",fontWeight:800,fontSize:11}}>+{sisaFoto}</span>
@@ -204,7 +206,7 @@ export function ArsipQCView(){
 
             <div onClick={()=>setFotoViewerOpen(true)} style={{padding:"0 16px",cursor:"pointer"}}>
               <div style={{width:"100%",aspectRatio:"1",borderRadius:12,overflow:"hidden",background:"#000",display:"flex",alignItems:"center",justifyContent:"center"}}>
-                <img src={fotoAktif.url} style={{width:"100%",height:"100%",objectFit:"contain" as const}}/>
+                <ThumbMedia url={fotoAktif.url} video={isVideoFoto(fotoAktif)} contain/>
               </div>
             </div>
 
@@ -214,7 +216,7 @@ export function ArsipQCView(){
                   <div key={fi} onClick={()=>setDetailIndex(fi)}
                     style={{width:52,height:52,borderRadius:8,overflow:"hidden",cursor:"pointer",flexShrink:0,
                       border:fi===detailIndex?"2px solid #fff":"2px solid transparent",opacity:fi===detailIndex?1:0.5}}>
-                    <img src={f.url} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                    <ThumbMedia url={f.url} video={isVideoFoto(f)}/>
                   </div>
                 ))}
               </div>

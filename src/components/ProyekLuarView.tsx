@@ -1,7 +1,9 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { compressImageNp } from "../lib/fotoHelpers";
-import { uploadToR2 } from "../lib/r2Client";
+import { unggahMediaKeR2, isFileVideo } from "../lib/siapkanMedia";
+import { isVideoFoto } from "../lib/mediaThumb";
+import { alertGagalSimpan } from "../lib/koneksi";
+import { ThumbMedia } from "./ui/ThumbMedia";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { SectionCard, EmptyState } from "./ui/Primitives";
@@ -61,24 +63,25 @@ export function ProyekLuarView({user}:{user:any}){
   const batalkanFotoStaged=(idx:number)=>{
     setStagedFoto(prev=>{const arr=[...prev];URL.revokeObjectURL(arr[idx]?.previewUrl);arr.splice(idx,1);return arr;});
   };
-  const resetForm=()=>{
-    setForm(blankForm);
-    stagedFoto.forEach(s=>URL.revokeObjectURL(s.previewUrl));
-    setStagedFoto([]);
-  };
 
+  // Foto/video (6 Okt 2026) - satu file gagal tidak menggagalkan yang lain, TAPI yang gagal
+  // DIKEMBALIKAN (dulu catch{} kosong: hilang diam-diam, operator mengira sudah tersimpan).
   const uploadStagedFoto=async(laporanId:number,staged:StagedFoto[])=>{
     const hasil:any[]=[];
+    const gagal:{s:StagedFoto,alasan:string}[]=[];
     for(const s of staged){
       try{
-        const blob=await compressImageNp(s.file);
-        const key=`proyek-luar/${laporanId}/${Date.now()}_${Math.random().toString(36).slice(2,8)}.jpg`;
-        const publicUrl=await uploadToR2(blob,key,"image/jpeg");
-        hasil.push({url:publicUrl,uploaded_at:new Date().toISOString()});
-      }catch{ /* satu foto gagal - lanjut foto lain, jangan gagalkan semua */ }
+        const m=await unggahMediaKeR2(s.file,`proyek-luar/${laporanId}`);
+        hasil.push({url:m.url,mime:m.mime,name:m.name,uploaded_at:new Date().toISOString()});
+      }catch(err:any){
+        console.error("Upload dokumentasi Proyek Luar gagal:",s.file.name,err);
+        gagal.push({s,alasan:String(err?.message||err)});
+      }
     }
-    return hasil;
+    return{hasil,gagal};
   };
+  const pesanGagalUpload=(gagal:{s:StagedFoto,alasan:string}[])=>
+    `${gagal.length} foto/video gagal diunggah:\n${gagal.map(g=>"• "+g.s.file.name+" - "+g.alasan).join("\n")}`;
 
   const simpanLaporanBaru=async()=>{
     if(!form.namaLokasi.trim()){alert("Nama/lokasi proyek wajib diisi");return;}
@@ -95,11 +98,26 @@ export function ProyekLuarView({user}:{user:any}){
         divisi:user.divisi,
       }).select().single();
       if(error||!data){alert("Gagal simpan: "+(error?.message||"unknown error"));setSaving(false);return;}
+      let sisa:StagedFoto[]=[];
       if(stagedFoto.length>0){
-        const fotoBaru=await uploadStagedFoto((data as any).id,stagedFoto);
-        if(fotoBaru.length>0)await supabase.from("proyek_luar" as any).update({foto:fotoBaru}).eq("id",(data as any).id);
+        const{hasil:fotoBaru,gagal}=await uploadStagedFoto((data as any).id,stagedFoto);
+        sisa=gagal.map(g=>g.s);
+        if(fotoBaru.length>0){
+          const{error:eFoto}=await supabase.from("proyek_luar" as any).update({foto:fotoBaru}).eq("id",(data as any).id);
+          if(eFoto){
+            alertGagalSimpan(eFoto,`Simpan foto Proyek Luar ${(data as any).id}`,{aksi:"simpan foto/video",
+              catatanKoneksi:"Laporan sudah tersimpan, foto/video BELUM - tekan Upload di laporan itu untuk mengulang."});
+            sisa=stagedFoto; // file yang sudah terunggah tapi belum tercatat ikut diulang
+          }
+        }
+        if(gagal.length>0)alert(`Laporan tersimpan, tapi ${pesanGagalUpload(gagal)}\n\nLaporan dibuka - tekan "Upload" untuk mengulang.`);
       }
-      resetForm();
+      // File yang gagal TIDAK dibuang: dipindah ke antrean "Tambah Foto" laporan yang baru dibuat
+      // (dibuka otomatis), operator tinggal tekan Upload untuk mengulang.
+      setForm(blankForm);
+      stagedFoto.filter(s=>!sisa.includes(s)).forEach(s=>URL.revokeObjectURL(s.previewUrl));
+      setStagedFoto([]);
+      if(sisa.length>0){setStagedFotoTambahan(sisa);setExpandedId((data as any).id);}
       setMode("list");
       fetchLaporan();
     }catch(err:any){
@@ -114,13 +132,19 @@ export function ProyekLuarView({user}:{user:any}){
   const tambahFotoKeLaporan=async(laporan:any)=>{
     if(stagedFotoTambahan.length===0)return;
     setSavingTambahan(true);
-    const fotoBaru=await uploadStagedFoto(laporan.id,stagedFotoTambahan);
+    const{hasil:fotoBaru,gagal}=await uploadStagedFoto(laporan.id,stagedFotoTambahan);
+    let sisa=gagal.map(g=>g.s);
     if(fotoBaru.length>0){
       const newFoto=[...(laporan.foto||[]),...fotoBaru];
-      await supabase.from("proyek_luar" as any).update({foto:newFoto,updated_at:new Date().toISOString()}).eq("id",laporan.id);
+      const{error}=await supabase.from("proyek_luar" as any).update({foto:newFoto,updated_at:new Date().toISOString()}).eq("id",laporan.id);
+      if(error){
+        alertGagalSimpan(error,`Tambah foto Proyek Luar ${laporan.id}`,{aksi:"simpan foto/video",ulangi:"Upload"});
+        sisa=stagedFotoTambahan;
+      }
     }
-    stagedFotoTambahan.forEach(s=>URL.revokeObjectURL(s.previewUrl));
-    setStagedFotoTambahan([]);
+    if(gagal.length>0)alert(pesanGagalUpload(gagal)+'\n\nFile yang gagal masih di antrean - tekan "Upload" untuk mengulang.');
+    stagedFotoTambahan.filter(s=>!sisa.includes(s)).forEach(s=>URL.revokeObjectURL(s.previewUrl));
+    setStagedFotoTambahan(sisa);
     setSavingTambahan(false);
     fetchLaporan();
   };
@@ -189,7 +213,7 @@ export function ProyekLuarView({user}:{user:any}){
             <div>
               <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
                 <label style={{fontSize:11,fontWeight:700,color:"#64748b"}}>Dokumentasi Foto ({stagedFoto.length})</label>
-                <MediaPickerSheet onFiles={pilihFoto} triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:11,fontWeight:700}}>
+                <MediaPickerSheet allowVideo onFiles={pilihFoto} triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:11,fontWeight:700}}>
                   <i className="ti ti-plus" style={{fontSize:12}}/> Tambah
                 </MediaPickerSheet>
               </div>
@@ -197,7 +221,7 @@ export function ProyekLuarView({user}:{user:any}){
                 <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6}}>
                   {stagedFoto.map((s,i)=>(
                     <div key={i} style={{position:"relative",aspectRatio:"1",borderRadius:8,overflow:"hidden",background:"#f1f5f9"}}>
-                      <img src={s.previewUrl} style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                      <ThumbMedia url={s.previewUrl} video={isFileVideo(s.file)}/>
                       <button onClick={()=>batalkanFotoStaged(i)} style={{position:"absolute",top:3,right:3,width:18,height:18,borderRadius:99,
                         background:"rgba(15,23,42,0.6)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                         <i className="ti ti-x" style={{fontSize:10}}/>
@@ -256,13 +280,13 @@ export function ProyekLuarView({user}:{user:any}){
                         {fotoList.map((f:any,fi:number)=>(
                           <div key={fi} onClick={()=>setFotoViewer({fotos:fotoList,startIndex:fi,label:l.nama_lokasi})}
                             style={{aspectRatio:"1",borderRadius:8,overflow:"hidden",cursor:"pointer",background:"#f1f5f9"}}>
-                            <img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover"}}/>
+                            <ThumbMedia url={f.url} video={isVideoFoto(f)}/>
                           </div>
                         ))}
                       </div>
                     )}
                     <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:8}}>
-                      <MediaPickerSheet onFiles={(files)=>{
+                      <MediaPickerSheet allowVideo onFiles={(files)=>{
                           const dipilih=Array.from(files).map(file=>({file,previewUrl:URL.createObjectURL(file)}));
                           setStagedFotoTambahan(dipilih);
                         }} triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:11.5,fontWeight:700}}>
