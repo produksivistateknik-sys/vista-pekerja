@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
-import { VISTA_LOGO_DATA_URI } from "../lib/logoAsset";
+import { halamanCetakBerkop } from "../lib/kopSuratKonfig";
+import { asetKopHtml } from "../lib/kopSuratAsetUrl";
 import { EmptyState } from "./ui/Primitives";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -138,9 +139,10 @@ export function RekapPermintaanTab(){
     return rowsFull.filter(r=>r.nama.toLowerCase().includes(q));
   },[rowsFull,search]);
 
-  // Print - SAMA PERSIS openPrintWindow vista-teknik (window baru isi HTML mandiri, kop surat
-  // PT. VISTA INTI TEKNIK + 3 kolom tanda tangan), biar dokumen yang dicetak dari sini identik
-  // dengan yang dicetak admin/planner di vista-teknik.
+  // Print - SAMA PERSIS openPrintWindow vista-teknik (window baru isi HTML mandiri + 3 kolom tanda
+  // tangan), biar dokumen yang dicetak dari sini identik dengan yang dicetak admin/planner di vista-teknik.
+  // KOP SURAT RESMI (7 Okt 2026): kop penuh di halaman 1, kop ringkas di halaman lanjutan - lib/kopSuratKonfig.ts
+  // (SALINAN IDENTIK dari vista-teknik, cek dgn `npm run cek:kop`). Isi dokumen TIDAK berubah.
   const openPrintWindow=()=>{
     if(!selectedWo)return;
     const rows=rowsDisplayed;
@@ -148,44 +150,7 @@ export function RekapPermintaanTab(){
       ?(panelsInWo.find(p=>p.id===scopePanelId)?.nama||"-")
       :panelsInWo.map(p=>p.nama).join(", ");
     const judulWo=`WO ${selectedWo.wo}${scopePanelId?"":` (gabungan ${panelsInWo.length} panel)`}`;
-    const html=`<!doctype html>
-<html>
-<head>
-<meta charset="utf-8">
-<title>Rekap Permintaan Barang - WO ${escapeHtml(selectedWo.wo)}</title>
-<style>
-  @page { size: A4; margin: 1.8cm; }
-  * { box-sizing: border-box; }
-  body { font-family: Arial, Helvetica, sans-serif; color: #1e293b; margin: 0; padding: 0; }
-  .kop { position: relative; display: flex; align-items: center; justify-content: center; min-height: 42px; border-bottom: 3px solid #1e3a8a; padding-bottom: 16px; margin-bottom: 22px; }
-  .kop-logo { position: absolute; left: 0; top: 50%; transform: translateY(-50%); height: 34px; width: auto; }
-  .kop-company { font-size: 21px; font-weight: 800; color: #1e293b; letter-spacing: 0.4px; text-align: center; }
-  .doc-title { text-align: center; margin: 0 0 18px; }
-  .doc-title h1 { font-size: 17px; font-weight: 800; letter-spacing: 1.2px; margin: 0; color: #1e3a8a; }
-  .info-block { font-size: 12px; color: #334155; margin-bottom: 20px; line-height: 1.7; }
-  .info-block b { color: #1e293b; display: inline-block; width: 90px; }
-  table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  thead { display: table-header-group; }
-  tfoot { display: table-footer-group; }
-  tr { page-break-inside: avoid; }
-  th { background: #1e3a8a; color: #fff; text-align: left; padding: 9px 10px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  th.num, td.num { text-align: right; }
-  th.center, td.center { text-align: center; }
-  td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
-  tbody tr:nth-child(even) { background: #f8fafc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  tfoot td { padding: 9px 10px; background: #eff6ff; color: #1e3a8a; font-weight: 700; border-top: 2px solid #1e3a8a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
-  .ttd-section { margin-top: 48px; display: flex; justify-content: space-between; gap: 24px; page-break-inside: avoid; }
-  .ttd-col { flex: 1; text-align: center; font-size: 12px; }
-  .ttd-label { font-weight: 700; margin-bottom: 64px; }
-  .ttd-line { border-top: 1px dashed #94a3b8; margin: 0 8px 6px; }
-  .ttd-name { color: #64748b; font-size: 11px; }
-</style>
-</head>
-<body>
-  <div class="kop">
-    <img class="kop-logo" src="${VISTA_LOGO_DATA_URI}" />
-    <div class="kop-company">PT. VISTA INTI TEKNIK</div>
-  </div>
+    const isiHtml=`
   <div class="doc-title"><h1>REKAP PERMINTAAN BARANG</h1></div>
   <div class="info-block">
     <div><b>Proyek</b>: ${escapeHtml(selectedWo.proyek)}</div>
@@ -193,7 +158,7 @@ export function RekapPermintaanTab(){
     <div><b>Panel</b>: ${escapeHtml(panelListLabel)}</div>
     <div><b>Tanggal cetak</b>: ${escapeHtml(fmtDateTime(new Date().toISOString()))}</div>
   </div>
-  <table>
+  <table class="rekap">
     <thead><tr><th>Divisi</th><th>Nama Item</th><th class="num">Total Qty</th><th class="center">Satuan</th></tr></thead>
     <tbody>
       ${rows.map(r=>`<tr><td>${escapeHtml(DIVISI_LABEL[r.divisi]||r.divisi)}</td><td>${escapeHtml(r.nama)}</td><td class="num">${escapeHtml(r.totalQty.toLocaleString("id-ID"))}</td><td class="center">${escapeHtml(r.satuan)}</td></tr>`).join("")}
@@ -204,7 +169,40 @@ export function RekapPermintaanTab(){
     <div class="ttd-col"><div class="ttd-label">Dibuat oleh</div><div class="ttd-line"></div><div class="ttd-name">Nama: ______________</div></div>
     <div class="ttd-col"><div class="ttd-label">Diperiksa oleh</div><div class="ttd-line"></div><div class="ttd-name">Nama: ______________</div></div>
     <div class="ttd-col"><div class="ttd-label">Disetujui oleh</div><div class="ttd-line"></div><div class="ttd-name">Nama: ______________</div></div>
-  </div>
+  </div>`;
+    const kop=halamanCetakBerkop({aset:asetKopHtml(),subKopRingkas:`Rekap Permintaan Barang \u00b7 WO ${selectedWo.wo}`,isiHtml});
+    const html=`<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Rekap Permintaan Barang - WO ${escapeHtml(selectedWo.wo)}</title>
+<style>
+  ${kop.css}
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; color: #1e293b; margin: 0; padding: 0; }
+  .doc-title { text-align: center; margin: 0 0 18px; }
+  .doc-title h1 { font-size: 17px; font-weight: 800; letter-spacing: 1.2px; margin: 0; color: #1e3a8a; }
+  .info-block { font-size: 12px; color: #334155; margin-bottom: 20px; line-height: 1.7; }
+  .info-block b { color: #1e293b; display: inline-block; width: 90px; }
+  table.rekap { width: 100%; border-collapse: collapse; font-size: 12px; }
+  table.rekap thead { display: table-header-group; }
+  table.rekap tfoot { display: table-footer-group; }
+  table.rekap tr { page-break-inside: avoid; }
+  table.rekap th { background: #1e3a8a; color: #fff; text-align: left; padding: 9px 10px; font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.4px; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  table.rekap th.num, table.rekap td.num { text-align: right; }
+  table.rekap th.center, table.rekap td.center { text-align: center; }
+  table.rekap td { padding: 8px 10px; border-bottom: 1px solid #e2e8f0; }
+  table.rekap tbody tr:nth-child(even) { background: #f8fafc; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  table.rekap tfoot td { padding: 9px 10px; background: #eff6ff; color: #1e3a8a; font-weight: 700; border-top: 2px solid #1e3a8a; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .ttd-section { margin-top: 48px; display: flex; justify-content: space-between; gap: 24px; page-break-inside: avoid; }
+  .ttd-col { flex: 1; text-align: center; font-size: 12px; }
+  .ttd-label { font-weight: 700; margin-bottom: 64px; }
+  .ttd-line { border-top: 1px dashed #94a3b8; margin: 0 8px 6px; }
+  .ttd-name { color: #64748b; font-size: 11px; }
+</style>
+</head>
+<body>
+${kop.body}
 </body>
 </html>`;
     const win=window.open("","_blank","width=900,height=1100");
@@ -212,7 +210,15 @@ export function RekapPermintaanTab(){
     win.document.open();
     win.document.write(html);
     win.document.close();
-    win.onload=()=>{win.focus();win.print();};
+    // Cetak setelah gambar & font kop selesai dimuat (logo/font kop = file terpisah, bukan data URI lagi).
+    let sudahCetak=false;
+    const cetak=async()=>{
+      if(sudahCetak)return;
+      sudahCetak=true;
+      try{await (win.document as any).fonts?.ready;}catch{/* abaikan - tetap cetak */}
+      win.focus();win.print();
+    };
+    if(win.document.readyState==="complete")cetak();else win.onload=cetak;
   };
 
   const thS:any={padding:"10px 12px",fontWeight:800,fontSize:10.5,color:"#475569",textTransform:"uppercase" as const,letterSpacing:.3,textAlign:"left" as const,whiteSpace:"nowrap" as const};
