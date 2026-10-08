@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 
 // ─────────────────────────────────────────────────────────────────────────────
-// MEDIA PICKER SHEET - bottom sheet 2/3 pilihan (Kamera/Galeri/Tambahkan File)
+// MEDIA PICKER SHEET - bottom sheet pilihan (Ambil Foto / Rekam Video* / Galeri / Tambahkan File*)
 // yang dipasang di depan input file yang sudah ada di tiap lokasi upload foto.
 // TIDAK mengubah cara file diproses/disimpan - onFiles() dipanggil dengan
 // FileList yang sama persis seperti kalau input file diklik langsung, jadi
@@ -22,9 +22,16 @@ export function MediaPickerSheet({onFiles,disabled,allowVideo=false,allowAnyFile
 }){
   const[open,setOpen]=useState(false);
   const cameraRef=useRef<HTMLInputElement>(null);
+  const videoRef=useRef<HTMLInputElement>(null);
   const galleryRef=useRef<HTMLInputElement>(null);
   const fileRef=useRef<HTMLInputElement>(null);
   const mediaAccept=allowVideo?"image/*,video/*":"image/*";
+  // FIX (8 Okt 2026, "Tambah Foto langsung buka GALERI" - Nameplate & Wiring Control sejak video
+  // ditambahkan 6 Okt): input kamera dulu accept="image/*,video/*" + capture + multiple. Chrome
+  // Android (termasuk PWA dari ikon layar utama) cuma langsung membuka kamera kalau accept berisi
+  // SATU jenis media & tanpa multiple - gabungan foto+video membuat banyak HP membuka pemilih/galeri.
+  // Sekarang kamera foto & perekam video dipisah, masing-masing 1 jenis media, tanpa multiple
+  // (kamera memang cuma menghasilkan 1 file per jepretan). Pilih banyak file tetap lewat Galeri.
 
   const handlePick=(e:any)=>{
     if(e.target.files&&e.target.files.length>0)onFiles(e.target.files);
@@ -37,7 +44,8 @@ export function MediaPickerSheet({onFiles,disabled,allowVideo=false,allowAnyFile
         onClick={(e:any)=>{e.preventDefault();if(!disabled)setOpen(true);}}>
         {children}
       </label>
-      <input ref={cameraRef} type="file" accept={mediaAccept} capture="environment" multiple={multiple} disabled={disabled} style={{display:"none"}} onChange={handlePick}/>
+      <input ref={cameraRef} type="file" accept="image/*" capture="environment" disabled={disabled} style={{display:"none"}} onChange={handlePick}/>
+      {allowVideo&&<input ref={videoRef} type="file" accept="video/*" capture="environment" disabled={disabled} style={{display:"none"}} onChange={handlePick}/>}
       <input ref={galleryRef} type="file" accept={mediaAccept} multiple={multiple} disabled={disabled} style={{display:"none"}} onChange={handlePick}/>
       {allowAnyFile&&<input ref={fileRef} type="file" multiple={multiple} disabled={disabled} style={{display:"none"}} onChange={handlePick}/>}
       {open&&(
@@ -50,8 +58,15 @@ export function MediaPickerSheet({onFiles,disabled,allowVideo=false,allowAnyFile
             <button onClick={()=>{setOpen(false);cameraRef.current?.click();}}
               style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"13px 10px",background:"none",border:"none",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:600,color:"#1e293b",textAlign:"left" as const}}>
               <span style={{width:36,height:36,borderRadius:10,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📷</span>
-              {allowVideo?"Foto & Video":"Ambil Foto"}
+              Ambil Foto
             </button>
+            {allowVideo&&(
+              <button onClick={()=>{setOpen(false);videoRef.current?.click();}}
+                style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"13px 10px",background:"none",border:"none",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:600,color:"#1e293b",textAlign:"left" as const}}>
+                <span style={{width:36,height:36,borderRadius:10,background:"#fdf2f8",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>🎥</span>
+                Rekam Video
+              </button>
+            )}
             <button onClick={()=>{setOpen(false);galleryRef.current?.click();}}
               style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"13px 10px",background:"none",border:"none",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:600,color:"#1e293b",textAlign:"left" as const}}>
               <span style={{width:36,height:36,borderRadius:10,background:"#f0fdf4",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>🖼️</span>
