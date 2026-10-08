@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { Card } from "./ui/Primitives";
 import { FotoZoomViewerPekerja } from "./FotoZoomViewerPekerja";
 import { ThumbMedia } from "./ui/ThumbMedia";
 import { isVideoFoto } from "../lib/mediaThumb";
+import { kataCari, cocokSemuaKata, bacaSesi, tulisSesi } from "../lib/cariArsip";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ARSIP SEKSI - tab "Arsip" per divisi (Warehouse/QS/QC/Pasang Komponen), read-only browsing.
@@ -54,17 +55,33 @@ const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
 export function ArsipSeksiView({seksi}:{seksi:string}){
   const[rows,setRows]=useState<any[]>([]);
   const[loading,setLoading]=useState(true);
-  const[search,setSearch]=useState("");
+  const[gagalMuat,setGagalMuat]=useState(false);
+  // Ketikan pencarian diingat per-tab (sessionStorage, 8 Okt 2026) - keluar ke menu lalu masuk lagi tetap.
+  const[search,setSearch]=useState(()=>bacaSesi("arsipseksi_cari_"+seksi,""));
+  useEffect(()=>{tulisSesi("arsipseksi_cari_"+seksi,search);},[search,seksi]);
   const[expandedWo,setExpandedWo]=useState<Record<string,boolean>>({});
   const[lightbox,setLightbox]=useState<{fotos:any[],startIndex:number,label:string}|null>(null);
 
+  // BUG FIX (8 Okt 2026): dulu tanpa try/catch - koneksi gagal = "Memuat arsip..." selamanya; dan
+  // tiap event realtime daftar diganti "Memuat arsip..." sebentar (kedip). Sekarang tulisan memuat
+  // cuma di muatan PERTAMA, muat ulang berikutnya diam-diam (data lama tetap tampil).
+  const sudahMuat=useRef(false);
   const fetchRows=async()=>{
-    setLoading(true);
-    const data=await fetchAllPaged((from,to)=>supabase.from("panel_seksi_archived").select("*").eq("seksi",seksi).order("diarsipkan_pada",{ascending:false}).range(from,to));
-    setRows(data);
-    setLoading(false);
+    if(!sudahMuat.current)setLoading(true);
+    try{
+      const data=await fetchAllPaged((from,to)=>supabase.from("panel_seksi_archived").select("*").eq("seksi",seksi).order("diarsipkan_pada",{ascending:false}).range(from,to));
+      setRows(data);
+      setGagalMuat(false);
+      sudahMuat.current=true;
+    }catch(err){
+      console.error(`[Arsip ${seksi}] gagal memuat arsip:`,err);
+      setGagalMuat(true);
+    }finally{
+      setLoading(false);
+    }
   };
   useEffect(()=>{
+    sudahMuat.current=false;
     fetchRows();
     const ch=supabase.channel("realtime-panel-seksi-archived-"+seksi)
       .on("postgres_changes",{event:"*",schema:"public",table:"panel_seksi_archived",filter:`seksi=eq.${seksi}`},()=>fetchRows())
@@ -100,9 +117,9 @@ export function ArsipSeksiView({seksi}:{seksi:string}){
     return row.data?.photos||[];
   };
 
-  const filtered=rows.filter((r:any)=>
-    !search||r.panel_nama?.toLowerCase().includes(search.toLowerCase())||r.proyek_snapshot?.toLowerCase().includes(search.toLowerCase())||r.wo_number_snapshot?.toLowerCase().includes(search.toLowerCase())
-  );
+  // Pencarian per-kata (lib/cariArsip.ts, 8 Okt 2026) - dulu ketikan gabungan "071 pp" = 0 hasil.
+  const kata=kataCari(search);
+  const filtered=rows.filter((r:any)=>cocokSemuaKata(kata,r.panel_nama,r.proyek_snapshot,r.wo_number_snapshot,r.komponen_nama,r.kode));
 
   const grouped=useMemo(()=>{
     const map:Record<string,{key:string,wo_number:string,proyek:string,rows:any[]}>={};
@@ -131,19 +148,31 @@ export function ArsipSeksiView({seksi}:{seksi:string}){
           style={{height:32,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:12,width:200,outline:"none",fontFamily:"inherit"}}/>
       </div>
 
+      {gagalMuat&&(
+        <div style={{display:"flex",alignItems:"center",gap:8,padding:"9px 12px",marginBottom:10,borderRadius:10,background:"#fef2f2",border:"1px solid #fecaca",color:"#b91c1c",fontSize:12}}>
+          <span style={{flex:1}}>{rows.length?"Gagal memuat ulang arsip - yang tampil mungkin belum terbaru.":"Gagal memuat arsip - koneksi lambat/putus."}</span>
+          <button onClick={()=>fetchRows()} style={{border:"none",background:"#b91c1c",color:"#fff",borderRadius:8,padding:"5px 10px",fontSize:11.5,fontWeight:700,cursor:"pointer",flexShrink:0}}>Coba lagi</button>
+        </div>
+      )}
       {loading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12}}>Memuat arsip...</div>
-      ):grouped.length===0?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
+      ):rows.length===0?(
+        !gagalMuat&&<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
           Belum ada yang diarsipkan.
+        </div>
+      ):grouped.length===0?(
+        <div style={{textAlign:"center",padding:"28px 16px",color:"#64748b",fontSize:12.5,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
+          <div style={{fontWeight:700,color:"#0f172a"}}>Tidak ada WO, proyek, atau panel yang cocok dengan “{search.trim()}”.</div>
+          <button onClick={()=>setSearch("")} style={{marginTop:12,border:"1.5px solid #e2e8f0",background:"#fff",color:"#1d4ed8",borderRadius:9,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Hapus pencarian</button>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
           {grouped.map(g=>{
-            const isExp=!!expandedWo[g.key];
+            // Saat mencari, WO yang cocok langsung terbuka (kecuali operator menutupnya sendiri).
+            const isExp=expandedWo[g.key]??kata.length>0;
             return(
               <Card key={g.key} style={{padding:0,overflow:"hidden"}}>
-                <div onClick={()=>setExpandedWo(prev=>({...prev,[g.key]:!prev[g.key]}))}
+                <div onClick={()=>setExpandedWo(prev=>({...prev,[g.key]:!isExp}))}
                   style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer",background:isExp?"#f8faff":"#fff"}}>
                   <span style={{fontSize:12,color:"#94a3b8"}}>{isExp?"▼":"▶"}</span>
                   <div style={{flex:1,minWidth:0}}>

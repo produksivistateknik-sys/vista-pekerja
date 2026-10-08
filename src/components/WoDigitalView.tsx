@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { fetchAllPanels } from "../lib/panelHelpers";
 import { SectionCard, EmptyState, Badge } from "./ui/Primitives";
+import { kataCari, cocokSemuaKata } from "../lib/cariArsip";
 
 // Paginasi eksplisit (BUG FIX 5 Sep 2026) - Supabase/PostgREST default mentok 1000 baris per
 // request tanpa .range() (sama kelas bug fetchAllPanels di panelHelpers.tsx). work_orders/
@@ -43,7 +44,7 @@ const fmtTgl=(iso?:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day:"n
 //   Level 3: viewer - TETAP window.open() (lihat catatan di bawah), bukan native embed.
 //
 // 2 tampilan: Aktif (work_orders.is_archived=false, langsung tampil semua tanpa perlu
-// ketik) dan Arsip (is_archived=true, search-first - historis, sama pola ArsipQCView.tsx).
+// ketik) dan Arsip (is_archived=true, historis - sejak 8 Okt 2026 juga langsung tampil, WO terbaru dulu).
 // Arsip personal per-operator DIBATALKAN (31 Agu 2026) - cukup 1 arsip resmi/bersama.
 //
 // VIEWER (1 Sep 2026, final - TIDAK diubah oleh redesign 6 Sep 2026 di atas) - sempat dicoba
@@ -103,14 +104,17 @@ export function WoDigitalView({registerBackHandler}:{registerBackHandler?:(fn:((
   },[]);
 
   const q=search.trim().toLowerCase();
+  // REVISI (8 Okt 2026): tab Arsip dulu kosong sampai operator mengetik - sekarang langsung tampil
+  // (WO terbaru dulu = id terbesar). Pencarian per-kata (lib/cariArsip.ts) atas nomor WO, proyek &
+  // nama panel - dulu ketikan gabungan "071 suvarna" = 0 hasil.
   const filteredWo=useMemo(()=>{
-    if(viewMode==="arsip"&&!q)return[];
-    return woList.filter(w=>{
+    const kata=kataCari(q);
+    const hasil=woList.filter(w=>{
       if(viewMode==="arsip"?!w.is_archived:!!w.is_archived)return false;
-      if(q&&!(w.wo||"").toLowerCase().includes(q)&&!(w.proyek||"").toLowerCase().includes(q))return false;
-      return true;
+      return cocokSemuaKata(kata,w.wo,w.proyek,...panelsAll.filter(p=>p.wo_id===w.id).map(p=>p.nama));
     });
-  },[woList,q,viewMode]);
+    return viewMode==="arsip"?hasil.sort((a,b)=>b.id-a.id):hasil;
+  },[woList,panelsAll,q,viewMode]);
 
   const panelsOfWo=(woId:number)=>panelsAll.filter(p=>p.wo_id===woId);
   const currentRevOfPanel=(panelId:number)=>{
@@ -169,9 +173,7 @@ export function WoDigitalView({registerBackHandler}:{registerBackHandler?:(fn:((
             <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari nomor WO / proyek..."
               style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
 
-            {viewMode==="arsip"&&!q?(
-              <EmptyState title="Cari WO dulu" description="Ketik nomor WO atau nama proyek untuk menampilkan arsip." variant="box-paper"/>
-            ):loading?(
+            {loading?(
               <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
             ):filteredWo.length===0?(
               <EmptyState title="Tidak ada" description="Tidak ada WO yang cocok." variant="box-paper"/>

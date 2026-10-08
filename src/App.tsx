@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, lazy, Suspense } from "react";
 import { supabase } from "./lib/supabase";
 import { isPushSupported, getPushPermissionState, subscribeToPush } from "./lib/pushNotif";
 import { TODAY, addDays } from "./lib/dateHelpers";
@@ -190,7 +190,11 @@ export default function App(){
   // Jaga-jaga (safety net) - kalau view ganti (selectedMenu berubah) tapi handler lama entah
   // kenapa gak sempat unregister sendiri (harusnya sudah via cleanup useEffect di tiap view),
   // reset paksa di sini biar gak ada handler basi milik view LAMA nyangkut kepakai buat view BARU.
-  useEffect(()=>{backHandlerRef.current=null;},[selectedMenu]);
+  // FIX (8 Okt 2026): useLayoutEffect, BUKAN useEffect - efek pasif induk jalan SETELAH efek pasif
+  // anak, jadi reset ini dulu menghapus handler yang BARU SAJA didaftarkan view baru. Gak kelihatan
+  // selama view selalu mulai di level 0, tapi Arsip QC memulihkan WO terpilih dari sessionStorage
+  // (mulai di level 2) -> "Kembali" langsung keluar ke menu. Layout effect jalan sebelum efek pasif.
+  useLayoutEffect(()=>{backHandlerRef.current=null;},[selectedMenu]);
   // FIX (21 Sep 2026, restrukturisasi navigasi MEKANIK) - dulu deteksi "operator Potong" cek
   // nama sub_bagian PERSIS "Potong". Sejak Potong/Bending/Stel/Finishing digabung jadi 1 login
   // "Mekanik", sub_bagian operator Potong sekarang bernilai "Mekanik" - kalau tetap dicek string
@@ -563,7 +567,7 @@ export default function App(){
                 </div>
                 {selectedMenu==="permintaan"?<PermintaanView user={user} registerBackHandler={registerBackHandler}
                   navTarget={permintaanNavTarget} onNavTargetConsumed={()=>setPermintaanNavTarget(null)}/>
-                  :selectedMenu==="arsip"&&arsipSeksi==="qc"?<ArsipQCView/>
+                  :selectedMenu==="arsip"&&arsipSeksi==="qc"?<ArsipQCView registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
                   :selectedMenu==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas} registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="riwayat"?<RiwayatKerjaView proses={prosesRiwayat} label={cfg?.label||user.divisi} icon={cfg?.icon||"🕘"} color={cfg?.color||"#d97706"} registerBackHandler={registerBackHandler}/>
