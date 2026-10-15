@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { laporError } from "./laporError";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Status koneksi global + retry - dipisah dari App.tsx (Sprint 5, 5 Agu 2026)
@@ -74,6 +75,8 @@ export function klasifikasiErrorSimpan(err:any):{jenis:"server"|"koneksi";kode:s
 export function alertGagalSimpan(err:any,konteks:string,opts:{ulangi?:string;catatanServer?:string;catatanKoneksi?:string;aksi?:string}={}){
   console.error(`[${konteks}] gagal:`,err);
   const k=klasifikasiErrorSimpan(err);
+  // (16 Okt 2026) catat ke log_error_app (Kesehatan Data, filter Operator). Best-effort, tidak pernah melempar.
+  laporError('gagal_simpan',{message:`${konteks}: ${k.pesan}`,code:k.kode||undefined,stack:err?.stack},{aksi:opts.aksi||'simpan progress',jenisGagal:k.jenis});
   const aksi=opts.aksi||"simpan progress";
   if(k.jenis==="server"){
     alert(`Gagal ${aksi} - server menolak data (kode ${k.kode}): ${k.pesan}\n\nIni BUKAN masalah koneksi. ${opts.catatanServer||"Periksa angka yang diisi, atau laporkan ke admin beserta pesan ini."}`);

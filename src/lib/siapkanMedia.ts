@@ -10,6 +10,7 @@
 //           kirim file asli. Setelah itu wajib <= BATAS_VIDEO_MB.
 // - Lainnya (QC "Tambahkan File"): dikirim apa adanya.
 import { compressImageNp } from './fotoHelpers'
+import { laporError } from './laporError'
 import { uploadToR2 } from './r2Client'
 
 export const BATAS_VIDEO_MB = 50
@@ -95,7 +96,14 @@ export async function siapkanMediaUpload(file: File): Promise<MediaSiapUpload> {
 export async function unggahMediaKeR2(file: File, prefixKey: string): Promise<{ url: string; mime: string; name: string }> {
   const m = await siapkanMediaUpload(file)
   const key = `${prefixKey}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${m.ext}`
-  const url = await uploadToR2(m.blob, key, m.contentType, { batasWaktuIzinMs: 30_000, batasWaktuUnggahMs: batasWaktuUnggahMs(m.blob) })
+  let url: string
+  try {
+    url = await uploadToR2(m.blob, key, m.contentType, { batasWaktuIzinMs: 30_000, batasWaktuUnggahMs: batasWaktuUnggahMs(m.blob) })
+  } catch (err: any) {
+    // (16 Okt 2026) catat ke log_error_app (Kesehatan Data) lalu lempar lagi - penanganan pemanggil TIDAK berubah.
+    laporError('upload', { message: `Gagal upload ${m.mime.startsWith('video') ? 'video' : 'foto'} (${prefixKey.split('/')[0]}): ${err?.message || err}`, stack: err?.stack }, { ukuranKb: Math.round(m.blob.size / 1024) })
+    throw err
+  }
   // Nama ikut ekstensi file yang BENAR-BENAR tersimpan (foto HEIC/PNG dikompres jadi .jpg, video jadi .mp4)
   // - dipakai sbg nama file saat diunduh.
   const dot = file.name.lastIndexOf('.')
