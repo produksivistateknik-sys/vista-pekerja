@@ -164,20 +164,30 @@ export function PermintaanGudangTab({user}:{user:any}){
   const[unread,setUnread]=useState<Record<"BBMB"|"BBMU",boolean>>({BBMB:false,BBMU:false});
 
   const checkUnread=async()=>{
-    const{data:readState}=await supabase.from("gudang_read_state").select("*");
-    const readMap:Record<string,string>={};
-    (readState||[]).forEach((r:any)=>{readMap[r.tab]=r.last_read_at;});
-    const results:Record<"BBMB"|"BBMU",boolean>={BBMB:false,BBMU:false};
-    for(const t of["BBMB","BBMU"] as const){
-      const lastRead=readMap[t]||"1970-01-01T00:00:00Z";
-      const{data:perms}=await supabase.from("permintaan").select("id").eq("jenis",t);
-      const permIds=(perms||[]).map((p:any)=>p.id);
-      if(permIds.length===0){results[t]=false;continue;}
-      const{count}=await supabase.from("permintaan_item").select("id",{count:"exact",head:true})
-        .in("permintaan_id",permIds).eq("status","pending").gt("disetujui_admin_at",lastRead);
-      results[t]=(count||0)>0;
-    }
-    setUnread(results);
+    // (15 Okt 2026, audit paginasi) dulu permintaan per jenis dibaca tanpa .range() (BBMB 218 baris & tumbuh cepat ->
+    // terpotong di 1000) & tanpa cek error. Sekarang semua halaman, id dicek per kelompok 200 (batas panjang URL),
+    // semua hasil dicek; gagal = tanda "belum dibaca" TIDAK diubah (bukan diam-diam jadi false).
+    try{
+      const{data:readState,error:rsErr}=await supabase.from("gudang_read_state").select("*");
+      if(rsErr)throw rsErr;
+      const readMap:Record<string,string>={};
+      (readState||[]).forEach((r:any)=>{readMap[r.tab]=r.last_read_at;});
+      const results:Record<"BBMB"|"BBMU",boolean>={BBMB:false,BBMU:false};
+      for(const t of["BBMB","BBMU"] as const){
+        const lastRead=readMap[t]||"1970-01-01T00:00:00Z";
+        const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("id").eq("jenis",t).order("id").range(from,to));
+        const permIds=perms.map((p:any)=>p.id);
+        let ada=false;
+        for(let i=0;i<permIds.length&&!ada;i+=200){
+          const{count,error:cErr}=await supabase.from("permintaan_item").select("id",{count:"exact",head:true})
+            .in("permintaan_id",permIds.slice(i,i+200)).eq("status","pending").gt("disetujui_admin_at",lastRead);
+          if(cErr)throw cErr;
+          ada=(count||0)>0;
+        }
+        results[t]=ada;
+      }
+      setUnread(results);
+    }catch(err:any){console.error("[Gudang] gagal cek permintaan belum dibaca:",err);}
   };
   const markRead=async(t:"BBMB"|"BBMU")=>{
     setUnread(prev=>({...prev,[t]:false}));

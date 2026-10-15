@@ -1,6 +1,7 @@
 import { useState, useMemo, useEffect, useRef } from "react";
 import { labelDurasiTimer } from "../lib/timerHelpers";
 import { supabase } from "../lib/supabase";
+import { bacaSemuaHalaman } from "../lib/bacaSemua";
 import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVISI_CONFIG, QC_ITEMS, BUSBAR_KOMPONEN_VALID } from "../lib/panelTypes";
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal } from "../lib/koneksi";
@@ -65,12 +66,15 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   const [viewDate,setViewDate]=useState(hariKerjaAwal);
   const [bomPanelTypes,setBomPanelTypes]=useState<any>({});
   useEffect(()=>{
+    // (15 Okt 2026, audit paginasi) bom_master dibaca semua halaman + semua hasil dicek. Gagal = konfigurasi
+    // komponen lama/statis tetap dipakai (tidak diganti data setengah).
     Promise.all([
-      supabase.from("bom_master").select("*"),
+      bacaSemuaHalaman((dari,sampai)=>supabase.from("bom_master").select("*").order("id").range(dari,sampai)),
       supabase.from("panel_type_meta").select("*"),
       supabase.from("panel_wp_meta").select("*"),
-    ]).then(([bomRes,typeMetaRes,wpMetaRes]:any)=>{
-      const data=bomRes.data;
+    ]).then(([bomRows,typeMetaRes,wpMetaRes]:any)=>{
+      if(typeMetaRes.error||wpMetaRes.error){console.error("[Operator] gagal memuat meta jenis panel:",typeMetaRes.error||wpMetaRes.error);return;}
+      const data=bomRows;
       if(!data||data.length===0)return;
       const grouped:any={};
       data.forEach((b:any)=>{
@@ -109,7 +113,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         result[tipe]={label:typeMeta?.label||tipe,wps};
       });
       setBomPanelTypes(result);
-    });
+    }).catch((err:any)=>{console.error("[Operator] gagal memuat Master Data BOM (dipakai konfigurasi lama):",err);});
   },[]);
   // BUG FIX (7 Agu 2026): status pipeline (computeProsesStatus) butuh tau proses APA AJA yang
   // relevan buat kode+tipe_panel ini, biar gak nge-gate ke proses yang gak relevan (progress-nya

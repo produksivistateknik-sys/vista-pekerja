@@ -7,6 +7,7 @@ import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip, updateComponentProcessProgressPhotos, batalkanSudahDisimpan100 } from "../lib/componentProcessProgress";
 import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
 import { bacaSemuaProsesRelevan } from "../lib/prosesRelevan";
+import { bacaSemuaHalaman } from "../lib/bacaSemua";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
 import { hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { unggahMediaKeR2, isFileVideo } from "../lib/siapkanMedia";
@@ -108,15 +109,17 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     if(!silent)setLoading(true);
     // (15 Okt 2026) bom_proses_relevan lewat bacaSemuaProsesRelevan (paginasi) - dulu select("*") tanpa range,
     // terpotong di 1000 baris (tabel sudah 1005). Gagal baca = daftar TIDAK diganti data setengah (lihat bawah).
-    const[panels,{data:bomRows},relevanRows]=await Promise.all([
+    const[panels,bomRows,relevanRows]=await Promise.all([
       // Narrow select (audit egress Agu 2026) - checklist WAJIB full (ini core data view ini),
       // tapi ~12 kolom JSON histori divisi lain (qc_checklist, nameplate/yellowmark/qs/
       // warehouse/busbar dll) gak kepakai sama sekali di sini.
       fetchAllPanels("id,wo_id,nama,tipe,checklist,pasang_komponen_photos"),
-      supabase.from("bom_master").select("kode_komponen,nama_komponen,tipe_panel"),
+      // (15 Okt 2026) bom_master semua halaman; gagal = null (lihat cek di bawah, data lama tetap)
+      bacaSemuaHalaman((dari,sampai)=>supabase.from("bom_master").select("kode_komponen,nama_komponen,tipe_panel").order("id").range(dari,sampai))
+        .catch((err:any)=>{console.error("[Pasang Komponen] gagal memuat bom_master:",err);return null;}),
       bacaSemuaProsesRelevan().catch((err:any)=>{console.error("[Pasang Komponen] gagal memuat proses relevan:",err);return null;}),
     ]);
-    if(!relevanRows){
+    if(!relevanRows||!bomRows){
       if(!silent)alert("Gagal memuat data proses komponen. Periksa koneksi lalu buka ulang halaman ini.");
       setLoading(false);
       return;
