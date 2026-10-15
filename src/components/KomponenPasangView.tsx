@@ -6,6 +6,7 @@ import { withRetry, alertGagalSimpan } from "../lib/koneksi";
 import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip, updateComponentProcessProgressPhotos, batalkanSudahDisimpan100 } from "../lib/componentProcessProgress";
 import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
+import { bacaSemuaProsesRelevan } from "../lib/prosesRelevan";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
 import { hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { unggahMediaKeR2, isFileVideo } from "../lib/siapkanMedia";
@@ -105,14 +106,21 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
   // pun.
   const fetchData=async(silent=false)=>{
     if(!silent)setLoading(true);
-    const[panels,{data:bomRows},{data:relevanRows}]=await Promise.all([
+    // (15 Okt 2026) bom_proses_relevan lewat bacaSemuaProsesRelevan (paginasi) - dulu select("*") tanpa range,
+    // terpotong di 1000 baris (tabel sudah 1005). Gagal baca = daftar TIDAK diganti data setengah (lihat bawah).
+    const[panels,{data:bomRows},relevanRows]=await Promise.all([
       // Narrow select (audit egress Agu 2026) - checklist WAJIB full (ini core data view ini),
       // tapi ~12 kolom JSON histori divisi lain (qc_checklist, nameplate/yellowmark/qs/
       // warehouse/busbar dll) gak kepakai sama sekali di sini.
       fetchAllPanels("id,wo_id,nama,tipe,checklist,pasang_komponen_photos"),
       supabase.from("bom_master").select("kode_komponen,nama_komponen,tipe_panel"),
-      supabase.from("bom_proses_relevan").select("*"),
+      bacaSemuaProsesRelevan().catch((err:any)=>{console.error("[Pasang Komponen] gagal memuat proses relevan:",err);return null;}),
     ]);
+    if(!relevanRows){
+      if(!silent)alert("Gagal memuat data proses komponen. Periksa koneksi lalu buka ulang halaman ini.");
+      setLoading(false);
+      return;
+    }
     // AUDIT FIX (13 Sep 2026, "nama komponen salah/ketuker") - dulu kMap cuma di-key pakai
     // kode_komponen doang, TANPA tipe_panel. bom_master itu SATU tabel BERISI SEMUA tipe panel
     // sekaligus, dan kode yang SAMA (mis. "WM.7") berarti KOMPONEN FISIK BEDA TOTAL tergantung
