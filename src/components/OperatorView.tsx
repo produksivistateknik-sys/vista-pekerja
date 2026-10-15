@@ -5,6 +5,7 @@ import { bacaSemuaHalaman } from "../lib/bacaSemua";
 import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVISI_CONFIG, QC_ITEMS, BUSBAR_KOMPONEN_VALID } from "../lib/panelTypes";
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal } from "../lib/koneksi";
+import { tutupTimerKomponenSelesai } from "../lib/tutupTimerKomponen";
 import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress } from "../lib/componentProcessProgress";
 import {
@@ -1092,6 +1093,9 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         try{await stopTimer(pid,panelId,kode,proses,tahap);}catch{/* best-effort, progress utama udah aman */}
       }
     }
+    // (15 Okt 2026) Jaring kedua: timer yang TIDAK ada di state perangkat ini / milik operator di luar tim
+    // penyimpan (mulai dari HP lain) - dibaca langsung dari DB & ditutup. Lihat lib/tutupTimerKomponen.ts.
+    await tutupTimerKomponenSelesai(panelId,kode,proses,tahap);
   };
 
   const cekDanKirimNotifikasiAvailable=async(pekerjaId:number,panelId:number,kode:string,proses:string)=>{
@@ -1767,6 +1771,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (simpanSectionPaintingRendam):",error);})
             .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (simpanSectionPaintingRendam) - ccp bisa nyangkut basi:",err))
         ));
+        // (15 Okt 2026) komponen yang jadi 100%: tutup SEMUA timer yang masih jalan (termasuk operator di luar
+        // tim section ini, mis. PUTRA PAINTING FS.2 9 Okt). Best-effort, section sudah tersimpan.
+        for(const e of ccpEntriesPanel){
+          if((Number(newChecklist[e.kode]?.progress?.[proses])||0)>=100)await tutupTimerKomponenSelesai(Number(panelId),e.kode,proses,null);
+        }
       }catch(err){
         // FIX (29 Sep 2026) - dulu catch polos & pesan selalu "koneksi bermasalah" (luput dari
         // perbaikan ff74471 karena kalimatnya beda) - sekarang detail di-log + alasan per panel.

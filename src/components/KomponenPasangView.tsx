@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan } from "../lib/koneksi";
+import { tutupTimerKomponenSelesai } from "../lib/tutupTimerKomponen";
 import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip, updateComponentProcessProgressPhotos, batalkanSudahDisimpan100 } from "../lib/componentProcessProgress";
 import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
@@ -494,6 +495,11 @@ Pastikan SEMUA komponen benar-benar sudah terpasang. Kalau ternyata salah, arsip
       // komponen langsung hilang dari card aktif, masuk arsip" - bukan cuma nunjukin badge
       // "Sudah Diarsip" doang sambil kartu tetap nangkring di situ.
       setArsipMap(prev=>({...prev,[`${panel.id}|${kode}`]:pct}));
+      // (15 Okt 2026) Setelah diarsip kartu komponen HILANG dari layar -> timer yang masih jalan tidak bisa
+      // distop lagi dari UI (5 timer ILHAM WM.2 ASSEMBLING 10 Okt nyangkut 5 hari). Tutup semua timer tahap ini
+      // utk komponen tsb (milik siapa pun). Best-effort, progress & arsip sudah tersimpan.
+      await tutupTimerKomponenSelesai(panel.id,kode,"PASANG KOMPONEN",tugas.tahap||null);
+      fetchTimerAktif();
       alert("Progress tersimpan & diarsipkan.");
     }catch(err:any){
       // (29 Sep 2026) dulu "Gagal simpan: <pesan>" / "koneksi bermasalah" apapun langkahnya.
