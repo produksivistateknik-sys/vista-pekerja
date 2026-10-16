@@ -4,6 +4,7 @@ import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai } from "../lib/tutupTimerKomponen";
+import { catatCheckpoint } from "../lib/catatCheckpoint";
 import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip, updateComponentProcessProgressPhotos, batalkanSudahDisimpan100 } from "../lib/componentProcessProgress";
 import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
@@ -244,11 +245,11 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         }
         return hasil;
       });
-      if(error){alertGagalSimpan(error,`Mulai timer PASANG KOMPONEN ${kode} panel ${panelId}`,{aksi:"mulai timer",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
+      if(error){alertGagalSimpan(error,`Mulai timer PASANG KOMPONEN ${kode} panel ${panelId}`,{ref:{panelId,kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap},aksi:"mulai timer",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
       setTimerAktif(prev=>({...prev,[tKey]:data}));
     }catch(err:any){
       // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama lib/koneksi.ts.
-      alertGagalSimpan(err,`Mulai timer PASANG KOMPONEN ${kode} panel ${panelId}`,{aksi:"mulai timer",ulangi:"Mulai",catatanServer:"Laporkan ke admin beserta pesan ini."});
+      alertGagalSimpan(err,`Mulai timer PASANG KOMPONEN ${kode} panel ${panelId}`,{ref:{panelId,kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap},aksi:"mulai timer",ulangi:"Mulai",catatanServer:"Laporkan ke admin beserta pesan ini."});
     }finally{
       setTimerLoading(null);
     }
@@ -260,11 +261,11 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     setTimerLoading(tKey);
     try{
       const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id));
-      if(error){alertGagalSimpan(error,`Selesai-in timer PASANG KOMPONEN ${kode} panel ${panelId}`,{aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
+      if(error){alertGagalSimpan(error,`Selesai-in timer PASANG KOMPONEN ${kode} panel ${panelId}`,{ref:{panelId,kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap},aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
       setTimerAktif(prev=>{const n={...prev};delete n[tKey];return n;});
     }catch(err:any){
       // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama lib/koneksi.ts.
-      alertGagalSimpan(err,`Selesai-in timer PASANG KOMPONEN ${kode} panel ${panelId}`,{aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
+      alertGagalSimpan(err,`Selesai-in timer PASANG KOMPONEN ${kode} panel ${panelId}`,{ref:{panelId,kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap},aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
     }finally{
       setTimerLoading(null);
     }
@@ -351,7 +352,7 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
     // Cek error (2 Okt 2026) - dulu hasil RPC diabaikan (silent fail, CLAUDE.md A.2).
     const{error:clErr}=await withRetry(()=>mergePanelChecklistDalam(panel.id,{[kode]:{lama:freshChecklist[kode],baru:newCl}}));
-    if(clErr){alertGagalSimpan(clErr,`Simpan persen Pasang Komponen ${kode} panel ${panel.id}`,{aksi:"simpan persen"});return;}
+    if(clErr){alertGagalSimpan(clErr,`Simpan persen Pasang Komponen ${kode} panel ${panel.id}`,{ref:{panelId:panel.id,kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap},aksi:"simpan persen"});return;}
     // FASE 2 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, checklist di atas TETAP
     // sumber kebenaran yang dibaca semua consumer lama (Task Monitoring dkk BELUM diubah).
     // Best-effort SENGAJA (console.error, TIDAK alert/blok operator) - checklist di atas sudah
@@ -425,9 +426,9 @@ Pastikan SEMUA komponen benar-benar sudah terpasang. Kalau ternyata salah, arsip
       if(panelErr)throw panelErr;
       progressTersimpan=true;
       try{
-        const{error:cpErr}=await withRetry(()=>supabase.from("progress_checkpoint_log").insert({
+        const{error:cpErr}=await catatCheckpoint({
           panel_id:panel.id,kode_komponen:kode,proses:"PASANG KOMPONEN",checkpoint:combined,pekerja_nama:user.nama,tanggal:TODAY,
-        }));
+        });
         if(cpErr)console.error(`[Simpan Pasang Komponen ${kode}] tersimpan, tapi insert progress_checkpoint_log gagal:`,cpErr);
       }catch(cpErr){console.error(`[Simpan Pasang Komponen ${kode}] tersimpan, tapi insert progress_checkpoint_log gagal (retry habis):`,cpErr);}
       setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,checklist:newChecklist}:p));
@@ -512,7 +513,7 @@ Pastikan SEMUA komponen benar-benar sudah terpasang. Kalau ternyata salah, arsip
         ?"Progress SUDAH tersimpan, tapi BELUM diarsipkan - tekan Simpan Progress lagi untuk mengarsipkan."
         :"Progress BELUM tersimpan - data di layar TETAP ADA, tekan Simpan Progress lagi.";
       if(dariSupabase){
-        alertGagalSimpan(err,`Simpan Pasang Komponen ${kode} panel ${panel.id} (langkah: ${langkah})`,{
+        alertGagalSimpan(err,`Simpan Pasang Komponen ${kode} panel ${panel.id} (langkah: ${langkah})`,{ref:{panelId:panel.id,kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap},
           aksi:langkah,catatanServer:status+" Kalau terulang, laporkan ke admin beserta pesan ini.",catatanKoneksi:status,
         });
       }else{

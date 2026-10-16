@@ -72,16 +72,27 @@ export function klasifikasiErrorSimpan(err:any):{jenis:"server"|"koneksi";kode:s
 // koneksi); catatanServer/catatanKoneksi = kalimat tambahan opsional per konteks pemanggil.
 // `aksi` (29 Sep 2026) = kata kerja di judul pesan ("mulai timer", "selesai-in timer", dst) -
 // default "simpan progress" biar pemanggil lama gak berubah.
-export function alertGagalSimpan(err:any,konteks:string,opts:{ulangi?:string;catatanServer?:string;catatanKoneksi?:string;aksi?:string}={}){
+// `ref` (16 Okt 2026) = panel/komponen/proses yang gagal disimpan - ikut ke log_error_app supaya Kesehatan Data (K14)
+// bisa mengelompokkan gagal berulang per komponen & mengecek apakah akhirnya tersimpan.
+export type RefSimpan={panelId?:number|string;kode?:string;proses?:string;tahap?:string|null};
+export function alertGagalSimpan(err:any,konteks:string,opts:{ulangi?:string;catatanServer?:string;catatanKoneksi?:string;aksi?:string;ref?:RefSimpan}={}){
   console.error(`[${konteks}] gagal:`,err);
   const k=klasifikasiErrorSimpan(err);
   // (16 Okt 2026) catat ke log_error_app (Kesehatan Data, filter Operator). Best-effort, tidak pernah melempar.
-  laporError('gagal_simpan',{message:`${konteks}: ${k.pesan}`,code:k.kode||undefined,stack:err?.stack},{aksi:opts.aksi||'simpan progress',jenisGagal:k.jenis});
+  const ref=opts.ref||{};
+  laporError('gagal_simpan',{message:`${konteks}: ${k.pesan}`,code:k.kode||undefined,stack:err?.stack},{aksi:opts.aksi||'simpan progress',jenisGagal:k.jenis,
+    panelId:ref.panelId!=null?Number(ref.panelId):undefined,kode:ref.kode,proses:ref.proses,tahap:ref.tahap||undefined,
+    online:typeof navigator!=='undefined'?navigator.onLine:undefined,
+    kunciKelompok:ref.kode?[ref.panelId,ref.kode,ref.proses,ref.tahap||''].join('|'):undefined});
   const aksi=opts.aksi||"simpan progress";
   if(k.jenis==="server"){
     alert(`Gagal ${aksi} - server menolak data (kode ${k.kode}): ${k.pesan}\n\nIni BUKAN masalah koneksi. ${opts.catatanServer||"Periksa angka yang diisi, atau laporkan ke admin beserta pesan ini."}`);
   } else {
-    alert(`Gagal ${aksi} ke server - koneksi lambat/putus.${opts.catatanKoneksi?" "+opts.catatanKoneksi:opts.ulangi?` Coba tekan ${opts.ulangi} lagi.`:""}`);
+    // (16 Okt 2026) pesan koneksi dibuat tegas: data BELUM tersimpan (kasus SISWOYO 16 Okt: "Kunci Progress" ditekan 3x).
+    const offline=typeof navigator!=="undefined"&&navigator.onLine===false;
+    alert(`${offline?"HP tidak tersambung internet":"Koneksi putus/lemah"} - gagal ${aksi}, data BELUM tersimpan.
+
+${opts.catatanKoneksi||(opts.ulangi?`Angka tetap di layar. Tekan ${opts.ulangi} lagi setelah sinyal ada (tanda koneksi di atas kembali hijau).`:"Coba lagi setelah sinyal ada (tanda koneksi di atas kembali hijau).")}`);
   }
 }
 

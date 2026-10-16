@@ -41,7 +41,8 @@ export function laporError(jenis: JenisError, err: unknown, konteks: Record<stri
     const e: any = err
     const pesan = String(e?.message || e?.msg || (typeof e === 'string' ? e : JSON.stringify(e ?? null))).slice(0, 1000) || '(tanpa pesan)'
     const lok = lokasi(e)
-    const sidik = hash(jenis + '|' + normal(pesan) + '|' + lok)
+    // kunciKelompok (panel|kode|proses) ikut sidik -> gagal simpan komponen berbeda tidak tergabung jadi 1 baris
+    const sidik = hash(jenis + '|' + normal(pesan) + '|' + lok + '|' + String(konteks?.kunciKelompok || ''))
     const ada = antrian.get(sidik)
     if (ada) ada.jumlah++
     else antrian.set(sidik, { aplikasi: APLIKASI, versi: versi(), jenis, sidik, pesan, halaman: halaman().slice(0, 200), pengguna: pengguna(), jumlah: 1,

@@ -4,8 +4,9 @@ import { supabase } from "../lib/supabase";
 import { bacaSemuaHalaman } from "../lib/bacaSemua";
 import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVISI_CONFIG, QC_ITEMS, BUSBAR_KOMPONEN_VALID } from "../lib/panelTypes";
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
-import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal } from "../lib/koneksi";
+import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai } from "../lib/tutupTimerKomponen";
+import { catatCheckpoint } from "../lib/catatCheckpoint";
 import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress } from "../lib/componentProcessProgress";
 import {
@@ -884,7 +885,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         // Operator mungkin sudah ngetik angka baru selama request ini jalan (timer debounce baru
         // sudah terpasang) - jangan timpa ketikan terbarunya, request berikutnya yang menentukan.
         if(ditolakServer&&!qtyWriteTimers.current[debounceKey])await pulihkanKomponenDariServer(panelId,kode);
-        alertGagalSimpan(mergeErr,`Ketik qty ${proses} ${kode}`,{
+        alertGagalSimpan(mergeErr,`Ketik qty ${proses} ${kode}`,{ref:{panelId,kode,proses},
           catatanServer:"Angka dikembalikan ke nilai yang tersimpan di server.",
           catatanKoneksi:"Angka yang diketik TETAP ADA di layar tapi BELUM tersimpan - ketik ulang angkanya saat sinyal membaik.",
         });
@@ -899,9 +900,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         const idsKomp=(task?.pekerja_per_komponen||{})[kode]||[];
         const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
         const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
-        await supabase.from('progress_checkpoint_log').insert({
-          panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
-        });
+        try{
+          const{error:cpErr}=await catatCheckpoint({
+            panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
+          });
+          if(cpErr)console.error(`[Ketik qty ${proses} ${kode}] tersimpan, tapi insert progress_checkpoint_log gagal:`,cpErr);
+        }catch(cpErr){console.error(`[Ketik qty ${proses} ${kode}] tersimpan, tapi insert progress_checkpoint_log gagal (retry habis):`,cpErr);}
       }
       // FASE 5 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, KHUSUS "proses biasa"
       // (PROSES_BIASA_CCP). qty_done/qty_total DIISI (beda dari Fase 2/3/4 yang selalu null -
@@ -1033,7 +1037,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         return hasil;
       });
       if(error){
-        alertGagalSimpan(error,`Mulai timer ${proses} ${kode} panel ${panelId}`,{aksi:"mulai timer",catatanServer:"Laporkan ke admin beserta pesan ini."});
+        alertGagalSimpan(error,`Mulai timer ${proses} ${kode} panel ${panelId}`,{ref:{panelId,kode,proses,tahap},aksi:"mulai timer",catatanServer:"Laporkan ke admin beserta pesan ini."});
         return;
       }
       if(data){
@@ -1042,7 +1046,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       }
     }catch(err:any){
       // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama.
-      alertGagalSimpan(err,`Mulai timer ${proses} ${kode} panel ${panelId}`,{aksi:"mulai timer",ulangi:"Mulai",catatanServer:"Laporkan ke admin beserta pesan ini."});
+      alertGagalSimpan(err,`Mulai timer ${proses} ${kode} panel ${panelId}`,{ref:{panelId,kode,proses,tahap},aksi:"mulai timer",ulangi:"Mulai",catatanServer:"Laporkan ke admin beserta pesan ini."});
     }finally{
       setTimerLoading(null);
     }
@@ -1057,7 +1061,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     try{
       const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id));
       if(error){
-        alertGagalSimpan(error,`Selesai-in timer ${proses} ${kode} panel ${panelId}`,{aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});
+        alertGagalSimpan(error,`Selesai-in timer ${proses} ${kode} panel ${panelId}`,{ref:{panelId,kode,proses,tahap},aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});
         return;
       }
       setTimerAktif(prev=>{const n={...prev};delete n[key];return n;});
@@ -1065,7 +1069,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       berhasil=true;
     }catch(err:any){
       // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama.
-      alertGagalSimpan(err,`Selesai-in timer ${proses} ${kode} panel ${panelId}`,{aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
+      alertGagalSimpan(err,`Selesai-in timer ${proses} ${kode} panel ${panelId}`,{ref:{panelId,kode,proses,tahap},aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
     }finally{
       setTimerLoading(null);
     }
@@ -1274,9 +1278,9 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
       const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
       if(pct>0){
-        await withRetry(()=>supabase.from('progress_checkpoint_log').insert({
+        await catatCheckpoint({
           panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
-        }));
+        });
       }
       // FASE 3 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, KHUSUS WIRING
       // CONTROL/POWER (guard eksplisit - fungsi ini generik dipakai SEMUA proses, 11 proses lain
@@ -1297,7 +1301,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       // error dibilang "koneksi lambat". Penolakan server -> kembalikan pilihan ke nilai tersimpan
       // (pilihan optimistic itu memang gak akan pernah bisa masuk); koneksi -> tetap pola lama.
       if(klasifikasiErrorSimpan(err).jenis==="server")await pulihkanKomponenDariServer(panelId,kode);
-      alertGagalSimpan(err,`Pilih persentase ${proses} ${kode}`,{
+      alertGagalSimpan(err,`Pilih persentase ${proses} ${kode}`,{ref:{panelId,kode,proses},
         catatanServer:"Persentase dikembalikan ke nilai yang tersimpan di server.",
         catatanKoneksi:"Pilihan Anda TETAP ADA di layar, coba ulangi pilih persentasenya lagi kalau belum tersimpan.",
       });
@@ -1348,7 +1352,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       // best-effort: kalau gagal, JANGAN suruh operator ulangi (kunci ulang dgn pct sama langsung
       // return true di atas tanpa insert lagi, jadi saran "tekan lagi" gak akan nolong).
       try{
-        const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert([checkpointEntry]));
+        const{error:cpErr}=await catatCheckpoint([checkpointEntry]);
         if(cpErr)console.error("[Kunci Progress] progress tersimpan, tapi insert progress_checkpoint_log gagal:",cpErr);
       }catch(cpErr){console.error("[Kunci Progress] progress tersimpan, tapi insert progress_checkpoint_log gagal (retry habis):",cpErr);}
       // FASE 3 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, KHUSUS WIRING
@@ -1371,7 +1375,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (lockSingleKomponen) - ccp bisa nyangkut basi:",err));
       }
     }catch(err){
-      alertGagalSimpan(err,`Kunci Progress ${proses} ${kode}`,{ulangi:"Kunci Progress"});
+      alertGagalSimpan(err,`Kunci Progress ${proses} ${kode}`,{ulangi:"Kunci Progress",ref:{panelId,kode,proses}});
       return false;
     }
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
@@ -1460,8 +1464,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // (lib/koneksi.ts) - dipakai juga Kunci Progress/ketik qty/pilih persentase. Patokan sekarang
   // `code` NON-KOSONG (dulu cukup ada properti `code` - fetch gagal dari supabase-js bawa code:""
   // jadi dulu salah terbaca "server menolak").
-  const alertGagalSimpanBusbar=(err:any,label:string)=>
-    alertGagalSimpan(err,`BUSBAR ${label}`,{ulangi:"Simpan Progress",catatanServer:"Laporkan ke admin beserta kode error ini."});
+  const alertGagalSimpanBusbar=(err:any,label:string,ref?:RefSimpan)=>
+    alertGagalSimpan(err,`BUSBAR ${label}`,{ulangi:"Simpan Progress",catatanServer:"Laporkan ke admin beserta kode error ini.",ref});
   // Update progress tahap AKTIF secara live (tiap klik PCT_STEPS) - langsung ke-refleksi ke
   // progress.BUSBAR gabungan juga, tapi belum bikin checkpoint log / pindah tahap (itu baru
   // kejadian pas "Simpan Progress" diklik).
@@ -1512,9 +1516,9 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         const flatIds=Array.isArray(idsKomp)?idsKomp:(idsKomp&&typeof idsKomp==="object"?Object.values(idsKomp).flat():[]);
         const workerObjs=(flatIds as number[]).map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
         const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
-        await withRetry(()=>supabase.from('progress_checkpoint_log').insert({
+        await catatCheckpoint({
           panel_id:panelId,kode_komponen:kode,proses:"BUSBAR",checkpoint:combined,pekerja_nama:pekerjaNamaLog,tanggal:viewDate,
-        }));
+        });
       }
       // FASE 4 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, 1 baris per TAHAP
       // (bukan gabungan - lihat FASE4_BUSBAR_DESIGN.md poin 3). Operator diambil per-tahap
@@ -1532,7 +1536,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updatePctManualBusbarTahap):",error);})
         .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (updatePctManualBusbarTahap) - ccp bisa nyangkut basi:",err));
     }catch(err){
-      alertGagalSimpanBusbar(err,'updatePctManualBusbarTahap');
+      alertGagalSimpanBusbar(err,'updatePctManualBusbarTahap',{panelId,kode,proses:'BUSBAR',tahap});
     }
   };
   const canSimpanBusbarTahap=(task:any,panelId:number,kode:string,tahap:string):boolean=>{
@@ -1600,12 +1604,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     }
 
     try{
-      const{error:cpErr}=await withRetry(()=>supabase.from('progress_checkpoint_log').insert([checkpointEntry]));
+      const{error:cpErr}=await catatCheckpoint([checkpointEntry]);
       if(cpErr)throw cpErr;
       const{error:panelErr}=await withRetry(()=>mergePanelChecklistDalam(panelId,{[kode]:{lama:panel.checklist?.[kode],baru:newChecklist[kode]}}));
       if(panelErr)throw panelErr;
     }catch(err){
-      alertGagalSimpanBusbar(err,'simpanProgressTahapBusbar');
+      alertGagalSimpanBusbar(err,'simpanProgressTahapBusbar',{panelId,kode,proses:'BUSBAR',tahap});
       return false;
     }
     // FASE 4 (21 Sep 2026) - DUAL-WRITE ke component_process_progress, 1 baris utk TAHAP ini
@@ -1756,7 +1760,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         if(panelErr)throw panelErr;
         // Checklist (history section) SUDAH tersimpan - log checkpoint best-effort, di-log kalau gagal.
         try{
-          const{error:cpErr}=await withRetry(()=>supabase.from("progress_checkpoint_log").insert(checkpointEntries));
+          const{error:cpErr}=await catatCheckpoint(checkpointEntries);
           if(cpErr)console.error(`[Simpan Section ${proses}] tersimpan, tapi insert progress_checkpoint_log gagal:`,cpErr);
         }catch(cpErr){console.error(`[Simpan Section ${proses}] tersimpan, tapi insert progress_checkpoint_log gagal (retry habis):`,cpErr);}
         setPanelsMap((prev:any)=>({...prev,[panelId]:{...prev[panelId],checklist:newChecklist}}));
@@ -2056,7 +2060,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // simpan checkpoint log - siapa nyampein checkpoint berapa, buat riwayat kontribusi per operator
     // Best-effort - progress utama sudah aman tersimpan di atas, ini cuma histori kontribusi.
     if(checkpointLogEntries.length>0){
-      try{ await withRetry(()=>supabase.from("progress_checkpoint_log").insert(checkpointLogEntries)); }catch{ /* best-effort */ }
+      try{ const{error:cpErr}=await catatCheckpoint(checkpointLogEntries); if(cpErr)console.error("[Kunci Progress Hari Ini] insert progress_checkpoint_log gagal:",cpErr); }catch(cpErr){ console.error("[Kunci Progress Hari Ini] insert progress_checkpoint_log gagal (retry habis):",cpErr); }
     }
     // FASE 3 (21 Sep 2026) - flush dual-write component_process_progress. sudahDisimpan100=
     // pct>=100 (baris ini SENDIRI representasi "checkpoint hari ini", sama rumus lockSingleKomponen).
