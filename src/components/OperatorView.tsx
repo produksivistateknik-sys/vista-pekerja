@@ -7,6 +7,8 @@ import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateH
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai } from "../lib/tutupTimerKomponen";
 import { catatCheckpoint } from "../lib/catatCheckpoint";
+import { bersihkanJadwalWiringSelesai } from "../lib/jadwalWiring";
+import { tambahAntrean, bacaAntrean, gagalKarenaKoneksi, EVENT_HASIL_ANTREAN, type HasilKirim } from "../lib/antreanSimpan";
 import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress } from "../lib/componentProcessProgress";
 import {
@@ -819,6 +821,21 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       });
     }catch(err){console.error(`[pulihkan ${panelId}/${kode}] gagal ambil nilai server:`,err);}
   };
+  // (16 Okt 2026) simpanan tertunda (antrean lokal) baru terkirim -> tampilkan nilai server terbaru utk komponen itu,
+  // kecuali operator sedang mengetik angka baru di komponen yang sama (kiriman berikutnya yang menentukan).
+  // pulihkanKomponenDariServer cuma memakai setPanelsMap (fungsional) & withRetry, aman dipanggil dari listener ini.
+  useEffect(()=>{
+    const onHasil=(ev:any)=>{
+      const h:HasilKirim|undefined=ev?.detail;
+      for(const it of [...(h?.terkirim||[]),...(h?.bentrok||[]).map(b=>b.item)]){
+        if(qtyWriteTimers.current[`${it.panelId}_${it.kode}_${it.proses}`])continue;
+        pulihkanKomponenDariServer(it.panelId,it.kode);
+      }
+    };
+    window.addEventListener(EVENT_HASIL_ANTREAN,onHasil);
+    return()=>window.removeEventListener(EVENT_HASIL_ANTREAN,onHasil);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[]);
 
   // Update qty proses ke local state (instan) + Supabase (di-debounce di background)
   // skipFloor (6 Sep 2026) - dipakai saat operator MENGETIK (onChange), biar angka yang lagi
@@ -885,9 +902,26 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         // Operator mungkin sudah ngetik angka baru selama request ini jalan (timer debounce baru
         // sudah terpasang) - jangan timpa ketikan terbarunya, request berikutnya yang menentukan.
         if(ditolakServer&&!qtyWriteTimers.current[debounceKey])await pulihkanKomponenDariServer(panelId,kode);
+        // (16 Okt 2026) gagal karena sinyal -> simpan sementara di HP (lib/antreanSimpan.ts), dikirim otomatis nanti.
+        // Isinya SAMA dgn langkah sukses di bawah: patch checklist + catatan simpanan (pct>0) + CCP proses biasa.
+        if(!ditolakServer){
+          const sudahAntre=bacaAntrean().some(x=>x.panelId===panelId&&x.kode===kode&&x.proses===proses);
+          const taskA=todayTasks.find((t:any)=>(t.panel_id||t.panelId)===panelId&&t.proses===proses&&(t.komponen||[]).includes(kode));
+          const idsA=(taskA?.pekerja_per_komponen||{})[kode]||[];
+          const objA=idsA.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
+          const namaA=objA.length>0?objA.map((w:any)=>w.nama).join(', '):user.nama;
+          tambahAntrean({jenis:'Ketik qty',operator:user.nama,panelId,panelNama:panel.nama,kode,proses,pct,
+            lama:panel.checklist?.[kode],baru:newChecklist[kode],
+            checkpoint:pct>0?[{panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:namaA,tanggal:viewDate}]:[],
+            ccp:PROSES_BIASA_CCP.includes(proses)?{panelId,kode,proses,tahap:null,pct,qtyDone:qtyProses,qtyTotal:qtyKomp,
+              operatorNama:namaA,operatorAt:new Date().toISOString(),sudahDisimpan100:false,updatedBy:namaA}:null,
+            tutupTimer:false,bersihkanWiring:false});
+          // ketikan berikutnya saat masih offline cuma memperbarui antrean - jangan munculkan pesan lagi tiap ketik
+          if(sudahAntre)return;
+        }
         alertGagalSimpan(mergeErr,`Ketik qty ${proses} ${kode}`,{ref:{panelId,kode,proses},
           catatanServer:"Angka dikembalikan ke nilai yang tersimpan di server.",
-          catatanKoneksi:"Angka yang diketik TETAP ADA di layar tapi BELUM tersimpan - ketik ulang angkanya saat sinyal membaik.",
+          catatanKoneksi:"Angka DISIMPAN SEMENTARA di HP ini dan dikirim otomatis begitu sinyal kembali (lihat tanda ⏳ di atas). Jangan hapus data/cache aplikasi sebelum terkirim.",
         });
         return;
       }
@@ -1375,7 +1409,20 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
           .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (lockSingleKomponen) - ccp bisa nyangkut basi:",err));
       }
     }catch(err){
-      alertGagalSimpan(err,`Kunci Progress ${proses} ${kode}`,{ulangi:"Kunci Progress",ref:{panelId,kode,proses}});
+      // (16 Okt 2026) gagal karena sinyal -> simpan sementara di HP & kirim otomatis nanti (lib/antreanSimpan.ts), termasuk
+      // langkah lanjutan simpan normal: catatan simpanan, CCP, tutup timer & bersihkan jadwal WIRING kalau 100%.
+      // Assembling Luar (ada arsip panel_seksi_archived di bawah) TIDAK diantrekan - tetap perilaku lama.
+      const bisaAntre=gagalKarenaKoneksi(err)&&!(proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar");
+      if(bisaAntre){
+        tambahAntrean({jenis:'Kunci Progress',operator:user.nama,panelId,panelNama:panel.nama,kode,proses,pct,
+          lama:panel.checklist?.[kode],baru:newChecklist[kode],checkpoint:[checkpointEntry],
+          ccp:(proses==="WIRING CONTROL"||proses==="WIRING POWER"||PROSES_BIASA_CCP.includes(proses))?{panelId,kode,proses,tahap:null,pct,
+            qtyDone:cl.qtyProses?.[proses]??null,qtyTotal:cl.qty||0,operatorNama:pekerjaNamaLog,operatorAt:new Date().toISOString(),
+            sudahDisimpan100:pct>=100,updatedBy:pekerjaNamaLog}:null,
+          tutupTimer:pct>=100,bersihkanWiring:(proses==='WIRING CONTROL'||proses==='WIRING POWER')&&pct>=100});
+      }
+      alertGagalSimpan(err,`Kunci Progress ${proses} ${kode}`,{ulangi:"Kunci Progress",ref:{panelId,kode,proses},
+        ...(bisaAntre?{catatanKoneksi:"Progress DISIMPAN SEMENTARA di HP ini dan dikirim otomatis begitu sinyal kembali (lihat tanda ⏳ di atas). Tidak perlu menekan Simpan Progress berulang."}:{})});
       return false;
     }
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
@@ -1383,37 +1430,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     if((proses==='WIRING CONTROL'||proses==='WIRING POWER')&&pct>=100){
       // Best-effort - progress utama udah kesimpen di atas, ini cuma beres-beres jadwal, gak
       // perlu ngeblok/gagal-in seluruh aksi kalau bagian ini yang kena koneksi lemot.
-      // BUG FIX (5 Agu 2026): dua masalah dalam 1 root cause yang sama -
-      // (a) tanggal yang SUDAH LEWAT dulu ikut dibersihkan juga, padahal proses lain gak pernah
-      //     nge-prune riwayat lamanya sama sekali - itu sebabnya Rencana Harian kehilangan jejak
-      //     WIRING yang udah selesai. Sekarang tanggal < TODAY dibiarkan utuh, gak disentuh.
-      // (b) token __wiring_{n}org_{bobot} (badge bobot, nempel di array komponen yang sama
-      //     dengan kode asli) gak ikut dihapus begitu SEMUA kode asli di entry itu udah selesai -
-      //     entry jadi "isinya cuma token doang", gak pernah kehitung kosong (length>0), jadi
-      //     nyangkut selamanya di raw_schedule dan bikin baris Raw Schedule kelihatan kosong pas
-      //     dirender (token gak bisa di-resolve ke nama/qty komponen asli). Sekarang token ikut
-      //     dibersihkan begitu gak ada lagi kode asli yang nemenin di entry itu.
-      try{
-        const{data:rawRows}=await withRetry(()=>supabase.from('raw_schedule').select('id,schedule').eq('panel_id',panelId).eq('proses',proses));
-        for(const row of rawRows||[]){
-          let berubah=false;
-          const newSchedule:any={};
-          for(const[tglKey,entries] of Object.entries(row.schedule||{}) as [string,any[]][]){
-            if(tglKey<TODAY){newSchedule[tglKey]=entries;continue;}
-            const newEntries=entries.map((entry:any)=>{
-              const filteredKomp=(entry.komponen||[]).filter((k:string)=>k!==kode);
-              const sisaKodeAsli=filteredKomp.filter((k:string)=>!k.startsWith('__wiring_'));
-              const finalKomp=sisaKodeAsli.length>0?filteredKomp:sisaKodeAsli;
-              if(finalKomp.length!==(entry.komponen||[]).length)berubah=true;
-              return{...entry,komponen:finalKomp};
-            }).filter((entry:any)=>(entry.komponen||[]).length>0);
-            if(newEntries.length>0)newSchedule[tglKey]=newEntries;
-          }
-          if(berubah){
-            await withRetry(()=>supabase.from('raw_schedule').update({schedule:newSchedule}).eq('id',row.id));
-          }
-        }
-      }catch{ /* best-effort, progress utama sudah aman */ }
+      // (16 Okt 2026) logika dipindah apa adanya ke lib/jadwalWiring.ts (dipakai juga antrean simpan).
+      await bersihkanJadwalWiringSelesai(panelId,proses,kode,TODAY);
     }
 
     // FITUR (7 Agu 2026): auto-arsip Pasang Komponen Assembling Luar buat komponen NON-tahap

@@ -7,6 +7,8 @@ import { useVersionCheck, muatUlangBersih } from "./lib/versionCheck";
 import { DIVISI_CONFIG } from "./lib/panelTypes";
 import { GCss } from "./lib/globalCss";
 import { KoneksiBadge } from "./components/ui/Primitives";
+import { AntreanBadge } from "./components/ui/AntreanBadge";
+import { mulaiPengirimOtomatis } from "./lib/antreanSimpan";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { LandingPage } from "./components/LandingPage";
 import { Login } from "./components/Login";
@@ -269,6 +271,13 @@ export default function App(){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id]);
 
+  // (16 Okt 2026) antrean simpan lokal - progres yang gagal terkirim karena sinyal dikirim ulang otomatis selama login
+  // (saat online kembali, tiap 20 dtk, dan saat aplikasi dibuka). Lihat lib/antreanSimpan.ts.
+  useEffect(()=>{
+    if(!user)return;
+    return mulaiPengirimOtomatis();
+  },[user?.id]);
+
   useEffect(()=>{
     try{
       if(selectedMenu)localStorage.setItem("vista_pekerja_selected_menu",selectedMenu);
@@ -472,6 +481,7 @@ export default function App(){
               marginTop:14,paddingTop:12,borderTop:"1px solid #ffffff25"}}>
               <div style={{fontSize:11.5,color:"#ffffffb3",marginRight:2}}>{headerSubtitle}</div>
               <KoneksiBadge/>
+              <AntreanBadge/>
               <span style={{background:"#ffffff25",color:"#fff",border:"1px solid #ffffff40",
                 borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</span>
               {isOperatorDivisi&&gateShiftSet&&(
