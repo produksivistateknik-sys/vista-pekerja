@@ -23,6 +23,8 @@ export const PROSES_TANPA_MAPPING_KOMPONEN=["QC TEST","PACKING"];
 // TIPE_BUSBAR_FABRIKASI_SAJA: pekerjaannya HANYA proses BUSBAR tahap FABRIKASI (tanpa proses mekanik,
 // tanpa PLATING/HEATSHRINK/PASANG, tanpa QC TEST/PACKING). Kalau diubah, ubah keduanya.
 export const TIPE_BUSBAR_FABRIKASI_SAJA=new Set<string>(["BUSBAR"]);
+// (17 Okt 2026) jenis busbar-saja juga TANPA Nameplate/Yellowmark (cermin prosesBerlakuUntukTipe vista-teknik)
+export const punyaNameplateYellowmark=(tipe:string|undefined|null):boolean=>!(tipe&&TIPE_BUSBAR_FABRIKASI_SAJA.has(tipe));
 export const isKomponenRelevant=(kode:string,tipe:string,proses:string,relevanSet:Set<string>,hasMappingSet:Set<string>):boolean=>{
   if(proses==="BUSBAR")return false;
   if(TIPE_BUSBAR_FABRIKASI_SAJA.has(tipe))return false; // komponen BOM jenis busbar-saja tidak relevan ke proses apa pun

@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, ringkasAlasanGagal, klasifikasiErrorSimpan } from "../lib/koneksi";
-import { fetchAllPanels } from "../lib/panelHelpers";
+import { fetchAllPanels, punyaNameplateYellowmark } from "../lib/panelHelpers";
 import { hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { unggahMediaKeR2, isFileVideo } from "../lib/siapkanMedia";
 import { isVideoFoto } from "../lib/mediaThumb";
@@ -174,7 +174,7 @@ export function NameplateView({user,registerBackHandler}:any){
   // tanpa filter divisi) biar list gak "berkedip" tiap ada panel lain ke-update.
   const fetchData=async(silent=false)=>{
     if(!silent)setLoading(true);
-    const panels=await fetchAllPanels("id,wo_id,nama,nameplate_progress,nameplate_photos,nameplate_history,nameplate_updated_by,nameplate_updated_at,yellowmark_progress,yellowmark_photos,yellowmark_history,yellowmark_updated_by,yellowmark_updated_at");
+    const panels=await fetchAllPanels("id,wo_id,nama,tipe,nameplate_progress,nameplate_photos,nameplate_history,nameplate_updated_by,nameplate_updated_at,yellowmark_progress,yellowmark_photos,yellowmark_history,yellowmark_updated_by,yellowmark_updated_at");
     const woIds=[...new Set((panels??[]).map((p:any)=>p.wo_id).filter(Boolean))];
     const{data:wos}=woIds.length>0?await supabase.from("work_orders").select("id,wo,proyek,target,is_archived").in("id",woIds):{data:[]};
     const woMap:Record<number,any>={};
@@ -183,7 +183,7 @@ export function NameplateView({user,registerBackHandler}:any){
       const prevMap:Record<number,any>={};
       prev.forEach((p:any)=>{prevMap[p.id]=p;});
       return(panels??[])
-        .filter((p:any)=>!woMap[p.wo_id]?.is_archived)
+        .filter((p:any)=>!woMap[p.wo_id]?.is_archived&&punyaNameplateYellowmark(p.tipe))
         .map((p:any)=>{
           const merged={...p,_wo:woMap[p.wo_id]||{}};
           TUGAS_NP.forEach(t=>{
