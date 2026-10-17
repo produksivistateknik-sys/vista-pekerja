@@ -1,5 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
+import { gabungDenganArsip, muatItemRekap, type WoRekap } from "../lib/rekapPermintaanArsip";
 import { halamanCetakBerkop } from "../lib/kopSuratKonfig";
 import { asetKopHtml } from "../lib/kopSuratAsetUrl";
 import { EmptyState } from "./ui/Primitives";
@@ -78,13 +79,29 @@ export function RekapPermintaanTab(){
     fetchWo();
   },[]);
 
+  // (17 Okt 2026) rekap ikut sampai ARSIP - WO/panel aktif digabung panel arsip & WO arsip (lib/rekapPermintaanArsip.ts,
+  // SALINAN IDENTIK vista-teknik). null = belum dimuat -> WO aktif saja dulu.
+  const[woArsip,setWoArsip]=useState<WoRekap[]|null>(null);
+  const[tampilArsip,setTampilArsip]=useState(true);
+  useEffect(()=>{
+    if(woLoading)return;
+    let batal=false;
+    gabungDenganArsip(woList).then(v=>{if(!batal)setWoArsip(v);})
+      .catch((e:any)=>{console.error("[Rekap] gagal memuat panel arsip:",e);alert("Gagal memuat panel arsip untuk rekap: "+(e?.message||e));});
+    return()=>{batal=true;};
+  },[woList,woLoading]);
+  const woSemua=useMemo(()=>{
+    const dasar:WoRekap[]=woArsip||woList.map(w=>({id:w.id,wo:w.wo,proyek:w.proyek,arsip:false,panels:w.panels.map(p=>({id:p.id,nama:p.nama,woId:w.id,arsip:false}))}));
+    return dasar.map(w=>({...w,panels:tampilArsip?w.panels:w.panels.filter(p=>!p.arsip)}))
+      .filter(w=>w.panels.length>0&&(tampilArsip||!w.arsip));
+  },[woArsip,woList,tampilArsip]);
   const woFiltered=useMemo(()=>{
     const q=woSearch.trim().toLowerCase();
-    return woList.filter(w=>w.panels.length>0&&(!q||[w.wo,w.proyek].join(" ").toLowerCase().includes(q)))
+    return woSemua.filter(w=>w.panels.length>0&&(!q||[w.wo,w.proyek].join(" ").toLowerCase().includes(q)))
       .sort((a,b)=>(a.wo||"").localeCompare(b.wo||""));
-  },[woList,woSearch]);
+  },[woSemua,woSearch]);
 
-  const selectedWo=woList.find(w=>w.id===selectedWoId)||null;
+  const selectedWo=woSemua.find(w=>w.id===selectedWoId)||null;
   const panelsInWo=useMemo(()=>(selectedWo?.panels||[]).slice().sort((a,b)=>(a.nama||"").localeCompare(b.nama||"")),[selectedWo]);
 
   // Fetch rekap (SAMA PERSIS fetchRekap vista-teknik) - permintaan utk semua panel di WO ini,
@@ -93,18 +110,10 @@ export function RekapPermintaanTab(){
   const fetchRekap=async(woId:number)=>{
     setRekapLoading(true);
     try{
-      const panelIds=(woList.find(w=>w.id===woId)?.panels||[]).map(p=>p.id);
-      if(panelIds.length===0){setRawItems([]);setRekapLoading(false);return;}
-      const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("id,panel_id,divisi").in("panel_id",panelIds).range(from,to));
-      if(perms.length===0){setRawItems([]);setRekapLoading(false);return;}
-      const permIds=perms.map((p:any)=>p.id);
-      const permPanelMap:Record<number,number>={};
-      const permDivisiMap:Record<number,string|null>={};
-      perms.forEach((p:any)=>{permPanelMap[p.id]=p.panel_id;permDivisiMap[p.id]=p.divisi;});
-      const itemRows=await fetchAllPaged((from,to)=>
-        supabase.from("permintaan_item").select("permintaan_id,komponen_master_id,nama_komponen,satuan_dipilih,satuan,qty")
-          .in("permintaan_id",permIds).eq("status","submit").range(from,to));
-      setRawItems(itemRows.map((it:any)=>({...it,panel_id:permPanelMap[it.permintaan_id],divisi:permDivisiMap[it.permintaan_id]})));
+      // (17 Okt 2026) panel aktif lewat permintaan.panel_id, panel arsip lewat permintaan.panel_id_arsip (lib/rekapPermintaanArsip.ts)
+      const panelsWo=woSemua.find(w=>w.id===woId)?.panels||[];
+      if(panelsWo.length===0){setRawItems([]);setRekapLoading(false);return;}
+      setRawItems(await muatItemRekap(panelsWo));
     }catch(e:any){
       alert("Gagal memuat rekap: "+e.message);
     }
@@ -116,7 +125,7 @@ export function RekapPermintaanTab(){
     setScopePanelId(null);
     setSearch("");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  },[selectedWoId]);
+  },[selectedWoId,woArsip,tampilArsip]);
 
   // Agregasi SUM per divisi+komponen_master_id+satuan (SAMA PERSIS rekapRowsFull vista-teknik) -
   // divisi ikut jadi key grouping, item sama yang diminta 2 divisi beda tetap 2 baris terpisah.
@@ -231,6 +240,10 @@ ${kop.body}
           <div style={{fontWeight:800,fontSize:15,color:"#0f172a"}}>Rekap Permintaan</div>
           <div style={{fontSize:11.5,color:"#94a3b8",marginTop:2}}>Pilih WO/proyek untuk lihat rekap item yang sudah keluar dari Gudang, digabung per jenis item.</div>
         </div>
+        <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,fontWeight:600,color:"#475569",marginBottom:8,cursor:"pointer"}}>
+          <input type="checkbox" checked={tampilArsip} onChange={(e:any)=>setTampilArsip(e.target.checked)}/>
+          Tampilkan WO &amp; panel arsip{woArsip===null?" (memuat...)":""}
+        </label>
         <input type="text" placeholder="🔍 Cari nomor WO atau nama proyek..." value={woSearch}
           onChange={(e:any)=>setWoSearch(e.target.value)} style={{...inputS,marginBottom:14}}/>
         {woLoading?(
@@ -247,8 +260,8 @@ ${kop.body}
                 <div style={{width:38,height:38,borderRadius:10,background:"#eff6ff",display:"flex",
                   alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>📁</div>
                 <div style={{minWidth:0}}>
-                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>WO {w.wo}</div>
-                  <div style={{fontSize:11.5,color:"#94a3b8"}}>{w.proyek} - {w.panels.length} panel</div>
+                  <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>WO {w.wo}{w.arsip&&<span style={{marginLeft:6,fontSize:10.5,fontWeight:700,color:"#64748b",background:"#f1f5f9",borderRadius:10,padding:"1px 7px"}}>Arsip</span>}</div>
+                  <div style={{fontSize:11.5,color:"#94a3b8"}}>{w.proyek} - {w.panels.length} panel{!w.arsip&&w.panels.some(p=>p.arsip)?` (${w.panels.filter(p=>p.arsip).length} arsip)`:""}</div>
                 </div>
               </button>
             ))}
@@ -274,7 +287,7 @@ ${kop.body}
         <select value={scopePanelId??""} onChange={(e:any)=>setScopePanelId(e.target.value?Number(e.target.value):null)}
           style={{...inputS,marginBottom:10,cursor:"pointer"}}>
           <option value="">Semua panel di WO ini ({panelsInWo.length})</option>
-          {panelsInWo.map(p=><option key={p.id} value={p.id}>Cuma panel: {p.nama}</option>)}
+          {panelsInWo.map(p=><option key={p.id} value={p.id}>Cuma panel: {p.nama}{p.arsip?" (arsip)":""}</option>)}
         </select>
       )}
       <input type="text" placeholder="🔍 Cari nama item..." value={search}
