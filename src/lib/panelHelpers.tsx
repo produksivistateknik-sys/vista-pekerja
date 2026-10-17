@@ -19,8 +19,13 @@ export const PROSES_TANPA_MAPPING_KOMPONEN=["QC TEST","PACKING"];
 // KOMPONEN_PROSES_MAP - dua-duanya sumber data yang bisa basi/salah (lihat komentar
 // KOMPONEN_PROSES_MAP di panelTypes.ts). Defense-in-depth: fix di map SAJA gampang keulang basi
 // lagi kalau lupa disinkron manual - guard di sini gak bergantung ke situ sama sekali.
+// JENIS PANEL "BUSBAR" (17 Okt 2026, permintaan user) - CERMIN vista-teknik lib/panelHelpers.ts
+// TIPE_BUSBAR_FABRIKASI_SAJA: pekerjaannya HANYA proses BUSBAR tahap FABRIKASI (tanpa proses mekanik,
+// tanpa PLATING/HEATSHRINK/PASANG, tanpa QC TEST/PACKING). Kalau diubah, ubah keduanya.
+export const TIPE_BUSBAR_FABRIKASI_SAJA=new Set<string>(["BUSBAR"]);
 export const isKomponenRelevant=(kode:string,tipe:string,proses:string,relevanSet:Set<string>,hasMappingSet:Set<string>):boolean=>{
   if(proses==="BUSBAR")return false;
+  if(TIPE_BUSBAR_FABRIKASI_SAJA.has(tipe))return false; // komponen BOM jenis busbar-saja tidak relevan ke proses apa pun
   if(PROSES_TANPA_MAPPING_KOMPONEN.includes(proses))return true;
   const mapKey=kode+"|"+tipe;
   if(hasMappingSet.has(mapKey)){
@@ -31,6 +36,7 @@ export const isKomponenRelevant=(kode:string,tipe:string,proses:string,relevanSe
   return relevanProses.includes(proses);
 };
 export function getRelevantProsesForKode(kode:string,tipe:string,relevanSet:Set<string>,hasMappingSet:Set<string>):string[]{
+  if(TIPE_BUSBAR_FABRIKASI_SAJA.has(tipe))return []; // (17 Okt 2026) jenis busbar-saja
   const mapKey=kode+"|"+tipe;
   const base=(hasMappingSet.has(mapKey)
     ? ALL_PROSES.filter((pr:string)=>relevanSet.has(kode+"|"+tipe+"|"+pr))
@@ -106,7 +112,10 @@ export const BUSBAR_URUTAN_TAHAP_SINGKAT=["FABRIKASI","PLATING","PASANG"];
 export const BUSBAR_TAHAP_LABEL:Record<string,string>={FABRIKASI:"Fabrikasi",PLATING:"Plating",HEATSHRINK:"Heat-Shrink",PASANG:"Pasang"};
 // Nama icon tabler (dipakai lewat className={`ti ti-${...}`}) buat kartu grid tahap BUSBAR.
 export const BUSBAR_TAHAP_ICON:Record<string,string>={FABRIKASI:"tool",PLATING:"droplet",HEATSHRINK:"flame",PASANG:"plug"};
-export function getUrutanTahapBusbar(kode:string):string[]{
+// tipe (17 Okt 2026): jenis panel "BUSBAR" (TIPE_BUSBAR_FABRIKASI_SAJA) cuma punya tahap FABRIKASI -> FABRIKASI 100%
+// = BUSBAR 100% (hitungProgressBusbarGabungan rata-rata tahap di urutan). Tanpa tipe = perilaku lama.
+export function getUrutanTahapBusbar(kode:string,tipe?:string|null):string[]{
+  if(tipe&&TIPE_BUSBAR_FABRIKASI_SAJA.has(tipe))return ["FABRIKASI"];
   return(kode==="COUPLER"||kode==="GROUND"||kode==="COUPLE-AN")?BUSBAR_URUTAN_TAHAP_SINGKAT:BUSBAR_URUTAN_TAHAP_LENGKAP;
 }
 // PASANG KOMPONEN 2-tahap (Box Control/Pintu: ASSEMBLING punya Assembling Luar, WIRING punya

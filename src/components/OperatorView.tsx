@@ -1467,8 +1467,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // ── BUSBAR: alur khusus 3-4 tahap berurutan (FABRIKASI->PLATING->[HEATSHRINK->]PASANG) ──
   // Semua tahap (4/3) berdiri sendiri-sendiri, gak ada lagi konsep "tahap aktif" - operator
   // bebas kerjakan tahap manapun kapan saja, gak ada urutan/estafet wajib.
-  const getBusbarTahapState=(cl:any,kode:string)=>{
-    const urutan=getUrutanTahapBusbar(kode);
+  const getBusbarTahapState=(cl:any,kode:string,tipe?:string|null)=>{
+    const urutan=getUrutanTahapBusbar(kode,tipe);
     const fresh:any={};
     urutan.forEach((t:string)=>{fresh[t]=cl?.busbarTahap?.[t]||{progress:0,sudahDisimpan100:false};});
     return fresh;
@@ -1491,8 +1491,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const panel=panelsMap[panelId];
     if(!panel)return;
     const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{}};
-    const urutan=getUrutanTahapBusbar(kode);
-    const busbarTahapState=getBusbarTahapState(cl,kode);
+    const urutan=getUrutanTahapBusbar(kode,panel.tipe);
+    const busbarTahapState=getBusbarTahapState(cl,kode,panel.tipe);
     // GUARD cap dinamis (11 Sep 2026) - dicek ULANG di sini (bukan cuma disable tombol di JSX),
     // karena fungsi ini bisa dipanggil langsung (mis. devtools/RPC manual) lewat jalur lain di
     // luar tombol PCT_STEPS. progress tahap ini gak boleh lebih dari tahap sebelumnya.
@@ -1577,8 +1577,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     if(!task){console.warn('[simpanProgressTahapBusbar] task BUSBAR hari ini tidak ditemukan di todayTasks',{panelId,kode,tahap});return false;}
     const cl=panel.checklist?.[kode];
     if(!cl){console.warn('[simpanProgressTahapBusbar] checklist komponen tidak ditemukan',{panelId,kode,tahap});return false;}
-    const urutan=getUrutanTahapBusbar(kode);
-    const busbarTahapState=getBusbarTahapState(cl,kode);
+    const urutan=getUrutanTahapBusbar(kode,panel.tipe);
+    const busbarTahapState=getBusbarTahapState(cl,kode,panel.tipe);
     if(!canSimpanBusbarTahap(task,panelId,kode,tahap)){
       alert('Belum bisa disimpan - pastikan operator sudah dipilih dan timer sudah pernah dijalankan buat tahap ini.');
       return false;
@@ -2464,10 +2464,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         // r.pipelineStatus yang sama.
         if(proses==="BUSBAR"&&selectedBusbarTahap){
           rows=rows.map((r:any)=>{
-            const urutanR=getUrutanTahapBusbar(r.kode);
+            const urutanR=getUrutanTahapBusbar(r.kode,panelsMap[r.panelId]?.tipe);
             const tiR=urutanR.indexOf(selectedBusbarTahap);
             if(tiR<0)return null;
-            const busbarTahapStateR=getBusbarTahapState(panelsMap[r.panelId]?.checklist?.[r.kode],r.kode);
+            const busbarTahapStateR=getBusbarTahapState(panelsMap[r.panelId]?.checklist?.[r.kode],r.kode,panelsMap[r.panelId]?.tipe);
             return{...r,pipelineStatus:computeBusbarTahapStatus(tiR,urutanR,busbarTahapStateR)};
           }).filter(Boolean);
         }
@@ -3334,7 +3334,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                       <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:14}}>
                         <div style={{fontSize:11,fontWeight:700,color:"#475569"}}>Tahap:</div>
                         <div style={{display:"flex",gap:6,flexWrap:"wrap"}}>
-                          {getUrutanTahapBusbar(group.rows[0]?.kode).map((t:string)=>(
+                          {getUrutanTahapBusbar(group.rows[0]?.kode,panelsMap[group.rows[0]?.panelId]?.tipe).map((t:string)=>(
                             <button key={t} onClick={()=>setBulkAssignTahap(t)}
                               style={{padding:"8px 12px",borderRadius:8,border:`1.5px solid ${bulkAssignTahap===t?"#2563eb":"#e2e8f0"}`,
                                 background:bulkAssignTahap===t?"#eff6ff":"#fff",color:bulkAssignTahap===t?"#1d4ed8":"#64748b",fontWeight:700,fontSize:12,cursor:"pointer"}}>
@@ -3384,8 +3384,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
                 const isBusbarProses=proses==="BUSBAR";
                 const idsKomp=isBusbarProses?[]:getFlatOperatorIds(r.task,r.kode);
                 const workers=idsKomp.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
-                const busbarUrutan=isBusbarProses?getUrutanTahapBusbar(r.kode):[];
-                const busbarTahapState=isBusbarProses?getBusbarTahapState(panelsMap[r.panelId]?.checklist?.[r.kode],r.kode):null;
+                const busbarUrutan=isBusbarProses?getUrutanTahapBusbar(r.kode,panelsMap[r.panelId]?.tipe):[];
+                const busbarTahapState=isBusbarProses?getBusbarTahapState(panelsMap[r.panelId]?.checklist?.[r.kode],r.kode,panelsMap[r.panelId]?.tipe):null;
                 // REVISI 11 Sep 2026 (ganti model gate biner -> cap dinamis): BUSBAR gak lagi kena
                 // lock SELURUH kartu berdasarkan status NOT YET (25%) - kartu tetap bisa
                 // dibuka/dilihat, operator boleh mulai timer tahap manapun. Pembatasan sebenarnya
