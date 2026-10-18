@@ -583,6 +583,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
     try{
       const fotoTerupload:any[]=[];
       const gagal:typeof staged=[];
+      const alasanGagal:string[]=[];
       // Tiap foto punya try-catch SENDIRI (bukan satu try besar buat seluruh loop) - kalau foto
       // ke-2 dari 3 gagal kompres/upload, foto ke-1 yang udah kepalang naik + foto ke-3 gak ikut
       // batal. Foto yang gagal DIKUMPULKAN (bukan cuma di-skip) biar tetap nangkring di
@@ -597,6 +598,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
         }catch(fotoErr:any){
           console.error("Upload dokumentasi Pasang Komponen gagal:",s.file.name,fotoErr);
           gagal.push(s);
+          alasanGagal.push("• "+s.file.name+" - "+String(fotoErr?.message||fotoErr)); // (18 Okt 2026) alasan nyata di pesan
         }
       }
       if(key.startsWith("panelfoto_")){
@@ -638,7 +640,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
         return next;
       });
       if(gagal.length>0){
-        alert(`${gagal.length} dari ${staged.length} foto/video GAGAL diupload (kemungkinan koneksi bermasalah atau video terlalu besar). File yang gagal TETAP ada di layar - coba tap Simpan lagi.`);
+        alert(`${gagal.length} dari ${staged.length} foto/video GAGAL diupload:\n${alasanGagal.join("\n")}\n\nFile yang gagal TETAP ada di layar - coba tap Simpan lagi.`);
       }
     }catch(err:any){
       alert("Terjadi kesalahan: "+err.message);
@@ -659,6 +661,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
     try{
       const fotoTerupload:any[]=[];
       const gagal:typeof staged=[];
+      const alasanGagal:string[]=[];
       const folderFoto=tugas.fotoBucket.replace(/-photos$/,"");
       for(const s of staged){
         try{
@@ -667,6 +670,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
         }catch(fotoErr:any){
           console.error("Upload dokumentasi arsip Pasang Komponen gagal:",s.file.name,fotoErr);
           gagal.push(s);
+          alasanGagal.push("• "+s.file.name+" - "+String(fotoErr?.message||fotoErr)); // (18 Okt 2026) alasan nyata di pesan
         }
       }
       if(fotoTerupload.length>0){
@@ -704,7 +708,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
         return next;
       });
       if(gagal.length>0){
-        alert(`${gagal.length} dari ${staged.length} foto/video GAGAL diupload (kemungkinan koneksi bermasalah atau video terlalu besar). File yang gagal TETAP ada di layar - coba tap Simpan lagi.`);
+        alert(`${gagal.length} dari ${staged.length} foto/video GAGAL diupload:\n${alasanGagal.join("\n")}\n\nFile yang gagal TETAP ada di layar - coba tap Simpan lagi.`);
       }
     }catch(err:any){
       alert("Terjadi kesalahan: "+err.message);

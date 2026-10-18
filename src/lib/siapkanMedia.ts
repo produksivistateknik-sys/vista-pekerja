@@ -11,7 +11,7 @@
 // - Lainnya (QC "Tambahkan File"): dikirim apa adanya.
 import { compressImageNp } from './fotoHelpers'
 import { laporError } from './laporError'
-import { uploadToR2 } from './r2Client'
+import { uploadToR2, GagalUploadR2 } from './r2Client'
 
 export const BATAS_VIDEO_MB = 50
 // Batas file video MENTAH saat dipilih (sebelum kompres) - 1 menit video HP 1080p ~100-150 MB;
@@ -93,16 +93,41 @@ export async function siapkanMediaUpload(file: File): Promise<MediaSiapUpload> {
 // Siapkan + unggah 1 file ke R2 di bawah `prefixKey` (mis. "proyek-luar/12"). Dilempar kalau gagal -
 // pemanggil WAJIB menangkap & memberi tahu operator (jangan diam-diam dilewati). Hasil siap ditempel
 // ke array foto JSONB: {url, mime, name} - `mime` dipakai viewer/grid utk mengenali video.
+// Pesan untuk OPERATOR (18 Okt 2026, investigasi gagal upload 17 Okt) - jelas bahwa file BELUM tersimpan &
+// langkah mana yang gagal. Dipakai sbg `message` error yang dilempar unggahMediaKeR2, jadi semua layar yang
+// menampilkan `err.message` (Nameplate, QS, QC, Pasang Komponen, Proyek Luar, MOM FAT) ikut jelas.
+export function pesanGagalUpload(err: any, jenisMedia = 'foto'): string {
+  const e = err instanceof GagalUploadR2 ? err : null
+  const dicoba = e && e.percobaan > 1 ? ` (sudah dicoba ${e.percobaan}x)` : ''
+  if (e?.jenis === 'server') return `Server menolak ${jenisMedia}${e.status ? ` (status ${e.status})` : ''}: ${e.message}. ${jenisMedia[0].toUpperCase() + jenisMedia.slice(1)} BELUM tersimpan - laporkan ke admin.`
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) return `HP tidak tersambung internet${dicoba}. ${jenisMedia[0].toUpperCase() + jenisMedia.slice(1)} BELUM tersimpan.`
+  const langkah = e?.langkah === 'izin' ? `meminta izin kirim ${jenisMedia}` : `mengirim ${jenisMedia}`
+  return `Sinyal lemah/putus saat ${langkah}${dicoba}. ${jenisMedia[0].toUpperCase() + jenisMedia.slice(1)} BELUM tersimpan.`
+}
+
 export async function unggahMediaKeR2(file: File, prefixKey: string): Promise<{ url: string; mime: string; name: string }> {
   const m = await siapkanMediaUpload(file)
   const key = `${prefixKey}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${m.ext}`
+  const jenisMedia = m.mime.startsWith('video') ? 'video' : m.mime.startsWith('image') ? 'foto' : 'file'
+  const mulai = Date.now()
   let url: string
   try {
-    url = await uploadToR2(m.blob, key, m.contentType, { batasWaktuIzinMs: 30_000, batasWaktuUnggahMs: batasWaktuUnggahMs(m.blob) })
+    // (18 Okt 2026) ulang otomatis untuk gagal koneksi (lihat r2Client) - BEDA dgn salinan vista-teknik (admin
+    // belum memakai percobaan ulang & pencatat log).
+    url = await uploadToR2(m.blob, key, m.contentType, { batasWaktuIzinMs: 30_000, batasWaktuUnggahMs: batasWaktuUnggahMs(m.blob), ulang: true })
   } catch (err: any) {
-    // (16 Okt 2026) catat ke log_error_app (Kesehatan Data) lalu lempar lagi - penanganan pemanggil TIDAK berubah.
-    laporError('upload', { message: `Gagal upload ${m.mime.startsWith('video') ? 'video' : 'foto'} (${prefixKey.split('/')[0]}): ${err?.message || err}`, stack: err?.stack }, { ukuranKb: Math.round(m.blob.size / 1024) })
-    throw err
+    // (16 Okt 2026) catat ke log_error_app (Kesehatan Data) lalu lempar lagi. (18 Okt 2026) konteks dilengkapi
+    // (folder lengkap, langkah, percobaan, status koneksi HP) & pesan yang dilempar = pesan untuk operator.
+    const e = err instanceof GagalUploadR2 ? err : null
+    const jaringan: any = typeof navigator !== 'undefined' ? (navigator as any).connection : null
+    laporError('upload', { message: `Gagal upload ${jenisMedia} (${prefixKey.split('/')[0]}): ${err?.message || err}`, stack: err?.stack }, {
+      ukuranKb: Math.round(m.blob.size / 1024), folder: prefixKey, langkah: e?.langkah, percobaan: e?.percobaan, jenisGagal: e?.jenis, status: e?.status,
+      online: typeof navigator !== 'undefined' ? navigator.onLine : undefined, jenisJaringan: jaringan?.effectiveType, downlinkMbps: jaringan?.downlink,
+      durasiDetik: Math.round((Date.now() - mulai) / 1000),
+    })
+    const lempar: any = new Error(pesanGagalUpload(err, jenisMedia))
+    lempar.asli = err
+    throw lempar
   }
   // Nama ikut ekstensi file yang BENAR-BENAR tersimpan (foto HEIC/PNG dikompres jadi .jpg, video jadi .mp4)
   // - dipakai sbg nama file saat diunduh.

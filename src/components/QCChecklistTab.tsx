@@ -28,6 +28,9 @@ export function QCChecklistTab({user,registerBackHandler}:any){
   },[selectedWoId]);
   const[searchPanel,setSearchPanel]=useState("");
   const[uploadingId,setUploadingId]=useState<string|null>(null);
+  // (18 Okt 2026) foto yang GAGAL terkirim tetap di layar ("belum terkirim") dgn tombol Ulangi/Buang - dulu
+  // langsung hilang & harus difoto ulang. Hanya di memori HP (hilang kalau aplikasi ditutup).
+  const[fotoGagal,setFotoGagal]=useState<Record<string,{id:string,file:File,previewUrl:string,alasan:string}[]>>({});
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
 
   // Narrow select (audit egress Agu 2026) - view ini cuma pakai qc_checklist/packing_done,
@@ -95,24 +98,59 @@ export function QCChecklistTab({user,registerBackHandler}:any){
     setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));
   };
 
-  const uploadFotoSeksi=async(panelId:number,itemKey:string,file:File)=>{
+  // BUG FIX (18 Okt 2026, terbukti di uji browser): beberapa foto dipilih sekaligus -> tiap foto menyusun daftar
+  // foto dari `panelsList` LAMA (closure render saat dipilih) -> foto ke-2 menimpa foto ke-1 di DB (foto ke-1
+  // hilang). Sekarang daftar terbaru dibaca dari ref & simpan ke DB berantrean satu-satu.
+  const panelsRef=useRef<any[]>(panelsList);
+  panelsRef.current=panelsList;
+  const antreanSimpanFoto=useRef<Promise<void>>(Promise.resolve());
+  const tambahFotoGagal=(uploadKey:string,file:File,alasan:string,gagalId?:string)=>{
+    setFotoGagal(prev=>{
+      const daftar=prev[uploadKey]||[];
+      if(gagalId&&daftar.some(g=>g.id===gagalId))return{...prev,[uploadKey]:daftar.map(g=>g.id===gagalId?{...g,alasan}:g)};
+      return{...prev,[uploadKey]:[...daftar,{id:gagalId||`${Date.now()}_${Math.random().toString(36).slice(2,7)}`,file,previewUrl:URL.createObjectURL(file),alasan}]};
+    });
+  };
+  const buangFotoGagal=(uploadKey:string,gagalId:string)=>{
+    setFotoGagal(prev=>{
+      const daftar=prev[uploadKey]||[];const g=daftar.find(x=>x.id===gagalId);if(g)URL.revokeObjectURL(g.previewUrl);
+      const sisa=daftar.filter(x=>x.id!==gagalId);const next={...prev};if(sisa.length)next[uploadKey]=sisa;else delete next[uploadKey];return next;
+    });
+  };
+  const uploadFotoSeksi=async(panelId:number,itemKey:string,file:File,gagalId?:string)=>{
     const uploadKey=`${panelId}_${itemKey}`;
     setUploadingId(uploadKey);
     try{
       // BUG FIX (7 Agu 2026): jalur ini dulu gak pernah kompres foto. 6 Okt 2026: lewat helper
       // bersama siapkanMedia (foto dikompres, video dikompres ke 720p, file lain apa adanya) +
-      // batas waktu upload, sama dgn fitur dokumentasi lain.
+      // batas waktu upload, sama dgn fitur dokumentasi lain. 18 Okt 2026: helper mengulang otomatis
+      // saat koneksi putus; kalau tetap gagal, foto disimpan di layar sbg "belum terkirim".
       let media:{url:string,mime:string,name:string};
       try{
         media=await unggahMediaKeR2(file,`qc/${panelId}/${itemKey}`);
-      }catch(upErr:any){alert("Gagal upload "+file.name+": "+upErr.message);setUploadingId(null);return;}
-      const panel=panelsList.find((p:any)=>p.id===panelId);
-      const prevData=panel?.qc_checklist?.[itemKey]||{status:"to_do",catatan:""};
-      const newFoto=[...(prevData.foto||[]),{url:media.url,name:media.name,mime:media.mime,uploaded_by:user.nama,uploaded_at:new Date().toISOString()}];
-      const newChecklist={...(panel?.qc_checklist||{}),[itemKey]:{...prevData,foto:newFoto}};
-      const{error}=await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
-      if(error){alertGagalSimpan(error,`Simpan foto QC ${itemKey} panel ${panelId}`,{aksi:"simpan foto",ulangi:"upload foto"});setUploadingId(null);return;}
-      setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));
+      }catch(upErr:any){
+        tambahFotoGagal(uploadKey,file,String(upErr?.message||upErr),gagalId);
+        alert(`${file.name}: ${upErr?.message||upErr}\n\nFoto tetap di layar (kotak merah "belum terkirim") - tekan Ulangi setelah sinyal bagus.`);
+        setUploadingId(null);return;
+      }
+      const tersimpan=await new Promise<boolean>((selesai)=>{
+        antreanSimpanFoto.current=antreanSimpanFoto.current.then(async()=>{
+          const panel=panelsRef.current.find((p:any)=>p.id===panelId);
+          const prevData=panel?.qc_checklist?.[itemKey]||{status:"to_do",catatan:""};
+          const newFoto=[...(prevData.foto||[]),{url:media.url,name:media.name,mime:media.mime,uploaded_by:user.nama,uploaded_at:new Date().toISOString()}];
+          const newChecklist={...(panel?.qc_checklist||{}),[itemKey]:{...prevData,foto:newFoto}};
+          const{error}=await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
+          if(error){
+            alertGagalSimpan(error,`Simpan foto QC ${itemKey} panel ${panelId}`,{aksi:"simpan foto",ulangi:"Ulangi"});
+            selesai(false);return;
+          }
+          panelsRef.current=panelsRef.current.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p);
+          setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));
+          selesai(true);
+        }).catch((e:any)=>{console.error("[QC] simpan foto gagal:",e);alert("Terjadi kesalahan saat menyimpan foto: "+(e?.message||e));selesai(false);});
+      });
+      if(!tersimpan){tambahFotoGagal(uploadKey,file,"Foto terkirim tapi BELUM tercatat di data QC (koneksi/server) - tekan Ulangi",gagalId);}
+      else if(gagalId){buangFotoGagal(uploadKey,gagalId);}
     }catch(err:any){
       alert("Terjadi kesalahan: "+err.message);
     }
@@ -345,6 +383,29 @@ export function QCChecklistTab({user,registerBackHandler}:any){
                               </div>
                               );
                             })}
+                          </div>
+                        )}
+                        {(fotoGagal[uploadKey]||[]).length>0&&(
+                          <div style={{marginTop:8,padding:8,borderRadius:8,background:"#fef2f2",border:"1px solid #fecaca"}}>
+                            <div style={{fontSize:10.5,fontWeight:700,color:"#b91c1c",marginBottom:6}}>
+                              {(fotoGagal[uploadKey]||[]).length} foto belum terkirim - belum tersimpan di data QC
+                            </div>
+                            {(fotoGagal[uploadKey]||[]).map((gf)=>(
+                              <div key={gf.id} style={{display:"flex",gap:8,alignItems:"center",marginBottom:6}}>
+                                <div style={{width:44,height:44,borderRadius:6,overflow:"hidden",flexShrink:0,background:"#fff",border:"1px solid #fecaca"}}>
+                                  {gf.file.type.startsWith("image/")?<img src={gf.previewUrl} style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>:<i className="ti ti-file" style={{fontSize:20,color:"#b91c1c",display:"block",textAlign:"center" as const,lineHeight:"44px"}}/>}
+                                </div>
+                                <div style={{flex:1,minWidth:0,fontSize:9.5,color:"#7f1d1d",lineHeight:1.35}}>{gf.alasan}</div>
+                                <button disabled={uploadingId===uploadKey} onClick={()=>uploadFotoSeksi(p.id,item.key,gf.file,gf.id)}
+                                  style={{padding:"5px 9px",borderRadius:6,border:"none",background:"#dc2626",color:"#fff",fontSize:10,fontWeight:700,cursor:"pointer",opacity:uploadingId===uploadKey?0.5:1}}>
+                                  {uploadingId===uploadKey?"...":"Ulangi"}
+                                </button>
+                                <button onClick={()=>{if(window.confirm("Buang foto yang belum terkirim ini?"))buangFotoGagal(uploadKey,gf.id);}}
+                                  style={{padding:"5px 7px",borderRadius:6,border:"1px solid #fecaca",background:"#fff",color:"#b91c1c",fontSize:10,cursor:"pointer"}}>
+                                  Buang
+                                </button>
+                              </div>
+                            ))}
                           </div>
                         )}
                       </div>
