@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { Lbl, Card, SectionCard, EmptyState, CardToggle, SearchableSelect } from "./ui/Primitives";
 import { DIVISI_CONFIG } from "../lib/panelTypes";
+import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
+import { ringkasAlasanGagal } from "../lib/koneksi";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB PERMINTAAN BARANG (BBMB & BBMU) - sistem request/approve pengeluaran
@@ -54,19 +56,6 @@ const emptyItem=():ItemRow=>({value:"",namaKomponen:"",qty:1,satuanList:[],satua
 // Supabase/PostgREST default cap 1000 baris tanpa .range() - komponen_master kategori BBMU
 // sendirian udah 1.424 baris (lebih dari cap), jadi WAJIB paginasi penuh di sini, bukan
 // .select() polos (persis kasus renhar/activity_log yang pernah kejadian sebelumnya).
-const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
-  let all:any[]=[];
-  let from=0;
-  const PAGE=1000;
-  while(true){
-    const{data,error}=await build(from,from+PAGE-1);
-    if(error)throw error;
-    all=all.concat(data??[]);
-    if(!data||data.length<PAGE)break;
-    from+=PAGE;
-  }
-  return all;
-};
 
 const selStyle:any={width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
 const inpStyle:any={width:"100%",padding:"8px 10px",borderRadius:8,border:"1.5px solid #cbd5e1",fontSize:13,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit"};
@@ -105,6 +94,7 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
 
   const[riwayat,setRiwayat]=useState<any[]>([]);
   const[loadingRiwayat,setLoadingRiwayat]=useState(true);
+  const[errRiwayat,setErrRiwayat]=useState<string|null>(null); // (18 Okt 2026) gagal baca -> spanduk, bukan kartu kosong diam-diam
   const[confirmingId,setConfirmingId]=useState<number|null>(null);
   // Filter tanggal per hari (REVISI 2 Sep 2026, pola sama persis kayak RiwayatGudangTab.tsx sisi
   // Gudang) - Riwayat Permintaan operator dulu cuma nampilin 30 terakhir tanpa filter waktu.
@@ -187,19 +177,24 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
     setLoadingRiwayat(true);
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
-    const{data:perms}=await supabase.from("permintaan").select("*")
+    // (18 Okt 2026, audit K5) - dulu .limit(30) tanpa cek error & item tanpa paginasi: gagal baca = kartu
+    // kosong tanpa pesan, permintaan ke-31 dst di hari itu tersembunyi. Sekarang semua permintaan hari itu
+    // (urut stabil), item dibaca per potongan 200 id + semua halaman, error -> spanduk (data lama tetap tampil).
+    try{
+    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*")
       .eq("jenis",jenisTab).eq("divisi",divisi)
       .gte("created_at",startIso).lte("created_at",endIso)
-      .order("created_at",{ascending:false}).limit(30);
+      .order("created_at",{ascending:false}).order("id",{ascending:false}).range(from,to));
     // REVISI (2 Sep 2026) - BBMB & BBMU sekarang SAMA-SAMA per-item lewat permintaan_item, gak
     // ada lagi cabang terpisah header-only buat BBMU. Bedanya cuma di definisi "aktif" (BBMB
     // punya tahap sudah_diambil, BBMU enggak - BBMU beres begitu Gudang set status non-pending).
-    if(perms&&perms.length>0){
+    if(perms.length>0){
       const ids=perms.map((p:any)=>p.id);
       // is_hutang=false (5 Sep 2026) - row hutang (sisa belum terpenuhi) SENGAJA dikecualikan,
       // dia punya permintaan_id yang SAMA dengan item asli tapi harus muncul di subtab HUTANG
       // terpisah (fetchHutang di bawah), bukan tercampur di riwayat BBMB/BBMU biasa.
-      const{data:itemRows}=await supabase.from("permintaan_item").select("*").in("permintaan_id",ids).eq("is_hutang",false);
+      const itemRows=await bacaSemuaPerPotongan(ids,(bagian,from,to)=>supabase.from("permintaan_item").select("*")
+        .in("permintaan_id",bagian).eq("is_hutang",false).order("id").range(from,to));
       const map:Record<number,any[]>={};
       (itemRows||[]).forEach((it:any)=>{(map[it.permintaan_id]=map[it.permintaan_id]||[]).push(it);});
       const merged=perms.map((p:any)=>({...p,items:map[p.id]||[]}));
@@ -214,9 +209,15 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
       });
       setRiwayat(merged);
       const unreadIds=(itemRows||[]).filter((it:any)=>it.status!=="pending"&&!it.dilihat_operator).map((it:any)=>it.id);
-      if(unreadIds.length>0)supabase.from("permintaan_item").update({dilihat_operator:true}).in("id",unreadIds).then(()=>{});
+      if(unreadIds.length>0)supabase.from("permintaan_item").update({dilihat_operator:true}).in("id",unreadIds)
+        .then(({error})=>{if(error)console.error("[PermintaanView] gagal tandai sudah dilihat:",error);});
     } else {
       setRiwayat([]);
+    }
+    setErrRiwayat(null);
+    }catch(e:any){
+      console.error("[PermintaanView] gagal memuat riwayat permintaan:",e);
+      setErrRiwayat(ringkasAlasanGagal(e));
     }
     setLoadingRiwayat(false);
   };
@@ -251,6 +252,7 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
   // CardToggle di bawah tetap cuma hitung yang is_hutang=true+pending (outstanding). ──
   const[hutangList,setHutangList]=useState<any[]>([]);
   const[loadingHutang,setLoadingHutang]=useState(true);
+  const[errHutang,setErrHutang]=useState<string|null>(null);
   const[hutangCount,setHutangCount]=useState(0);
   const fetchHutang=async()=>{
     setLoadingHutang(true);
@@ -264,17 +266,27 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
     // ke-cut diam-diam, dan hutang lama yang permintaan_id-nya udah gak ada di permMap ikut
     // ke-filter habis di bawah (.filter(it=>it.perm)) - hutang outstanding hilang dari tampilan
     // operator tanpa pesan error apa pun.
-    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("divisi",divisi).range(from,to));
-    if(perms.length===0){setHutangList([]);setHutangCount(0);setLoadingHutang(false);return;}
+    // (18 Okt 2026) urut stabil + item per potongan 200 id (daftar id divisi terus tumbuh sejak reset bulanan
+    // dihentikan 17 Okt) + error -> spanduk, bukan loading menggantung.
+    try{
+    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("divisi",divisi).order("id").range(from,to));
+    if(perms.length===0){setHutangList([]);setHutangCount(0);setErrHutang(null);setLoadingHutang(false);return;}
     const permMap:Record<number,any>={};
     perms.forEach((p:any)=>{permMap[p.id]=p;});
     // order by id (bukan updated_at) - row hutang BARU (belum pernah diproses lagi) punya
     // updated_at NULL, bakal nyasar ke bawah list padahal itu yang paling perlu diperhatikan.
     // id selalu terisi & mencerminkan urutan pembuatan akurat, gak ada masalah null-ordering.
-    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").in("permintaan_id",perms.map((p:any)=>p.id)).eq("is_hutang",true).order("id",{ascending:false}).range(from,to));
+    const items=await bacaSemuaPerPotongan(perms.map((p:any)=>p.id),(bagian,from,to)=>supabase.from("permintaan_item").select("*")
+      .in("permintaan_id",bagian).eq("is_hutang",true).order("id",{ascending:false}).range(from,to));
+    items.sort((a:any,b:any)=>b.id-a.id); // urutan id menurun berlaku per potongan -> diurut ulang gabungannya
     const merged=items.map((it:any)=>({...it,perm:permMap[it.permintaan_id]})).filter((it:any)=>it.perm);
     setHutangList(merged);
     setHutangCount(merged.filter((it:any)=>it.status==="pending").length);
+    setErrHutang(null);
+    }catch(e:any){
+      console.error("[PermintaanView] gagal memuat hutang:",e);
+      setErrHutang(ringkasAlasanGagal(e));
+    }
     setLoadingHutang(false);
   };
   useEffect(()=>{
@@ -517,7 +529,8 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
           <div style={{height:1,background:"#f1f5f9",margin:"4px 0 16px"}}/>
           <Lbl>Hutang Divisi ({divisi})</Lbl>
           <div style={{fontSize:11.5,color:"#94a3b8",marginBottom:12}}>Sisa permintaan yang belum sepenuhnya dipenuhi Gudang - dicicil otomatis sampai lunas.</div>
-          <HutangBlock hutangList={hutangList} loading={loadingHutang} accent={accent} confirmingId={confirmingId} konfirmasiDiambil={konfirmasiDiambil} fmtDateTime={fmtDateTime}/>
+          {errHutang&&<div style={{fontSize:11.5,color:"#b91c1c",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 10px",marginBottom:10}}>Gagal memuat hutang ({errHutang}). {hutangList.length?"Yang tampil mungkin belum terbaru.":""} Buka ulang tab ini; kalau tetap gagal, laporkan ke admin.</div>}
+          {!(errHutang&&hutangList.length===0)&&<HutangBlock hutangList={hutangList} loading={loadingHutang} accent={accent} confirmingId={confirmingId} konfirmasiDiambil={konfirmasiDiambil} fmtDateTime={fmtDateTime}/>}
         </>
       ):(
       <>
@@ -526,9 +539,10 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
       <Lbl>Riwayat Permintaan Divisi ({jenisTab})</Lbl>
       <input type="date" value={tanggal} onChange={(e:any)=>setTanggal(e.target.value)}
         style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:12}}/>
+      {errRiwayat&&<div style={{fontSize:11.5,color:"#b91c1c",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 10px",marginBottom:10}}>Gagal memuat riwayat ({errRiwayat}). {riwayat.length?"Yang tampil mungkin belum terbaru.":""} Ganti tanggal/tab atau buka ulang; kalau tetap gagal, laporkan ke admin.</div>}
       {loadingRiwayat?(
         <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Memuat...</div>
-      ):riwayat.length===0?(
+      ):riwayat.length===0?(errRiwayat?null:
         <EmptyState variant="box-paper" title={`Belum ada permintaan ${jenisTab}`}
           description="Permintaan dari divisi ini akan muncul di sini."/>
       ):(

@@ -1,6 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
+import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB TARIK (dalam GudangHome) - READ-ONLY sejak 17 Agu 2026. Konfirmasi
@@ -22,19 +23,6 @@ const DIVISI_LABEL:Record<string,string>={
   qc:"QC",nameplate:"Nameplate",komponen:"QS",gudang:"Gudang", // label "Komponen"->"QS" (23 Sep 2026), key TETAP "komponen"
 };
 
-const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
-  let all:any[]=[];
-  let from=0;
-  const PAGE=1000;
-  while(true){
-    const{data,error}=await build(from,from+PAGE-1);
-    if(error)throw error;
-    all=all.concat(data??[]);
-    if(!data||data.length<PAGE)break;
-    from+=PAGE;
-  }
-  return all;
-};
 
 const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"-";
 
@@ -58,14 +46,14 @@ export function TarikGudangTab(){
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
     const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*")
-      .gte("created_at",startIso).lte("created_at",endIso).range(from,to));
+      .gte("created_at",startIso).lte("created_at",endIso).order("id").range(from,to));
     if(perms.length===0){setRows([]);if(!silent)setLoading(false);return;}
     const permMap:Record<number,any>={};
     perms.forEach((p:any)=>{permMap[p.id]=p;});
     const permIds=perms.map((p:any)=>p.id);
     // BBMB & BBMU yang sudah disiapkan Gudang ("submit") - baik yang belum maupun yang sudah
     // diambil, biar Gudang bisa lihat dua-duanya (toggle filter di bawah), bukan cuma antrian aktif.
-    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").eq("status","submit").in("permintaan_id",permIds).range(from,to));
+    const items=await bacaSemuaPerPotongan(permIds,(bagian,from,to)=>supabase.from("permintaan_item").select("*").eq("status","submit").in("permintaan_id",bagian).order("id").range(from,to));
     const merged=items
       .map((it:any)=>({...it,perm:permMap[it.permintaan_id]}))
       .filter((r:any)=>r.perm) // jaga-jaga kalau header udah gak ada

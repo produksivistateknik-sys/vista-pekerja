@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, SegmentedControl, EmptyState, DatePickerField } from "./gudang/GudangUI";
+import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB PERMINTAAN (dalam GudangHome) - sisi Gudang buat proses masuk BBMB & BBMU.
@@ -25,25 +26,12 @@ const DIVISI_LABEL:Record<string,string>={
   qc:"QC",nameplate:"Nameplate",komponen:"QS",gudang:"Gudang", // label "Komponen"->"QS" (23 Sep 2026), key TETAP "komponen"
 };
 
-const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
-  let all:any[]=[];
-  let from=0;
-  const PAGE=1000;
-  while(true){
-    const{data,error}=await build(from,from+PAGE-1);
-    if(error)throw error;
-    all=all.concat(data??[]);
-    if(!data||data.length<PAGE)break;
-    from+=PAGE;
-  }
-  return all;
-};
 // is_hutang=false (5 Sep 2026) - row hutang (sisa yang belum terpenuhi) SENGAJA dikecualikan
 // dari sini, dia punya permintaan_id yang SAMA dengan item asli tapi harus MUNCUL DI SUBTAB
 // HUTANG TERPISAH (lihat HutangList di bawah), bukan ikut tercampur di BBMB/BBMU biasa.
 const fetchItemsByPermintaanIds=async(ids:number[]):Promise<any[]>=>{
   if(ids.length===0)return[];
-  return fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").in("permintaan_id",ids).eq("is_hutang",false).range(from,to));
+  return bacaSemuaPerPotongan(ids,(bagian,from,to)=>supabase.from("permintaan_item").select("*").in("permintaan_id",bagian).eq("is_hutang",false).order("id").range(from,to));
 };
 const groupItemsByPermintaan=(items:any[]):Record<number,any[]>=>{
   const map:Record<number,any[]>={};
@@ -222,7 +210,7 @@ export function PermintaanGudangTab({user}:{user:any}){
     const start=`${year}-${String(month+1).padStart(2,"0")}-01T00:00:00`;
     const end=`${year}-${String(month+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}T23:59:59.999`;
     const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("disetujui_admin_at")
-      .eq("status","pending").eq("is_hutang",false).gte("disetujui_admin_at",start).lte("disetujui_admin_at",end).range(from,to));
+      .eq("status","pending").eq("is_hutang",false).gte("disetujui_admin_at",start).lte("disetujui_admin_at",end).order("id").range(from,to));
     const dates=new Set<string>();
     items.forEach((it:any)=>{if(it.disetujui_admin_at)dates.add(it.disetujui_admin_at.slice(0,10));});
     setDotDates(dates);
@@ -299,7 +287,7 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
     const startIso=tanggal+"T00:00:00";
     const endIso=tanggal+"T23:59:59.999";
     const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis",jenis)
-      .gte("created_at",startIso).lte("created_at",endIso).order("created_at",{ascending:false}).range(from,to));
+      .gte("created_at",startIso).lte("created_at",endIso).order("created_at",{ascending:false}).order("id",{ascending:false}).range(from,to));
     if(perms.length===0){setPermMap({});setItemsByPerm({});if(!silent)setLoading(false);return;}
     const permIds=perms.map((p:any)=>p.id);
     const allItems=await fetchItemsByPermintaanIds(permIds);
@@ -469,10 +457,10 @@ function HutangList({adminName}:{adminName:string}){
   // dobel tiap submit/reject/cicil hutang.
   const fetchData=async(silent=false)=>{
     if(!silent)setLoading(true);
-    const hutangItems=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").eq("is_hutang",true).eq("status","pending").range(from,to));
+    const hutangItems=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").eq("is_hutang",true).eq("status","pending").order("id").range(from,to));
     if(hutangItems.length===0){setPermMap({});setItemsByPerm({});if(!silent)setLoading(false);return;}
     const permIds=[...new Set(hutangItems.map((it:any)=>it.permintaan_id))];
-    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").in("id",permIds).range(from,to));
+    const perms=await bacaSemuaPerPotongan(permIds,(bagian,from,to)=>supabase.from("permintaan").select("*").in("id",bagian).order("id").range(from,to));
     const pMap:Record<number,any>={};
     perms.forEach((p:any)=>{pMap[p.id]=p;});
     setPermMap(pMap);

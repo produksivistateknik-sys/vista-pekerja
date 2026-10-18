@@ -36,6 +36,7 @@ import { AkunView } from "./components/AkunView";
 import { ProyekLuarView } from "./components/ProyekLuarView";
 import { WoDigitalView } from "./components/WoDigitalView";
 import { ProduksiStokView } from "./components/ProduksiStokView";
+import { bacaSemuaPerPotongan } from "./lib/bacaSemua";
 // Tahap yang mungkin dipakai Produksi Stok (sama dgn CHECK tabel produksi_stok_tahap) - dipakai
 // nentuin sub-bagian mana yang dapat tile menu-nya.
 const TAHAP_PRODUKSI_STOK=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING"];
@@ -322,9 +323,12 @@ export default function App(){
     if(!user||user.divisi==="gudang")return;
     let cancelled=false;
     const fetchNotifCount=async()=>{
-      const{data:perms}=await supabase.from("permintaan").select("id,dilihat_operator,jenis,created_at")
+      // (18 Okt 2026, audit K5) error dicek - gagal baca = angka badge LAMA dipertahankan (bukan jadi 0
+      // diam-diam), item lewat helper bersama: urut stabil + per potongan 200 id.
+      const{data:perms,error:permErr}=await supabase.from("permintaan").select("id,dilihat_operator,jenis,created_at")
         .eq("divisi",user.divisi)
-        .order("created_at",{ascending:false}).limit(100);
+        .order("created_at",{ascending:false}).order("id",{ascending:false}).limit(100);
+      if(permErr){console.error("[notif permintaan] gagal baca permintaan:",permErr);return;}
       if(!perms||perms.length===0){if(!cancelled){setNotifCount(0);setNotifTargets([]);}return;}
       const permIds=perms.map((p:any)=>p.id);
       const permMap:Record<number,any>={};
@@ -334,19 +338,14 @@ export default function App(){
       // tanpa .range() (persis bug renhar/komponen_master yang sudah kejadian sebelumnya di app
       // ini) - badge notif jadi under-count.
       let items:any[]=[];
-      let from=0;
-      const PAGE=1000;
       // "pending"/"menunggu_admin" (7 Sep 2026, fitur approval admin) SAMA-SAMA dikecualikan -
       // keduanya cuma antre (Gudang/admin belum proses), belum ada apa pun yang operator perlu
       // tindak lanjuti. Kalau cuma exclude "pending" doang, item menunggu_admin lolos filter dan
       // salah kena tandai "butuh perhatian" padahal cuma antre giliran admin.
-      while(true){
-        const{data}=await supabase.from("permintaan_item").select("permintaan_id,status,dilihat_operator,sudah_diambil,is_hutang")
-          .not("status","in","(pending,menunggu_admin)").in("permintaan_id",permIds).range(from,from+PAGE-1);
-        items=items.concat(data??[]);
-        if(!data||data.length<PAGE)break;
-        from+=PAGE;
-      }
+      try{
+        items=await bacaSemuaPerPotongan(permIds,(bagian,dari,sampai)=>supabase.from("permintaan_item").select("id,permintaan_id,status,dilihat_operator,sudah_diambil,is_hutang")
+          .not("status","in","(pending,menunggu_admin)").in("permintaan_id",bagian).order("id").range(dari,sampai));
+      }catch(e){console.error("[notif permintaan] gagal baca item:",e);return;}
       // is_hutang dikecualikan (7 Sep 2026) - item hutang punya tab & render terpisah
       // (PermintaanView.tsx fetchRiwayat juga eq is_hutang=false), kalau item hutang ikut jadi
       // alasan notifikasi, card yang di-highlight jadi kelihatan kosong/gak ada yang perlu

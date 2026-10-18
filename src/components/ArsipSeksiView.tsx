@@ -5,6 +5,7 @@ import { FotoZoomViewerPekerja } from "./FotoZoomViewerPekerja";
 import { ThumbMedia } from "./ui/ThumbMedia";
 import { isVideoFoto } from "../lib/mediaThumb";
 import { kataCari, cocokSemuaKata, bacaSesi, tulisSesi } from "../lib/cariArsip";
+import { fetchAllPaged } from "../lib/bacaSemua";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ARSIP SEKSI - tab "Arsip" per divisi (Warehouse/QS/QC/Pasang Komponen), read-only browsing.
@@ -38,19 +39,6 @@ import { kataCari, cocokSemuaKata, bacaSesi, tulisSesi } from "../lib/cariArsip"
 // request tanpa .range(). Trigger arsip nulis SATU baris per PANEL per SEKSI (bukan per WO),
 // jadi tabel ini tumbuh lebih cepat dari panels sendiri - begitu tembus 1000 baris, arsip LAMA
 // (order .diarsipkan_pada desc) ke-cut diam-diam dari tab Arsip tanpa pesan error apa pun.
-const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
-  let all:any[]=[];
-  let from=0;
-  const PAGE=1000;
-  while(true){
-    const{data,error}=await build(from,from+PAGE-1);
-    if(error)throw error;
-    all=all.concat(data??[]);
-    if(!data||data.length<PAGE)break;
-    from+=PAGE;
-  }
-  return all;
-};
 
 export function ArsipSeksiView({seksi}:{seksi:string}){
   const[rows,setRows]=useState<any[]>([]);

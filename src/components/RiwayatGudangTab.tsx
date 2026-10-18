@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
+import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB RIWAYAT (dalam GudangHome) - histori aksi harian: submit/reject BBMB
@@ -38,19 +39,6 @@ const DIVISI_LABEL:Record<string,string>={
   qc:"QC",nameplate:"Nameplate",komponen:"QS",gudang:"Gudang", // label "Komponen"->"QS" (23 Sep 2026), key TETAP "komponen"
 };
 
-const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
-  let all:any[]=[];
-  let from=0;
-  const PAGE=1000;
-  while(true){
-    const{data,error}=await build(from,from+PAGE-1);
-    if(error)throw error;
-    all=all.concat(data??[]);
-    if(!data||data.length<PAGE)break;
-    from+=PAGE;
-  }
-  return all;
-};
 
 const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):"-";
 
@@ -113,11 +101,11 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
     // pernah sampai ke Gudang sama sekali) ikut "ketangkep" query ini seolah aksi Gudang.
     const items=await fetchAllPaged((from,to)=>
       supabase.from("permintaan_item").select("*").not("updated_at","is",null).neq("status","ditolak_admin")
-        .gte("updated_at",startIso).lte("updated_at",endIso).range(from,to));
+        .gte("updated_at",startIso).lte("updated_at",endIso).order("id").range(from,to));
     const merged=items.slice().sort((a,b)=>(b.updated_at||"").localeCompare(a.updated_at||""));
     const permIds=[...new Set(merged.map((it:any)=>it.permintaan_id))];
     if(permIds.length===0){setRows([]);if(!silent)setLoading(false);return;}
-    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").in("id",permIds).range(from,to));
+    const perms=await bacaSemuaPerPotongan(permIds,(bagian,from,to)=>supabase.from("permintaan").select("*").in("id",bagian).order("id").range(from,to));
     const permMap:Record<number,any>={};
     perms.forEach((p:any)=>{permMap[p.id]=p;});
     setRows(merged.map((it:any)=>({...it,perm:permMap[it.permintaan_id]})).filter((r:any)=>r.perm));
@@ -151,7 +139,7 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
     const end=`${year}-${String(month+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}T23:59:59.999`;
     const items=await fetchAllPaged((from,to)=>
       supabase.from("permintaan_item").select("id,updated_at,sudah_diinput").eq("status","submit")
-        .not("updated_at","is",null).gte("updated_at",start).lte("updated_at",end).eq("sudah_diinput",false).range(from,to));
+        .not("updated_at","is",null).gte("updated_at",start).lte("updated_at",end).eq("sudah_diinput",false).order("id").range(from,to));
     const dates=new Set<string>();
     items.forEach((it:any)=>{if(it.updated_at)dates.add(it.updated_at.slice(0,10));});
     setDotDates(dates);
@@ -226,14 +214,14 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
     const endIso=tanggal+"T23:59:59.999";
     const decided=await fetchAllPaged((from,to)=>
       supabase.from("permintaan_item_koreksi").select("*").in("status",["disetujui","ditolak"])
-        .gte("diputuskan_at",startIso).lte("diputuskan_at",endIso).range(from,to));
+        .gte("diputuskan_at",startIso).lte("diputuskan_at",endIso).order("id").range(from,to));
     if(decided.length===0){setKoreksiDecided([]);return;}
     const itemIds=[...new Set(decided.map((k:any)=>k.permintaan_item_id))];
-    const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("*").in("id",itemIds).range(from,to));
+    const items=await bacaSemuaPerPotongan(itemIds,(bagian,from,to)=>supabase.from("permintaan_item").select("*").in("id",bagian).order("id").range(from,to));
     const itemMap:Record<number,any>={};
     items.forEach((it:any)=>{itemMap[it.id]=it;});
     const permIds=[...new Set(items.map((it:any)=>it.permintaan_id))];
-    const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").in("id",permIds).range(from,to));
+    const perms=await bacaSemuaPerPotongan(permIds,(bagian,from,to)=>supabase.from("permintaan").select("*").in("id",bagian).order("id").range(from,to));
     const permMap:Record<number,any>={};
     perms.forEach((p:any)=>{permMap[p.id]=p;});
     const merged=decided

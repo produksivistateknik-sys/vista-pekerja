@@ -7,6 +7,7 @@ import { ThumbMedia } from "./ui/ThumbMedia";
 import { isVideoFoto } from "../lib/mediaThumb";
 import { kataCari, cocokSemuaKata, bacaSesi, tulisSesi } from "../lib/cariArsip";
 import { alertGagalSimpan } from "../lib/koneksi";
+import { fetchAllPaged } from "../lib/bacaSemua";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ARSIP QC - redesign search-first (17 Agu 2026), KHUSUS divisi QC. Terpisah dari
@@ -53,19 +54,6 @@ const fmtTglJam=(iso?:string)=>iso?new Date(iso).toLocaleDateString("id-ID",{day
 // request tanpa .range(). Trigger arsip nulis SATU baris per PANEL per SEKSI (bukan per WO),
 // jadi tabel ini tumbuh lebih cepat dari panels sendiri - begitu tembus 1000 baris, arsip LAMA
 // (order .diarsipkan_pada desc) ke-cut diam-diam dari tab Arsip QC tanpa pesan error apa pun.
-const fetchAllPaged=async(build:(from:number,to:number)=>any):Promise<any[]>=>{
-  let all:any[]=[];
-  let from=0;
-  const PAGE=1000;
-  while(true){
-    const{data,error}=await build(from,from+PAGE-1);
-    if(error)throw error;
-    all=all.concat(data??[]);
-    if(!data||data.length<PAGE)break;
-    from+=PAGE;
-  }
-  return all;
-};
 
 export function ArsipQCView({registerBackHandler}:{registerBackHandler?:(fn:(()=>boolean)|null)=>void}={}){
   const[rows,setRows]=useState<any[]>([]);
