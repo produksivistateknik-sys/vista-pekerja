@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
 import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
+import { getLocalDateStr, rentangHariLokal } from "../lib/dateHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB TARIK (dalam GudangHome) - READ-ONLY sejak 17 Agu 2026. Konfirmasi
@@ -33,7 +34,7 @@ export function TarikGudangTab(){
   // Filter tanggal (REVISI 2 Sep 2026, pola sama kayak RiwayatGudangTab.tsx) - discope ke tanggal
   // PERMINTAAN DIBUAT (permintaan.created_at), bukan tanggal disiapkan/diambil - konsisten sama
   // tab lain (Permintaan Masuk, Riwayat, Permintaan operator) yang semua discope ke created_at.
-  const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
+  const[tanggal,setTanggal]=useState(getLocalDateStr());
   const[loading,setLoading]=useState(true);
   const[rows,setRows]=useState<any[]>([]); // item + permintaan header digabung flat
 
@@ -43,8 +44,7 @@ export function TarikGudangTab(){
   // ada aktivitas di mana pun, walau gak relevan sama sekali ke tampilan saat itu.
   const fetchData=async(silent=false)=>{
     if(!silent)setLoading(true);
-    const startIso=tanggal+"T00:00:00";
-    const endIso=tanggal+"T23:59:59.999";
+    const{startIso,endIso}=rentangHariLokal(tanggal); // (18 Okt 2026) hari menurut jam HP (WIB), bukan UTC
     const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*")
       .gte("created_at",startIso).lte("created_at",endIso).order("id").range(from,to));
     if(perms.length===0){setRows([]);if(!silent)setLoading(false);return;}

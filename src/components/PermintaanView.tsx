@@ -4,6 +4,7 @@ import { Lbl, Card, SectionCard, EmptyState, CardToggle, SearchableSelect } from
 import { DIVISI_CONFIG } from "../lib/panelTypes";
 import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
 import { ringkasAlasanGagal } from "../lib/koneksi";
+import { getLocalDateStr, rentangHariLokal } from "../lib/dateHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB PERMINTAAN BARANG (BBMB & BBMU) - sistem request/approve pengeluaran
@@ -98,7 +99,7 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
   const[confirmingId,setConfirmingId]=useState<number|null>(null);
   // Filter tanggal per hari (REVISI 2 Sep 2026, pola sama persis kayak RiwayatGudangTab.tsx sisi
   // Gudang) - Riwayat Permintaan operator dulu cuma nampilin 30 terakhir tanpa filter waktu.
-  const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
+  const[tanggal,setTanggal]=useState(getLocalDateStr());
 
   // Navigasi spesifik dari kartu notifikasi "X permintaan butuh perhatian" di Akun (7 Sep 2026) -
   // dulu tap kartu itu cuma pindah ke tab ini secara umum, operator harus cari sendiri. navTarget
@@ -175,8 +176,7 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
   const fetchRiwayat=async()=>{
     if(jenisTab==="HUTANG")return; // Hutang punya fetch+state sendiri
     setLoadingRiwayat(true);
-    const startIso=tanggal+"T00:00:00";
-    const endIso=tanggal+"T23:59:59.999";
+    const{startIso,endIso}=rentangHariLokal(tanggal); // (18 Okt 2026) hari menurut jam HP (WIB), bukan UTC
     // (18 Okt 2026, audit K5) - dulu .limit(30) tanpa cek error & item tanpa paginasi: gagal baca = kartu
     // kosong tanpa pesan, permintaan ke-31 dst di hari itu tersembunyi. Sekarang semua permintaan hari itu
     // (urut stabil), item dibaca per potongan 200 id + semua halaman, error -> spanduk (data lama tetap tampil).

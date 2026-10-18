@@ -9,6 +9,7 @@ import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerP
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { SectionCard, EmptyState } from "./ui/Primitives";
 import { useSaatFotoAntreanTertempel } from "../lib/useSaatFotoAntreanTertempel";
+import { getLocalDateStr } from "../lib/dateHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROYEK LUAR (30 Agu 2026) - laporan/dokumentasi pekerjaan operator di proyek eksternal,
@@ -53,7 +54,7 @@ export function ProyekLuarView({user}:{user:any}){
   },[user.id]);
 
   // ── Form buat laporan baru ──
-  const blankForm={namaLokasi:"",tanggal:new Date().toISOString().slice(0,10),catatan:"",status:"berlangsung"};
+  const blankForm={namaLokasi:"",tanggal:getLocalDateStr(),catatan:"",status:"berlangsung"};
   const[form,setForm]=useState(blankForm);
   const[stagedFoto,setStagedFoto]=useState<StagedFoto[]>([]);
   const[saving,setSaving]=useState(false);

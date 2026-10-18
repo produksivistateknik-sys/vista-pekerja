@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, SegmentedControl, EmptyState, DatePickerField } from "./gudang/GudangUI";
 import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
+import { getLocalDateStr, rentangHariLokal, rentangBulanLokal, tanggalLokalDari } from "../lib/dateHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB PERMINTAAN (dalam GudangHome) - sisi Gudang buat proses masuk BBMB & BBMU.
@@ -137,7 +138,7 @@ export function PermintaanGudangTab({user}:{user:any}){
   const[jenisTab,setJenisTab]=useState<"BBMB"|"BBMU"|"HUTANG">("BBMB");
   // Filter tanggal per hari (REVISI 2 Sep 2026) - discope ke tanggal permintaan dibuat
   // (permintaan.created_at), pola sama kayak RiwayatGudangTab.
-  const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
+  const[tanggal,setTanggal]=useState(getLocalDateStr());
 
   // Titik merah "belum dibaca" per sub-tab (REVISI 2 Sep 2026) - Gudang cuma 1 login SHARED
   // (operator_users gak punya baris per-individu buat divisi gudang), jadi status "sudah dibaca"
@@ -206,13 +207,11 @@ export function PermintaanGudangTab({user}:{user:any}){
   // (permintaan_item gak punya jenis lain selain lewat permintaan BBMB/BBMU, cukup filter item
   // langsung - lebih simpel & sekali query drpd 2-step kayak sebelumnya).
   const fetchDotDates=async(year:number,month:number)=>{
-    const lastDay=new Date(year,month+1,0).getDate();
-    const start=`${year}-${String(month+1).padStart(2,"0")}-01T00:00:00`;
-    const end=`${year}-${String(month+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}T23:59:59.999`;
+    const{startIso:start,endIso:end}=rentangBulanLokal(year,month); // (18 Okt 2026) bulan menurut jam HP (WIB)
     const items=await fetchAllPaged((from,to)=>supabase.from("permintaan_item").select("disetujui_admin_at")
       .eq("status","pending").eq("is_hutang",false).gte("disetujui_admin_at",start).lte("disetujui_admin_at",end).order("id").range(from,to));
     const dates=new Set<string>();
-    items.forEach((it:any)=>{if(it.disetujui_admin_at)dates.add(it.disetujui_admin_at.slice(0,10));});
+    items.forEach((it:any)=>{if(it.disetujui_admin_at)dates.add(tanggalLokalDari(it.disetujui_admin_at));});
     setDotDates(dates);
   };
   const handleVisibleMonthChange=(year:number,month:number)=>{
@@ -284,8 +283,7 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
     if(!silent)setLoading(true);
     // Discope ke tanggal permintaan DIBUAT (bukan tanggal item-nya diproses) - fetch perms dulu
     // (di-filter tanggal+jenis), baru ambil item punya perm-perm itu.
-    const startIso=tanggal+"T00:00:00";
-    const endIso=tanggal+"T23:59:59.999";
+    const{startIso,endIso}=rentangHariLokal(tanggal); // (18 Okt 2026) hari menurut jam HP (WIB), bukan UTC
     const perms=await fetchAllPaged((from,to)=>supabase.from("permintaan").select("*").eq("jenis",jenis)
       .gte("created_at",startIso).lte("created_at",endIso).order("created_at",{ascending:false}).order("id",{ascending:false}).range(from,to));
     if(perms.length===0){setPermMap({});setItemsByPerm({});if(!silent)setLoading(false);return;}

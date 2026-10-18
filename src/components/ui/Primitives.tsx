@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useKoneksiStatus } from "../../lib/koneksi";
 import { isPushSupported, subscribeToPush, unsubscribeFromPush, getPushStatus, type PushStatus } from "../../lib/pushNotif";
+import { getLocalDateStr } from "../../lib/dateHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED UI COMPONENTS - dipisah dari App.tsx (Sprint 5, 5 Agu 2026)
@@ -324,7 +325,7 @@ export function DatePickerField({value,onChange,style={},markedDates,onVisibleMo
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[viewMonth]);
 
-  const todayStr=new Date().toISOString().slice(0,10);
+  const todayStr=getLocalDateStr(); // (18 Okt 2026) hari ini menurut jam HP, bukan UTC
   const fmtLabel=value?parseVal(value).toLocaleDateString("id-ID",{day:"numeric",month:"long",year:"numeric"}):"Pilih tanggal";
 
   const year=viewMonth.getFullYear(),month=viewMonth.getMonth();

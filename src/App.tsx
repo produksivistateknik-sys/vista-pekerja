@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useRef, lazy, Suspense } from "react";
 import { supabase } from "./lib/supabase";
 import { isPushSupported, getPushPermissionState, subscribeToPush } from "./lib/pushNotif";
-import { TODAY, addDays } from "./lib/dateHelpers";
+import { TODAY, addDays, tanggalLokalDari } from "./lib/dateHelpers";
 import { useDateRollover } from "./lib/dateRollover";
 import { useVersionCheck, muatUlangBersih } from "./lib/versionCheck";
 import { DIVISI_CONFIG } from "./lib/panelTypes";
@@ -361,7 +361,7 @@ export default function App(){
       const targetIds=[...new Set(needsAttention.map((it:any)=>it.permintaan_id))];
       if(!cancelled){
         setNotifCount(targetIds.length);
-        setNotifTargets(targetIds.map(id=>({id,jenis:permMap[id]?.jenis,tanggal:String(permMap[id]?.created_at||"").slice(0,10)})));
+        setNotifTargets(targetIds.map(id=>({id,jenis:permMap[id]?.jenis,tanggal:tanggalLokalDari(permMap[id]?.created_at) /* (18 Okt 2026) sama dgn filter Riwayat (WIB) */})));
       }
     };
     fetchNotifCount();

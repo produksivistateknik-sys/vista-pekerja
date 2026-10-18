@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
 import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
+import { getLocalDateStr, rentangHariLokal, rentangBulanLokal, tanggalLokalDari } from "../lib/dateHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB RIWAYAT (dalam GudangHome) - histori aksi harian: submit/reject BBMB
@@ -70,7 +71,7 @@ const STATUS_FILTER_OPTIONS:{key:StatusFilterKey,label:string,color:string}[]=[
 ];
 
 export function RiwayatGudangTab({adminName}:{adminName:string}){
-  const[tanggal,setTanggal]=useState(new Date().toISOString().slice(0,10));
+  const[tanggal,setTanggal]=useState(getLocalDateStr());
   const[loading,setLoading]=useState(true);
   const[rows,setRows]=useState<any[]>([]);
   // Search (3 Sep 2026) - 1 field, cocokkan ke SEMUA nama yang terlibat (peminta/penyiap/
@@ -88,8 +89,7 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
   // loading state - data di-refresh diam-diam di background, list gak "kedip".
   const fetchData=async(silent=false)=>{
     if(!silent)setLoading(true);
-    const startIso=tanggal+"T00:00:00";
-    const endIso=tanggal+"T23:59:59.999";
+    const{startIso,endIso}=rentangHariLokal(tanggal); // (18 Okt 2026) hari menurut jam HP (WIB), bukan UTC
     // SATU sumber tanggal (17 Sep 2026, REVISI KE-2 - lihat komentar header file) - updated_at
     // (kapan Gudang submit/reject) SATU-SATUNYA penentu "item ini masuk tanggal apa". diambil_at
     // TIDAK LAGI dipakai sebagai tanggal acuan alternatif - cuma tampil sebagai info "📦 Diambil"
@@ -134,14 +134,12 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
   const[dotDates,setDotDates]=useState<Set<string>>(new Set());
   const dotMonthRef=useRef<{year:number,month:number}|null>(null);
   const fetchDotDates=async(year:number,month:number)=>{
-    const lastDay=new Date(year,month+1,0).getDate();
-    const start=`${year}-${String(month+1).padStart(2,"0")}-01T00:00:00`;
-    const end=`${year}-${String(month+1).padStart(2,"0")}-${String(lastDay).padStart(2,"0")}T23:59:59.999`;
+    const{startIso:start,endIso:end}=rentangBulanLokal(year,month); // (18 Okt 2026) bulan menurut jam HP (WIB)
     const items=await fetchAllPaged((from,to)=>
       supabase.from("permintaan_item").select("id,updated_at,sudah_diinput").eq("status","submit")
         .not("updated_at","is",null).gte("updated_at",start).lte("updated_at",end).eq("sudah_diinput",false).order("id").range(from,to));
     const dates=new Set<string>();
-    items.forEach((it:any)=>{if(it.updated_at)dates.add(it.updated_at.slice(0,10));});
+    items.forEach((it:any)=>{if(it.updated_at)dates.add(tanggalLokalDari(it.updated_at));});
     setDotDates(dates);
   };
   const handleVisibleMonthChange=(year:number,month:number)=>{
@@ -210,8 +208,7 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
   // updated_at item) - gak nyentuh sama sekali logic/tampilan/query section di atas.
   const[koreksiDecided,setKoreksiDecided]=useState<any[]>([]);
   const fetchKoreksiDecided=async()=>{
-    const startIso=tanggal+"T00:00:00";
-    const endIso=tanggal+"T23:59:59.999";
+    const{startIso,endIso}=rentangHariLokal(tanggal); // (18 Okt 2026) hari menurut jam HP (WIB), bukan UTC
     const decided=await fetchAllPaged((from,to)=>
       supabase.from("permintaan_item_koreksi").select("*").in("status",["disetujui","ditolak"])
         .gte("diputuskan_at",startIso).lte("diputuskan_at",endIso).order("id").range(from,to));
