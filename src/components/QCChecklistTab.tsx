@@ -4,7 +4,9 @@ import { QC_ITEMS } from "../lib/panelTypes";
 import { getUrgensiPanel } from "../lib/progressHelpers";
 import { fetchAllPanels } from "../lib/panelHelpers";
 import { hapusFotoDariStorage } from "../lib/fotoHelpers";
-import { unggahMediaKeR2 } from "../lib/siapkanMedia";
+import { unggahMediaKeR2, sudahDiantrekan, PESAN_DIANTREKAN } from "../lib/siapkanMedia";
+import { tempelAtauAntrekan } from "../lib/antreanFoto";
+import { useSaatFotoAntreanTertempel } from "../lib/useSaatFotoAntreanTertempel";
 import { alertGagalSimpan } from "../lib/koneksi";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
@@ -60,6 +62,7 @@ export function QCChecklistTab({user,registerBackHandler}:any){
   useEffect(()=>{
     fetchData();
   },[]);
+  useSaatFotoAntreanTertempel(()=>{debouncedFetch();}); // (18 Okt 2026) foto dari antrean HP tertempel -> muat ulang
   // Filter server-side UPDATE by id=in.(...) (audit egress 6 Sep 2026) - dulu TANPA filter,
   // panel APAPUN berubah di seluruh sistem trigger refetch semua panel. INSERT TETAP tanpa
   // filter (panel baru belum ada di panelIdsKey, gak bisa difilter berdasarkan ID yang belum
@@ -100,10 +103,9 @@ export function QCChecklistTab({user,registerBackHandler}:any){
 
   // BUG FIX (18 Okt 2026, terbukti di uji browser): beberapa foto dipilih sekaligus -> tiap foto menyusun daftar
   // foto dari `panelsList` LAMA (closure render saat dipilih) -> foto ke-2 menimpa foto ke-1 di DB (foto ke-1
-  // hilang). Sekarang daftar terbaru dibaca dari ref & simpan ke DB berantrean satu-satu.
-  const panelsRef=useRef<any[]>(panelsList);
-  panelsRef.current=panelsList;
-  const antreanSimpanFoto=useRef<Promise<void>>(Promise.resolve());
+  // hilang). Sekarang foto DITEMPEL lewat RPC tambah_foto_dokumentasi (lib/antreanFoto, satu UPDATE di server -
+  // tidak menulis ulang seluruh qc_checklist), tampilan ditambah lewat setState fungsional.
+  // Antrean foto (18 Okt 2026, tahap 2): gagal karena sinyal -> foto disimpan di HP & dikirim otomatis nanti.
   const tambahFotoGagal=(uploadKey:string,file:File,alasan:string,gagalId?:string)=>{
     setFotoGagal(prev=>{
       const daftar=prev[uploadKey]||[];
@@ -117,40 +119,49 @@ export function QCChecklistTab({user,registerBackHandler}:any){
       const sisa=daftar.filter(x=>x.id!==gagalId);const next={...prev};if(sisa.length)next[uploadKey]=sisa;else delete next[uploadKey];return next;
     });
   };
+  const tambahFotoKeLayar=(panelId:number,itemKey:string,foto:any)=>{
+    setPanelsList(prev=>prev.map((p:any)=>{
+      if(p.id!==panelId)return p;
+      const prevData=p.qc_checklist?.[itemKey]||{status:"to_do",catatan:""};
+      if((prevData.foto||[]).some((f:any)=>f.url===foto.url))return p;
+      return{...p,qc_checklist:{...(p.qc_checklist||{}),[itemKey]:{...prevData,foto:[...(prevData.foto||[]),foto]}}};
+    }));
+  };
   const uploadFotoSeksi=async(panelId:number,itemKey:string,file:File,gagalId?:string)=>{
     const uploadKey=`${panelId}_${itemKey}`;
+    const panelNama=String(panelsList.find((p:any)=>p.id===panelId)?.nama||panelId).trim();
+    const label=`QC ${QC_ITEMS.find(i=>i.key===itemKey)?.label||itemKey} - ${panelNama}`;
+    const tujuan={jenis:"qc" as const,id:panelId,kunci:itemKey};
     setUploadingId(uploadKey);
     try{
       // BUG FIX (7 Agu 2026): jalur ini dulu gak pernah kompres foto. 6 Okt 2026: lewat helper
       // bersama siapkanMedia (foto dikompres, video dikompres ke 720p, file lain apa adanya) +
       // batas waktu upload, sama dgn fitur dokumentasi lain. 18 Okt 2026: helper mengulang otomatis
-      // saat koneksi putus; kalau tetap gagal, foto disimpan di layar sbg "belum terkirim".
+      // saat koneksi putus, lalu menyimpan ke antrean HP kalau tetap gagal karena sinyal.
       let media:{url:string,mime:string,name:string};
       try{
-        media=await unggahMediaKeR2(file,`qc/${panelId}/${itemKey}`);
+        media=await unggahMediaKeR2(file,`qc/${panelId}/${itemKey}`,{tujuan,label,operator:user.nama,foto:{uploaded_by:user.nama}});
       }catch(upErr:any){
-        tambahFotoGagal(uploadKey,file,String(upErr?.message||upErr),gagalId);
-        alert(`${file.name}: ${upErr?.message||upErr}\n\nFoto tetap di layar (kotak merah "belum terkirim") - tekan Ulangi setelah sinyal bagus.`);
+        if(sudahDiantrekan(upErr)){
+          if(gagalId)buangFotoGagal(uploadKey,gagalId);
+          alert(`${file.name}: ${upErr.message}`);
+        }else{
+          tambahFotoGagal(uploadKey,file,String(upErr?.message||upErr),gagalId);
+          alert(`${file.name}: ${upErr?.message||upErr}\n\nFoto tetap di layar (kotak merah "belum terkirim") - tekan Ulangi.`);
+        }
         setUploadingId(null);return;
       }
-      const tersimpan=await new Promise<boolean>((selesai)=>{
-        antreanSimpanFoto.current=antreanSimpanFoto.current.then(async()=>{
-          const panel=panelsRef.current.find((p:any)=>p.id===panelId);
-          const prevData=panel?.qc_checklist?.[itemKey]||{status:"to_do",catatan:""};
-          const newFoto=[...(prevData.foto||[]),{url:media.url,name:media.name,mime:media.mime,uploaded_by:user.nama,uploaded_at:new Date().toISOString()}];
-          const newChecklist={...(panel?.qc_checklist||{}),[itemKey]:{...prevData,foto:newFoto}};
-          const{error}=await supabase.from("panels").update({qc_checklist:newChecklist}).eq("id",panelId);
-          if(error){
-            alertGagalSimpan(error,`Simpan foto QC ${itemKey} panel ${panelId}`,{aksi:"simpan foto",ulangi:"Ulangi"});
-            selesai(false);return;
-          }
-          panelsRef.current=panelsRef.current.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p);
-          setPanelsList(prev=>prev.map((p:any)=>p.id===panelId?{...p,qc_checklist:newChecklist}:p));
-          selesai(true);
-        }).catch((e:any)=>{console.error("[QC] simpan foto gagal:",e);alert("Terjadi kesalahan saat menyimpan foto: "+(e?.message||e));selesai(false);});
-      });
-      if(!tersimpan){tambahFotoGagal(uploadKey,file,"Foto terkirim tapi BELUM tercatat di data QC (koneksi/server) - tekan Ulangi",gagalId);}
-      else if(gagalId){buangFotoGagal(uploadKey,gagalId);}
+      const foto={url:media.url,name:media.name,mime:media.mime,uploaded_by:user.nama,uploaded_at:new Date().toISOString()};
+      const t=await tempelAtauAntrekan(tujuan,[{foto,file}],{label,operator:user.nama});
+      if(t.error){
+        alertGagalSimpan(t.error,`Simpan foto QC ${itemKey} panel ${panelId}`,{aksi:"simpan foto",ulangi:"Ulangi"});
+        tambahFotoGagal(uploadKey,file,"Foto terkirim tapi BELUM tercatat di data QC (ditolak server) - tekan Ulangi",gagalId);
+      }else{
+        if(gagalId)buangFotoGagal(uploadKey,gagalId);
+        if(t.tertempel.length)tambahFotoKeLayar(panelId,itemKey,foto);
+        else if(t.diantrekan.length)alert(`${file.name}: sinyal putus saat mencatat foto - foto ${PESAN_DIANTREKAN}.`);
+        else if(!t.ditemukan)alert(`Panel ${panelNama} sudah tidak ada - foto tidak dicatat.`);
+      }
     }catch(err:any){
       alert("Terjadi kesalahan: "+err.message);
     }

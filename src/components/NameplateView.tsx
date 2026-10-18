@@ -4,12 +4,14 @@ import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, ringkasAlasanGagal, klasifikasiErrorSimpan } from "../lib/koneksi";
 import { fetchAllPanels, punyaNameplateYellowmark } from "../lib/panelHelpers";
 import { hapusFotoDariStorage } from "../lib/fotoHelpers";
-import { unggahMediaKeR2, isFileVideo } from "../lib/siapkanMedia";
+import { unggahMediaKeR2, isFileVideo, sudahDiantrekan, PESAN_DIANTREKAN } from "../lib/siapkanMedia";
+import { tempelAtauAntrekan } from "../lib/antreanFoto";
 import { isVideoFoto } from "../lib/mediaThumb";
 import { ThumbMedia } from "./ui/ThumbMedia";
 import { getUrgensiPanel, fmtTanggalDeadlineNp, STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
+import { useSaatFotoAntreanTertempel } from "../lib/useSaatFotoAntreanTertempel";
 
 const PROGRESS_STEPS_NP=[25,50,75,100];
 const hitungStatusTugasNp=(pct:number,jumlahFoto:number)=>{
@@ -98,7 +100,6 @@ export function NameplateView({user,registerBackHandler}:any){
     const key=`${p.id}_${t.field}`;
     const staged=stagedFotos[key]||[];
     const pct=p[t.progressField]||0;
-    const existingFoto=p[t.fotoField]||[];
     const hist=p[t.historyField]||[];
     const existIdx=hist.findIndex((h:any)=>h.tanggal===TODAY);
     const pctBerubah=existIdx<0||hist[existIdx].pct!==pct;
@@ -106,6 +107,12 @@ export function NameplateView({user,registerBackHandler}:any){
     setSavingKey(key);
     try{
       const fotoTerupload:any[]=[];
+      // (18 Okt 2026, antrean foto) foto DITEMPEL lewat RPC tambah_foto_dokumentasi SESUDAH progres tersimpan - patch
+      // progres TIDAK lagi menulis ulang seluruh array foto (bisa menimpa foto yang ditempel antrean / HP lain).
+      const berkasTerupload:{foto:any,file:File,s:any}[]=[];
+      const diantrekan:any[]=[];
+      const tujuanFoto={jenis:"kolom" as const,id:p.id,kunci:t.fotoField};
+      const labelFoto=`${t.label} - ${String(p.nama||p.id).trim()}`;
       // Foto/video (6 Okt 2026) - sama persis KomponenProgressView: file yang gagal tetap di layar
       // ("belum disimpan") untuk diulang, bukan terbuang setelah simpan.
       const gagal:{s:{file:File,previewUrl:string},alasan:string}[]=[];
@@ -113,15 +120,22 @@ export function NameplateView({user,registerBackHandler}:any){
         setUploadProgress({current:i+1,total:staged.length});
         const s=staged[i];
         try{
-          const m=await unggahMediaKeR2(s.file,`nameplate/${p.id}/${t.field}`);
-          fotoTerupload.push({url:m.url,mime:m.mime,name:m.name,uploaded_by:user.nama,uploaded_at:new Date().toISOString()});
+          const m=await unggahMediaKeR2(s.file,`nameplate/${p.id}/${t.field}`,{tujuan:tujuanFoto,label:labelFoto,operator:user.nama,foto:{uploaded_by:user.nama}});
+          const foto={url:m.url,mime:m.mime,name:m.name,uploaded_by:user.nama,uploaded_at:new Date().toISOString()};
+          fotoTerupload.push(foto);berkasTerupload.push({foto,file:s.file,s});
         }catch(upErr:any){
+          if(sudahDiantrekan(upErr)){diantrekan.push(s);continue;} // (18 Okt 2026) disimpan di HP, dikirim otomatis nanti
           console.error(`Upload dokumentasi ${t.field} panel ${p.id} gagal:`,s.file.name,upErr);
           gagal.push({s,alasan:String(upErr?.message||upErr)});
         }
       }
       setUploadProgress(null);
-      const newFoto=[...existingFoto,...fotoTerupload];
+      // foto yang sudah masuk antrean HP langsung keluar dari daftar "belum disimpan" (apa pun hasil simpan progres
+      // di bawah) - kalau tetap di daftar, tekan Simpan lagi = foto yang sama terkirim 2x.
+      if(diantrekan.length){
+        diantrekan.forEach((s:any)=>URL.revokeObjectURL(s.previewUrl));
+        setStagedFotos(prev=>{const next={...prev};const tetap=(prev[key]||[]).filter((s:any)=>!diantrekan.includes(s));if(tetap.length)next[key]=tetap;else delete next[key];return next;});
+      }
       const newHist=[...hist];
       if(existIdx>=0)newHist[existIdx]={...newHist[existIdx],pct,ts:new Date().toISOString()};
       else newHist.push({tanggal:TODAY,pct,oleh:user.nama,ts:new Date().toISOString()});
@@ -130,7 +144,6 @@ export function NameplateView({user,registerBackHandler}:any){
         [t.updatedByField]:user.nama,
         [t.updatedAtField]:new Date().toISOString(),
         [t.historyField]:newHist,
-        [t.fotoField]:newFoto,
       };
       // FIX (29 Sep 2026) - sama persis KomponenProgressView.simpanProgressPanel: dulu hasil update
       // gak dicek (gagal pun dianggap sukses, dirty & foto staged ikut dibuang).
@@ -146,10 +159,19 @@ export function NameplateView({user,registerBackHandler}:any){
       }else{
         dirtyProgressRef.current.delete(key);
         setPanelsList(prev=>prev.map((pp:any)=>pp.id===p.id?{...pp,...patch}:pp));
+        const tempel=await tempelAtauAntrekan(tujuanFoto,berkasTerupload.map(b=>({foto:b.foto,file:b.file})),{label:labelFoto,operator:user.nama});
+        if(tempel.error){
+          alertGagalSimpan(tempel.error,`Simpan foto ${t.field} panel ${p.id}`,{aksi:"simpan foto",catatanServer:"Progress sudah tersimpan; foto masih di layar - tekan Simpan Progress lagi."});
+          berkasTerupload.forEach(b=>gagal.push({s:b.s,alasan:"foto terkirim tapi BELUM tercatat (ditolak server)"}));
+        }else if(tempel.tertempel.length){
+          setPanelsList(prev=>prev.map((pp:any)=>pp.id!==p.id?pp:{...pp,[t.fotoField]:[...(pp[t.fotoField]||[]).filter((f:any)=>!tempel.tertempel.some((x:any)=>x.url===f.url)),...tempel.tertempel]}));
+        }
+        const jmlAntre=diantrekan.length+tempel.diantrekan.length;
         const sisa=gagal.map(g=>g.s);
         staged.filter(s=>!sisa.includes(s)).forEach(s=>URL.revokeObjectURL(s.previewUrl));
         setStagedFotos(prev=>{const next={...prev};const tetap=(prev[key]||[]).filter(s=>!staged.includes(s)||sisa.includes(s));if(tetap.length)next[key]=tetap;else delete next[key];return next;});
-        if(gagal.length>0)alert(`Progress tersimpan, tapi ${gagal.length} foto/video gagal diunggah:\n${gagal.map(g=>"• "+g.s.file.name+" - "+g.alasan).join("\n")}\n\nFile yang gagal masih di layar ("belum disimpan") - tekan Simpan Progress lagi untuk mengulang.`);
+        if(gagal.length>0)alert(`Progress tersimpan, tapi ${gagal.length} foto/video gagal diunggah:\n${gagal.map(g=>"• "+g.s.file.name+" - "+g.alasan).join("\n")}\n\nFile yang gagal masih di layar ("belum disimpan") - tekan Simpan Progress lagi untuk mengulang.${jmlAntre?`\n\n${jmlAntre} foto lain ${PESAN_DIANTREKAN}.`:""}`);
+        else if(jmlAntre>0)alert(`Progress tersimpan. Sinyal putus - ${jmlAntre} foto/video ${PESAN_DIANTREKAN}.`);
       }
     }catch(err:any){
       // Error di luar simpan DB (kompres/proses foto dst) - bukan dari Supabase, pesan asli.
@@ -205,6 +227,7 @@ export function NameplateView({user,registerBackHandler}:any){
     if(refetchTimer.current)clearTimeout(refetchTimer.current);
     refetchTimer.current=setTimeout(()=>{fetchData(true);},500);
   };
+  useSaatFotoAntreanTertempel(()=>{debouncedFetch();}); // (18 Okt 2026) foto dari antrean HP tertempel -> muat ulang
   useEffect(()=>{
     fetchData();
   },[]);

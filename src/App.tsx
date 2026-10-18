@@ -9,6 +9,7 @@ import { GCss } from "./lib/globalCss";
 import { KoneksiBadge } from "./components/ui/Primitives";
 import { AntreanBadge } from "./components/ui/AntreanBadge";
 import { mulaiPengirimOtomatis } from "./lib/antreanSimpan";
+import { mulaiPengirimFotoOtomatis } from "./lib/antreanFoto";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
 import { LandingPage } from "./components/LandingPage";
 import { Login } from "./components/Login";
@@ -277,6 +278,12 @@ export default function App(){
   useEffect(()=>{
     if(!user)return;
     return mulaiPengirimOtomatis();
+  },[user?.id]);
+  // (18 Okt 2026) antrean foto lokal - foto/video yang gagal terkirim karena sinyal (IndexedDB) dikirim & ditempel
+  // otomatis (online kembali, tiap 30 dtk, saat aplikasi dibuka). Lihat lib/antreanFoto.ts.
+  useEffect(()=>{
+    if(!user)return;
+    return mulaiPengirimFotoOtomatis();
   },[user?.id]);
 
   useEffect(()=>{

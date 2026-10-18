@@ -1,12 +1,14 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
-import { unggahMediaKeR2, isFileVideo } from "../lib/siapkanMedia";
+import { unggahMediaKeR2, isFileVideo, sudahDiantrekan, PESAN_DIANTREKAN } from "../lib/siapkanMedia";
+import { tempelAtauAntrekan } from "../lib/antreanFoto";
 import { isVideoFoto } from "../lib/mediaThumb";
 import { alertGagalSimpan } from "../lib/koneksi";
 import { ThumbMedia } from "./ui/ThumbMedia";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { SectionCard, EmptyState } from "./ui/Primitives";
+import { useSaatFotoAntreanTertempel } from "../lib/useSaatFotoAntreanTertempel";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // PROYEK LUAR (30 Agu 2026) - laporan/dokumentasi pekerjaan operator di proyek eksternal,
@@ -32,6 +34,7 @@ export function ProyekLuarView({user}:{user:any}){
   const[search,setSearch]=useState("");
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
 
+  useSaatFotoAntreanTertempel(()=>{fetchLaporan();}); // (18 Okt 2026) foto dari antrean HP tertempel -> muat ulang
   const fetchLaporan=async()=>{
     setLoading(true);
     // .limit() defensif (audit egress Agu 2026) - proyek_luar punya kolom foto JSONB, histori
@@ -66,20 +69,28 @@ export function ProyekLuarView({user}:{user:any}){
 
   // Foto/video (6 Okt 2026) - satu file gagal tidak menggagalkan yang lain, TAPI yang gagal
   // DIKEMBALIKAN (dulu catch{} kosong: hilang diam-diam, operator mengira sudah tersimpan).
-  const uploadStagedFoto=async(laporanId:number,staged:StagedFoto[])=>{
+  // (18 Okt 2026, antrean foto) gagal karena sinyal -> disimpan di HP & ditempel otomatis nanti (`antre`);
+  // foto yang terunggah DITEMPEL lewat RPC tambah_foto_dokumentasi (tempelFotoProyek), bukan menulis ulang array.
+  const uploadStagedFoto=async(laporanId:number,staged:StagedFoto[],label:string)=>{
     const hasil:any[]=[];
+    const berkas:{foto:any,file:File}[]=[];
     const gagal:{s:StagedFoto,alasan:string}[]=[];
+    const antre:StagedFoto[]=[];
     for(const s of staged){
       try{
-        const m=await unggahMediaKeR2(s.file,`proyek-luar/${laporanId}`);
-        hasil.push({url:m.url,mime:m.mime,name:m.name,uploaded_at:new Date().toISOString()});
+        const m=await unggahMediaKeR2(s.file,`proyek-luar/${laporanId}`,{tujuan:{jenis:"proyek_luar",id:laporanId},label,operator:user.nama||user.name||"Operator"});
+        const foto={url:m.url,mime:m.mime,name:m.name,uploaded_at:new Date().toISOString()};
+        hasil.push(foto);berkas.push({foto,file:s.file});
       }catch(err:any){
+        if(sudahDiantrekan(err)){antre.push(s);continue;}
         console.error("Upload dokumentasi Proyek Luar gagal:",s.file.name,err);
         gagal.push({s,alasan:String(err?.message||err)});
       }
     }
-    return{hasil,gagal};
+    return{hasil,berkas,gagal,antre};
   };
+  const tempelFotoProyek=(laporanId:number,berkas:{foto:any,file:File}[],label:string)=>
+    tempelAtauAntrekan({jenis:"proyek_luar",id:laporanId},berkas,{label,operator:user.nama||user.name||"Operator"});
   const pesanGagalUpload=(gagal:{s:StagedFoto,alasan:string}[])=>
     `${gagal.length} foto/video gagal diunggah:\n${gagal.map(g=>"• "+g.s.file.name+" - "+g.alasan).join("\n")}`;
 
@@ -100,17 +111,22 @@ export function ProyekLuarView({user}:{user:any}){
       if(error||!data){alert("Gagal simpan: "+(error?.message||"unknown error"));setSaving(false);return;}
       let sisa:StagedFoto[]=[];
       if(stagedFoto.length>0){
-        const{hasil:fotoBaru,gagal}=await uploadStagedFoto((data as any).id,stagedFoto);
+        const label=`Proyek Luar ${form.namaLokasi.trim()}`;
+        const{hasil:fotoBaru,berkas,gagal,antre}=await uploadStagedFoto((data as any).id,stagedFoto,label);
         sisa=gagal.map(g=>g.s);
+        let jmlAntre=antre.length;
         if(fotoBaru.length>0){
-          const{error:eFoto}=await supabase.from("proyek_luar" as any).update({foto:fotoBaru}).eq("id",(data as any).id);
+          const t=await tempelFotoProyek((data as any).id,berkas,label);
+          jmlAntre+=t.diantrekan.length;
+          const eFoto=t.error;
           if(eFoto){
             alertGagalSimpan(eFoto,`Simpan foto Proyek Luar ${(data as any).id}`,{aksi:"simpan foto/video",
               catatanKoneksi:"Laporan sudah tersimpan, foto/video BELUM - tekan Upload di laporan itu untuk mengulang."});
-            sisa=stagedFoto; // file yang sudah terunggah tapi belum tercatat ikut diulang
+            sisa=stagedFoto.filter(s=>!antre.includes(s)); // file yang sudah terunggah tapi belum tercatat ikut diulang
           }
         }
-        if(gagal.length>0)alert(`Laporan tersimpan, tapi ${pesanGagalUpload(gagal)}\n\nLaporan dibuka - tekan "Upload" untuk mengulang.`);
+        if(gagal.length>0)alert(`Laporan tersimpan, tapi ${pesanGagalUpload(gagal)}\n\nLaporan dibuka - tekan "Upload" untuk mengulang.${jmlAntre?`\n\n${jmlAntre} foto lain ${PESAN_DIANTREKAN}.`:""}`);
+        else if(jmlAntre>0)alert(`Laporan tersimpan. Sinyal putus - ${jmlAntre} foto/video ${PESAN_DIANTREKAN}.`);
       }
       // File yang gagal TIDAK dibuang: dipindah ke antrean "Tambah Foto" laporan yang baru dibuat
       // (dibuka otomatis), operator tinggal tekan Upload untuk mengulang.
@@ -132,17 +148,24 @@ export function ProyekLuarView({user}:{user:any}){
   const tambahFotoKeLaporan=async(laporan:any)=>{
     if(stagedFotoTambahan.length===0)return;
     setSavingTambahan(true);
-    const{hasil:fotoBaru,gagal}=await uploadStagedFoto(laporan.id,stagedFotoTambahan);
+    const label=`Proyek Luar ${String(laporan.nama_lokasi||laporan.id)}`;
+    const{hasil:fotoBaru,berkas,gagal,antre}=await uploadStagedFoto(laporan.id,stagedFotoTambahan,label);
     let sisa=gagal.map(g=>g.s);
+    let jmlAntre=antre.length;
     if(fotoBaru.length>0){
-      const newFoto=[...(laporan.foto||[]),...fotoBaru];
-      const{error}=await supabase.from("proyek_luar" as any).update({foto:newFoto,updated_at:new Date().toISOString()}).eq("id",laporan.id);
-      if(error){
-        alertGagalSimpan(error,`Tambah foto Proyek Luar ${laporan.id}`,{aksi:"simpan foto/video",ulangi:"Upload"});
-        sisa=stagedFotoTambahan;
+      const t=await tempelFotoProyek(laporan.id,berkas,label);
+      jmlAntre+=t.diantrekan.length;
+      if(t.error){
+        alertGagalSimpan(t.error,`Tambah foto Proyek Luar ${laporan.id}`,{aksi:"simpan foto/video",ulangi:"Upload"});
+        sisa=stagedFotoTambahan.filter(s=>!antre.includes(s));
+      }else if(t.tertempel.length){
+        // updated_at laporan ikut diperbarui spt dulu (best-effort, foto sudah aman tertempel)
+        const{error:eUpd}=await supabase.from("proyek_luar" as any).update({updated_at:new Date().toISOString()}).eq("id",laporan.id);
+        if(eUpd)console.error("[Proyek Luar] perbarui updated_at gagal:",eUpd);
       }
     }
-    if(gagal.length>0)alert(pesanGagalUpload(gagal)+'\n\nFile yang gagal masih di antrean - tekan "Upload" untuk mengulang.');
+    if(gagal.length>0)alert(pesanGagalUpload(gagal)+'\n\nFile yang gagal masih di antrean - tekan "Upload" untuk mengulang.'+(jmlAntre?`\n\n${jmlAntre} foto lain ${PESAN_DIANTREKAN}.`:""));
+    else if(jmlAntre>0)alert(`Sinyal putus - ${jmlAntre} foto/video ${PESAN_DIANTREKAN}.`);
     stagedFotoTambahan.filter(s=>!sisa.includes(s)).forEach(s=>URL.revokeObjectURL(s.previewUrl));
     setStagedFotoTambahan(sisa);
     setSavingTambahan(false);

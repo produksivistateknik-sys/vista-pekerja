@@ -12,6 +12,7 @@
 import { compressImageNp } from './fotoHelpers'
 import { laporError } from './laporError'
 import { uploadToR2, GagalUploadR2 } from './r2Client'
+import { antrekanFoto, type TujuanFoto } from './antreanFoto'
 
 export const BATAS_VIDEO_MB = 50
 // Batas file video MENTAH saat dipilih (sebelum kompres) - 1 menit video HP 1080p ~100-150 MB;
@@ -105,7 +106,15 @@ export function pesanGagalUpload(err: any, jenisMedia = 'foto'): string {
   return `Sinyal lemah/putus saat ${langkah}${dicoba}. ${jenisMedia[0].toUpperCase() + jenisMedia.slice(1)} BELUM tersimpan.`
 }
 
-export async function unggahMediaKeR2(file: File, prefixKey: string): Promise<{ url: string; mime: string; name: string }> {
+// ANTREAN (18 Okt 2026, tahap 2): kalau `antrean` diisi & upload tetap gagal KARENA SINYAL (setelah percobaan ulang),
+// file yang sudah dikompres disimpan di HP (lib/antreanFoto) & dikirim + ditempel otomatis nanti. Error yang dilempar
+// lalu punya `diantrekan: true` - pemanggil WAJIB memperlakukan file itu sebagai "beres" (buang dari daftar staged /
+// "belum terkirim") & TIDAK memasukkannya ke data yang disimpan sekarang (antrean yang menempel nanti).
+export type OpsiAntreanUnggah = { tujuan: TujuanFoto; label: string; operator: string; foto?: Record<string, any> }
+export const PESAN_DIANTREKAN = 'disimpan di HP dan akan dikirim otomatis saat sinyal kembali (lihat tanda antrean di atas)'
+export const sudahDiantrekan = (err: any): boolean => !!err?.diantrekan
+
+export async function unggahMediaKeR2(file: File, prefixKey: string, antrean?: OpsiAntreanUnggah): Promise<{ url: string; mime: string; name: string }> {
   const m = await siapkanMediaUpload(file)
   const key = `${prefixKey}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${m.ext}`
   const jenisMedia = m.mime.startsWith('video') ? 'video' : m.mime.startsWith('image') ? 'foto' : 'file'
@@ -125,6 +134,17 @@ export async function unggahMediaKeR2(file: File, prefixKey: string): Promise<{ 
       online: typeof navigator !== 'undefined' ? navigator.onLine : undefined, jenisJaringan: jaringan?.effectiveType, downlinkMbps: jaringan?.downlink,
       durasiDetik: Math.round((Date.now() - mulai) / 1000),
     })
+    if (antrean && e?.jenis !== 'server') {
+      const dot0 = file.name.lastIndexOf('.')
+      const nama = (dot0 > 0 ? file.name.slice(0, dot0) : file.name) + '.' + m.ext
+      const ok = await antrekanFoto({ operator: antrean.operator, label: antrean.label, tujuan: antrean.tujuan, key, blob: m.blob, contentType: m.contentType,
+        foto: { mime: m.mime, name: nama, ...(antrean.foto || {}), uploaded_at: new Date().toISOString() }, alasan: String(err?.message || err) })
+      if (ok) {
+        const diantrekan: any = new Error(`Sinyal putus - ${jenisMedia} ${PESAN_DIANTREKAN}.`)
+        diantrekan.diantrekan = true; diantrekan.asli = err
+        throw diantrekan
+      }
+    }
     const lempar: any = new Error(pesanGagalUpload(err, jenisMedia))
     lempar.asli = err
     throw lempar

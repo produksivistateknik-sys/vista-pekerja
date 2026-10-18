@@ -1,13 +1,15 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { hapusFotoDariStorage } from "../lib/fotoHelpers";
-import { unggahMediaKeR2 } from "../lib/siapkanMedia";
+import { unggahMediaKeR2, sudahDiantrekan, PESAN_DIANTREKAN } from "../lib/siapkanMedia";
+import { tempelAtauAntrekan } from "../lib/antreanFoto";
 import { isVideoFoto } from "../lib/mediaThumb";
 import { ThumbMedia } from "./ui/ThumbMedia";
 import { MediaPickerSheet } from "./ui/MediaPickerSheet";
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from "./FotoZoomViewerPekerja";
 import { SectionCard, EmptyState } from "./ui/Primitives";
 import { alertGagalSimpan } from "../lib/koneksi";
+import { useSaatFotoAntreanTertempel } from "../lib/useSaatFotoAntreanTertempel";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // REVISI ALUR (3 Okt 2026, diminta user): QC TIDAK upload dokumen / edit poin lagi - Admin &
@@ -77,6 +79,7 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
 
   const bukaDetail=(m:MomFat)=>{setActiveMomFat(m);setMode("detail");};
 
+  useSaatFotoAntreanTertempel(()=>{if(activeMomFat)fetchPoin(activeMomFat.id);}); // (18 Okt 2026) foto dari antrean HP tertempel -> muat ulang
   const fetchPoin=async(momFatId:number)=>{
     const{data}=await supabase.from("mom_fat_poin" as any).select("*").eq("mom_fat_id",momFatId).order("urutan",{ascending:true});
     setPoinList(data||[]);
@@ -117,22 +120,32 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
     setUploadingPoinId(p.id);
     const fotoBaru:FotoViewerPekerja[]=[];
     const gagal:string[]=[];
+    // (18 Okt 2026, antrean foto) gagal karena sinyal -> disimpan di HP & ditempel otomatis nanti; foto yang terunggah
+    // DITEMPEL lewat RPC tambah_foto_dokumentasi, bukan menulis ulang array dari data di layar.
+    const operator=user.nama||user.name||"Operator";
+    const label=`MOM FAT poin ${p.id}`;
+    const tujuan={jenis:"mom_fat_poin" as const,id:p.id};
+    const berkas:{foto:any,file:File}[]=[];
+    let jmlAntre=0;
     for(const file of Array.from(files)){
       try{
-        const m=await unggahMediaKeR2(file,`mom-fat/${p.mom_fat_id}/${p.id}`);
-        fotoBaru.push({url:m.url,mime:m.mime,name:m.name,uploaded_by:user.nama||user.name||"Operator",uploaded_at:new Date().toISOString()});
+        const m=await unggahMediaKeR2(file,`mom-fat/${p.mom_fat_id}/${p.id}`,{tujuan,label,operator,foto:{uploaded_by:operator}});
+        const foto={url:m.url,mime:m.mime,name:m.name,uploaded_by:operator,uploaded_at:new Date().toISOString()};
+        fotoBaru.push(foto);berkas.push({foto,file});
       }catch(err:any){
+        if(sudahDiantrekan(err)){jmlAntre++;continue;}
         console.error("Upload dokumentasi MOM FAT gagal:",file.name,err);
         gagal.push("• "+file.name+" - "+(err?.message||"unknown error"));
       }
     }
     if(fotoBaru.length>0){
-      const newFoto=[...(p.foto||[]),...fotoBaru];
-      const{error:fErr}=await supabase.from("mom_fat_poin" as any).update({foto:newFoto}).eq("id",p.id);
-      if(fErr)alertGagalSimpan(fErr,`Simpan foto MOM FAT poin ${p.id}`,{aksi:"simpan foto/video",ulangi:"Tambah Foto"});
-      else setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,foto:newFoto}:x));
+      const t=await tempelAtauAntrekan(tujuan,berkas,{label,operator});
+      jmlAntre+=t.diantrekan.length;
+      if(t.error)alertGagalSimpan(t.error,`Simpan foto MOM FAT poin ${p.id}`,{aksi:"simpan foto/video",ulangi:"Tambah Foto"});
+      else if(t.tertempel.length){const baru=t.tertempel as FotoViewerPekerja[];setPoinList(prev=>prev.map(x=>x.id===p.id?{...x,foto:[...(x.foto||[]).filter(f=>!baru.some(b=>b.url===f.url)),...baru]}:x));}
     }
-    if(gagal.length>0)alert(`${gagal.length} foto/video gagal diunggah:\n${gagal.join("\n")}\n\nPilih ulang lewat "Tambah Foto".`);
+    if(gagal.length>0)alert(`${gagal.length} foto/video gagal diunggah:\n${gagal.join("\n")}\n\nPilih ulang lewat "Tambah Foto".${jmlAntre?`\n\n${jmlAntre} foto lain ${PESAN_DIANTREKAN}.`:""}`);
+    else if(jmlAntre>0)alert(`Sinyal putus - ${jmlAntre} foto/video ${PESAN_DIANTREKAN}.`);
     setUploadingPoinId(null);
   };
 
