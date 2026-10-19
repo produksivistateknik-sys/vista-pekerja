@@ -25,26 +25,39 @@ export const hapusFotoDariStorage=async(bucket:string,url:string):Promise<void>=
 
 // Kompres foto sebelum upload (canvas resize max-width 1600px + JPEG q0.8) - foto asli dari
 // kamera HP bisa 3-8MB, operator sering upload lewat data seluler.
-export const compressImageNp=(file:File):Promise<Blob>=>new Promise((resolve,reject)=>{
+// KOMPRES FOTO (19 Okt 2026, foto banyak per simpan - ukur lab dgn 12 foto asli Proyek Luar 14): dulu yang dibatasi
+// cuma LEBAR 1600 px q0.8 (foto potret tetap 1600x2133, rata2 209 KB). Sekarang SISI TERPANJANG 1600 px q0.75 (rata2
+// 126 KB, -40%; teks nameplate/label tetap terbaca) + THUMBNAIL sisi terpanjang 320 px q0.7 (~10 KB) dari decode yang
+// sama - thumbnail dipakai grid/galeri, foto penuh dipakai saat diperbesar & dicetak.
+export const FOTO_SISI_MAKS=1600, FOTO_KUALITAS=0.75, THUMB_SISI_MAKS=320, THUMB_KUALITAS=0.7;
+const keKanvas=(img:HTMLImageElement,sisiMaks:number,kualitas:number):Promise<Blob>=>new Promise((resolve,reject)=>{
+  const scale=Math.min(1,sisiMaks/Math.max(img.width,img.height));
+  const canvas=document.createElement("canvas");
+  canvas.width=Math.max(1,Math.round(img.width*scale));
+  canvas.height=Math.max(1,Math.round(img.height*scale));
+  const ctx=canvas.getContext("2d");
+  if(!ctx){reject(new Error("Canvas tidak didukung"));return;}
+  ctx.drawImage(img,0,0,canvas.width,canvas.height);
+  canvas.toBlob(blob=>{if(blob)resolve(blob);else reject(new Error("Gagal kompres foto"));},"image/jpeg",kualitas);
+});
+const bacaGambar=(file:Blob):Promise<{img:HTMLImageElement,lepas:()=>void}>=>new Promise((resolve,reject)=>{
   const img=new Image();
   const url=URL.createObjectURL(file);
-  img.onload=()=>{
-    const maxW=1600;
-    const scale=Math.min(1,maxW/img.width);
-    const canvas=document.createElement("canvas");
-    canvas.width=Math.round(img.width*scale);
-    canvas.height=Math.round(img.height*scale);
-    const ctx=canvas.getContext("2d");
-    if(!ctx){URL.revokeObjectURL(url);reject(new Error("Canvas tidak didukung"));return;}
-    ctx.drawImage(img,0,0,canvas.width,canvas.height);
-    canvas.toBlob(blob=>{
-      URL.revokeObjectURL(url);
-      if(blob)resolve(blob);else reject(new Error("Gagal kompres foto"));
-    },"image/jpeg",0.8);
-  };
+  img.onload=()=>resolve({img,lepas:()=>URL.revokeObjectURL(url)});
   img.onerror=()=>{URL.revokeObjectURL(url);reject(new Error("Gagal membaca foto"));};
   img.src=url;
 });
+// Foto + thumbnail sekali decode. Thumbnail gagal -> null (bukan fatal, tampilan pakai foto penuh).
+export const kompresFotoDanThumb=async(file:File):Promise<{foto:Blob,thumb:Blob|null}>=>{
+  const{img,lepas}=await bacaGambar(file);
+  try{
+    const foto=await keKanvas(img,FOTO_SISI_MAKS,FOTO_KUALITAS);
+    let thumb:Blob|null=null;
+    try{thumb=await keKanvas(img,THUMB_SISI_MAKS,THUMB_KUALITAS);}catch{thumb=null;}
+    return{foto,thumb};
+  }finally{lepas();}
+};
+export const compressImageNp=async(file:File):Promise<Blob>=>(await kompresFotoDanThumb(file)).foto;
 // FIX (27 Sep 2026): cache:'no-store' - foto yang sama biasanya udah dimuat <img> (tanpa Origin,
 // respons R2 tanpa header CORS & tanpa Vary: Origin) dan kesimpan cache browser; fetch() ini dulu
 // bisa kebagian respons cache itu -> diblok CORS. Sekalian cek res.ok - dulu 404/403 tetap

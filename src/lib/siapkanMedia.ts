@@ -9,7 +9,7 @@
 //           ke sisi pendek 720p. HP tidak mendukung / kompres gagal / hasil malah lebih besar ->
 //           kirim file asli. Setelah itu wajib <= BATAS_VIDEO_MB.
 // - Lainnya (QC "Tambahkan File"): dikirim apa adanya.
-import { compressImageNp } from './fotoHelpers'
+import { kompresFotoDanThumb } from './fotoHelpers'
 import { laporError } from './laporError'
 import { uploadToR2, GagalUploadR2 } from './r2Client'
 import { antrekanFoto, type TujuanFoto } from './antreanFoto'
@@ -25,7 +25,7 @@ const LEWATI_KOMPRES_DI_BAWAH = 5 * 1024 * 1024
 const BATAS_WAKTU_KOMPRES_MS = 4 * 60 * 1000
 const EKSTENSI_VIDEO = /\.(mp4|m4v|mov|3gp|3g2|webm|mkv)$/i
 
-export type MediaSiapUpload = { blob: Blob; contentType: string; ext: string; mime: string }
+export type MediaSiapUpload = { blob: Blob; contentType: string; ext: string; mime: string; thumb?: Blob | null }
 
 export const isFileVideo = (f: File) => f.type.startsWith('video/') || (!f.type && EKSTENSI_VIDEO.test(f.name))
 
@@ -85,7 +85,8 @@ export async function siapkanMediaUpload(file: File): Promise<MediaSiapUpload> {
     return { blob, contentType: tipe, ext: hasil ? 'mp4' : ekstensiNama(file, 'mp4'), mime: tipe }
   }
   if (file.type.startsWith('image/')) {
-    return { blob: await compressImageNp(file), contentType: 'image/jpeg', ext: 'jpg', mime: 'image/jpeg' }
+    const { foto, thumb } = await kompresFotoDanThumb(file)
+    return { blob: foto, contentType: 'image/jpeg', ext: 'jpg', mime: 'image/jpeg', thumb }
   }
   const tipe = file.type || 'application/octet-stream'
   return { blob: file, contentType: tipe, ext: ekstensiNama(file, 'bin'), mime: tipe }
@@ -114,16 +115,31 @@ export type OpsiAntreanUnggah = { tujuan: TujuanFoto; label: string; operator: s
 export const PESAN_DIANTREKAN = 'disimpan di HP dan akan dikirim otomatis saat sinyal kembali (lihat tanda antrean di atas)'
 export const sudahDiantrekan = (err: any): boolean => !!err?.diantrekan
 
-export async function unggahMediaKeR2(file: File, prefixKey: string, antrean?: OpsiAntreanUnggah): Promise<{ url: string; mime: string; name: string }> {
+export type HasilUnggahMedia = { url: string; mime: string; name: string; thumb?: string }
+// (19 Okt 2026) file yang SUDAH berhasil terunggah dalam sesi ini tidak diunggah ulang saat simpan diulang (mis. tempel
+// ditolak lalu operator menekan Simpan lagi) - kunci = objek File yang sama di layar.
+const sudahTerunggah = new WeakMap<File, HasilUnggahMedia>()
+
+export async function unggahMediaKeR2(file: File, prefixKey: string, antrean?: OpsiAntreanUnggah): Promise<HasilUnggahMedia> {
+  const cache = sudahTerunggah.get(file)
+  if (cache) return cache
   const m = await siapkanMediaUpload(file)
   const key = `${prefixKey}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${m.ext}`
   const jenisMedia = m.mime.startsWith('video') ? 'video' : m.mime.startsWith('image') ? 'foto' : 'file'
   const mulai = Date.now()
   let url: string
+  let thumbUrl: string | null = null
   try {
     // (18 Okt 2026) ulang otomatis untuk gagal koneksi (lihat r2Client) - BEDA dgn salinan vista-teknik (admin
     // belum memakai percobaan ulang & pencatat log).
-    url = await uploadToR2(m.blob, key, m.contentType, { batasWaktuIzinMs: 30_000, batasWaktuUnggahMs: batasWaktuUnggahMs(m.blob), ulang: true })
+    // thumbnail diunggah BERSAMAAN (tidak menambah waktu tunggu); gagal = tidak fatal (tampilan pakai foto penuh)
+    const [u, t] = await Promise.all([
+      uploadToR2(m.blob, key, m.contentType, { batasWaktuIzinMs: 30_000, batasWaktuUnggahMs: batasWaktuUnggahMs(m.blob), ulang: true }),
+      m.thumb ? uploadToR2(m.thumb, key.replace(/\.[a-z0-9]+$/i, '_t.jpg'), 'image/jpeg', { batasWaktuIzinMs: 30_000, batasWaktuUnggahMs: 60_000 })
+        .catch(e => { console.warn('[unggahMediaKeR2] thumbnail gagal (pakai foto penuh):', e?.message || e); return null }) : Promise.resolve(null),
+    ])
+    url = u
+    thumbUrl = t
   } catch (err: any) {
     // (16 Okt 2026) catat ke log_error_app (Kesehatan Data) lalu lempar lagi. (18 Okt 2026) konteks dilengkapi
     // (folder lengkap, langkah, percobaan, status koneksi HP) & pesan yang dilempar = pesan untuk operator.
@@ -152,5 +168,42 @@ export async function unggahMediaKeR2(file: File, prefixKey: string, antrean?: O
   // Nama ikut ekstensi file yang BENAR-BENAR tersimpan (foto HEIC/PNG dikompres jadi .jpg, video jadi .mp4)
   // - dipakai sbg nama file saat diunduh.
   const dot = file.name.lastIndexOf('.')
-  return { url, mime: m.mime, name: (dot > 0 ? file.name.slice(0, dot) : file.name) + '.' + m.ext }
+  const hasil: HasilUnggahMedia = { url, mime: m.mime, name: (dot > 0 ? file.name.slice(0, dot) : file.name) + '.' + m.ext, ...(thumbUrl ? { thumb: thumbUrl } : {}) }
+  sudahTerunggah.set(file, hasil)
+  return hasil
+}
+
+// ── UNGGAH BANYAK (19 Okt 2026, operator sering >30 foto per simpan) ───────────────────────────────────────────
+// - batas per simpan MAKS_FOTO_PER_SIMPAN (sama dgn server tambah_foto_dokumentasi) -> pesan jelas, belum ada yang diunggah
+// - PARALEL terbatas (3 sekaligus; lab sinyal lemah) + progres onProgres(selesai, total)
+// - tiap file berdiri sendiri: percobaan ulang per foto (r2Client), yang gagal tidak membatalkan yang lain, yang sudah
+//   terunggah tidak diunggah ulang (cache per File), hasil per file urut sesuai input -> layar tahu foto mana yang belum masuk.
+export const MAKS_FOTO_PER_SIMPAN = 80
+export const UNGGAH_PARALEL = 3
+export type HasilUnggahFile = { file: File; status: 'ok'; media: HasilUnggahMedia } | { file: File; status: 'diantrekan'; pesan: string }
+  | { file: File; status: 'gagal'; alasan: string }
+export const pesanMelebihiBatasFoto = (n: number) =>
+  `Terlalu banyak foto dalam satu kali simpan: ${n} foto, maksimal ${MAKS_FOTO_PER_SIMPAN}. Buang sebagian dari daftar, simpan, lalu tambahkan sisanya di simpanan berikutnya.`
+export async function unggahBanyak(files: File[], prefixKey: string, antrean: OpsiAntreanUnggah | undefined,
+  opsi: { onProgres?: (selesai: number, total: number) => void; paralel?: number } = {}): Promise<HasilUnggahFile[]> {
+  if (files.length > MAKS_FOTO_PER_SIMPAN) throw new Error(pesanMelebihiBatasFoto(files.length))
+  const hasil: HasilUnggahFile[] = new Array(files.length)
+  let berikut = 0, selesai = 0
+  opsi.onProgres?.(0, files.length)
+  const pekerja = async () => {
+    for (;;) {
+      const i = berikut++
+      if (i >= files.length) return
+      const file = files[i]
+      try {
+        hasil[i] = { file, status: 'ok', media: await unggahMediaKeR2(file, prefixKey, antrean) }
+      } catch (err: any) {
+        hasil[i] = sudahDiantrekan(err) ? { file, status: 'diantrekan', pesan: String(err?.message || err) } : { file, status: 'gagal', alasan: String(err?.message || err) }
+      }
+      selesai++
+      opsi.onProgres?.(selesai, files.length)
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(opsi.paralel ?? UNGGAH_PARALEL, files.length) }, pekerja))
+  return hasil
 }

@@ -85,7 +85,11 @@ export function alertGagalSimpan(err:any,konteks:string,opts:{ulangi?:string;cat
     online:typeof navigator!=='undefined'?navigator.onLine:undefined,
     kunciKelompok:ref.kode?[ref.panelId,ref.kode,ref.proses,ref.tahap||''].join('|'):undefined});
   const aksi=opts.aksi||"simpan progress";
-  if(k.jenis==="server"){
+  if(k.jenis==="server"&&k.kode==="22023"){
+    // (19 Okt 2026) 22023 = validasi RPC aplikasi sendiri (mis. "Terlalu banyak foto dalam satu kali simpan..."), pesannya
+    // sudah bahasa Indonesia untuk operator - tampilkan tanpa kode teknis.
+    alert(`Gagal ${aksi}: ${k.pesan}`);
+  } else if(k.jenis==="server"){
     alert(`Gagal ${aksi} - server menolak data (kode ${k.kode}): ${k.pesan}\n\nIni BUKAN masalah koneksi. ${opts.catatanServer||"Periksa angka yang diisi, atau laporkan ke admin beserta pesan ini."}`);
   } else {
     // (16 Okt 2026) pesan koneksi dibuat tegas: data BELUM tersimpan (kasus SISWOYO 16 Okt: "Kunci Progress" ditekan 3x).

@@ -4,7 +4,7 @@ import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, ringkasAlasanGagal, klasifikasiErrorSimpan } from "../lib/koneksi";
 import { fetchAllPanels } from "../lib/panelHelpers";
 import { hapusFotoDariStorage } from "../lib/fotoHelpers";
-import { unggahMediaKeR2, isFileVideo, sudahDiantrekan, PESAN_DIANTREKAN } from "../lib/siapkanMedia";
+import { isFileVideo, PESAN_DIANTREKAN, unggahBanyak, MAKS_FOTO_PER_SIMPAN, pesanMelebihiBatasFoto } from "../lib/siapkanMedia";
 import { tempelAtauAntrekan } from "../lib/antreanFoto";
 import { isVideoFoto } from "../lib/mediaThumb";
 import { ThumbMedia } from "./ui/ThumbMedia";
@@ -90,6 +90,7 @@ export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,
     const existIdx=hist.findIndex((h:any)=>h.tanggal===TODAY);
     const pctBerubah=existIdx<0||hist[existIdx].pct!==pct;
     if(!pctBerubah&&staged.length===0){alert("Tidak ada perubahan untuk disimpan");return;}
+    if(staged.length>MAKS_FOTO_PER_SIMPAN){alert(pesanMelebihiBatasFoto(staged.length));return;} // (19 Okt 2026)
     setSavingKey(p.id);
     try{
       const fotoTerupload:any[]=[];
@@ -102,20 +103,16 @@ export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,
       // Foto/video (6 Okt 2026) - file yang gagal (kompres/unggah) DIKUMPULKAN & tetap di layar
       // ("belum disimpan") supaya bisa diulang - dulu alert lalu ikut terbuang setelah simpan.
       const gagal:{s:{file:File,previewUrl:string},alasan:string}[]=[];
-      for(let i=0;i<staged.length;i++){
-        setUploadProgress({current:i+1,total:staged.length});
+      // (19 Okt 2026) unggah PARALEL 3 + progres "12/40" + ulang per foto, yang sudah terunggah tidak diunggah ulang
+      const hasilUnggah=await unggahBanyak(staged.map((x:any)=>x.file),`${tugas.bucket.replace(/-photos$/,"")}/${p.id}/${tugas.field}`,{tujuan:tujuanFoto,label:labelFoto,operator:user.nama,foto:{uploaded_by:user.nama}},
+        {onProgres:(n,total)=>setUploadProgress({current:n,total})});
+      hasilUnggah.forEach((h,i)=>{
         const s=staged[i];
-        const folderFoto=tugas.bucket.replace(/-photos$/,"");
-        try{
-          const m=await unggahMediaKeR2(s.file,`${folderFoto}/${p.id}/${tugas.field}`,{tujuan:tujuanFoto,label:labelFoto,operator:user.nama,foto:{uploaded_by:user.nama}});
-          const foto={url:m.url,mime:m.mime,name:m.name,uploaded_by:user.nama,uploaded_at:new Date().toISOString()};
-          fotoTerupload.push(foto);berkasTerupload.push({foto,file:s.file,s});
-        }catch(upErr:any){
-          if(sudahDiantrekan(upErr)){diantrekan.push(s);continue;} // (18 Okt 2026) disimpan di HP, dikirim otomatis nanti
-          console.error(`Upload dokumentasi ${tugas.field} panel ${p.id} gagal:`,s.file.name,upErr);
-          gagal.push({s,alasan:String(upErr?.message||upErr)});
-        }
-      }
+        if(h.status==="ok"){const m=h.media;const foto={url:m.url,mime:m.mime,name:m.name,...(m.thumb?{thumb:m.thumb}:{}),uploaded_by:user.nama,uploaded_at:new Date().toISOString()};
+          fotoTerupload.push(foto);berkasTerupload.push({foto,file:s.file,s});}
+        else if(h.status==="diantrekan")diantrekan.push(s); // disimpan di HP, dikirim otomatis nanti
+        else{console.error(`Upload dokumentasi ${tugas.field} panel ${p.id} gagal:`,s.file.name,h.alasan);gagal.push({s,alasan:h.alasan});}
+      });
       setUploadProgress(null);
       // foto yang sudah masuk antrean HP langsung keluar dari daftar "belum disimpan" (apa pun hasil simpan progres
       // di bawah) - kalau tetap di daftar, tekan Simpan lagi = foto yang sama terkirim 2x.
@@ -150,8 +147,9 @@ export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,
         const tempel=await tempelAtauAntrekan(tujuanFoto,berkasTerupload.map(b=>({foto:b.foto,file:b.file})),{label:labelFoto,operator:user.nama});
         if(tempel.error){
           alertGagalSimpan(tempel.error,`Simpan foto ${tugas.field} panel ${p.id}`,{aksi:"simpan foto",catatanServer:"Progress sudah tersimpan; foto masih di layar - tekan Simpan Progress lagi."});
-          berkasTerupload.forEach(b=>gagal.push({s:b.s,alasan:"foto terkirim tapi BELUM tercatat (ditolak server)"}));
-        }else if(tempel.tertempel.length){
+          berkasTerupload.filter(b=>tempel.gagal.includes(b.foto)).forEach(b=>gagal.push({s:b.s,alasan:"foto terkirim tapi BELUM tercatat (ditolak server)"}));
+        }
+        if(tempel.tertempel.length){
           setPanelsList(prev=>prev.map((pp:any)=>pp.id!==p.id?pp:{...pp,[tugas.fotoField]:[...(pp[tugas.fotoField]||[]).filter((f:any)=>!tempel.tertempel.some((x:any)=>x.url===f.url)),...tempel.tertempel]}));
         }
         const jmlAntre=diantrekan.length+tempel.diantrekan.length;
@@ -477,7 +475,7 @@ export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,
                           <div key={`saved_${fi}`} style={{position:"relative" as const}}>
                             <div onClick={()=>setFotoViewer({fotos:fotoArr,startIndex:fi,label:`${tugas.label}_${p.nama}`})}
                               style={{width:62,height:62,borderRadius:10,overflow:"hidden",border:"1px solid #eef0f3",boxShadow:"0 1px 3px rgba(15,23,42,0.06)",cursor:"pointer"}}>
-                              <ThumbMedia url={f.url} video={isVideoFoto(f)}/>
+                              <ThumbMedia url={f.url} thumb={f.thumb} video={isVideoFoto(f)}/>
                             </div>
                             <button onClick={(e:any)=>{e.stopPropagation();hapusFotoTersimpan(p.id,f.url);}}
                               style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>

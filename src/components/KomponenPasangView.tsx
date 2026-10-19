@@ -12,7 +12,7 @@ import { bacaSemuaProsesRelevan } from "../lib/prosesRelevan";
 import { bacaSemuaHalaman } from "../lib/bacaSemua";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
 import { hapusFotoDariStorage } from "../lib/fotoHelpers";
-import { unggahMediaKeR2, isFileVideo, sudahDiantrekan, PESAN_DIANTREKAN } from "../lib/siapkanMedia";
+import { isFileVideo, PESAN_DIANTREKAN, unggahBanyak, MAKS_FOTO_PER_SIMPAN, pesanMelebihiBatasFoto } from "../lib/siapkanMedia";
 import { tempelAtauAntrekan, type TujuanFoto } from "../lib/antreanFoto";
 import { isVideoFoto } from "../lib/mediaThumb";
 import { ThumbMedia } from "./ui/ThumbMedia";
@@ -76,6 +76,7 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
   };
 
   const[savingKey,setSavingKey]=useState<string|null>(null);
+  const[progresFoto,setProgresFoto]=useState<string>(""); // (19 Okt 2026) "12/40" saat unggah banyak foto
   const[stagedFoto,setStagedFoto]=useState<Record<string,{file:File,previewUrl:string}[]>>({});
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
 
@@ -582,6 +583,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
   const simpanFotoStaged=async(panel:any,key:string,pathPrefix:string)=>{
     const staged=stagedFoto[key]||[];
     if(staged.length===0)return;
+    if(staged.length>MAKS_FOTO_PER_SIMPAN){alert(pesanMelebihiBatasFoto(staged.length));return;} // (19 Okt 2026)
     setSavingKey("foto_"+key);
     try{
       const fotoTerupload:any[]=[];
@@ -602,24 +604,24 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
       const labelFoto=`${tugas.label} ${kodeFoto||"foto panel"} - ${String(panel.nama||panel.id).trim()}`;
       const berkas:{foto:any,file:File,s:any}[]=[];
       const diantrekan:any[]=[];
-      for(const s of staged){
-        try{
-          const m=await unggahMediaKeR2(s.file,`${folderFoto}/${objectPathPrefix}`,{tujuan:tujuanFoto,label:labelFoto,operator:user.nama,foto:{uploaded_by:user.nama}});
-          const foto={url:m.url,mime:m.mime,name:m.name,uploaded_by:user.nama,uploaded_at:new Date().toISOString()};
-          fotoTerupload.push(foto);berkas.push({foto,file:s.file,s});
-        }catch(fotoErr:any){
-          if(sudahDiantrekan(fotoErr)){diantrekan.push(s);continue;}
-          console.error("Upload dokumentasi Pasang Komponen gagal:",s.file.name,fotoErr);
-          gagal.push(s);
-          alasanGagal.push("• "+s.file.name+" - "+String(fotoErr?.message||fotoErr)); // (18 Okt 2026) alasan nyata di pesan
-        }
-      }
+      // (19 Okt 2026) unggah PARALEL 3 + progres "12/40", ulang per foto, yang sudah terunggah tidak diunggah ulang
+      const hasilUnggah=await unggahBanyak(staged.map((x:any)=>x.file),`${folderFoto}/${objectPathPrefix}`,{tujuan:tujuanFoto,label:labelFoto,operator:user.nama,foto:{uploaded_by:user.nama}},
+        {onProgres:(n,total)=>setProgresFoto(`${n}/${total}`)});
+      setProgresFoto("");
+      hasilUnggah.forEach((h,i)=>{
+        const s=staged[i];
+        if(h.status==="ok"){const m=h.media;const foto={url:m.url,mime:m.mime,name:m.name,...(m.thumb?{thumb:m.thumb}:{}),uploaded_by:user.nama,uploaded_at:new Date().toISOString()};
+          fotoTerupload.push(foto);berkas.push({foto,file:s.file,s});}
+        else if(h.status==="diantrekan")diantrekan.push(s);
+        else{console.error("Upload dokumentasi Pasang Komponen gagal:",s.file.name,h.alasan);gagal.push(s);alasanGagal.push("• "+s.file.name+" - "+h.alasan);}
+      });
       const tempel=await tempelAtauAntrekan(tujuanFoto,berkas.map(x=>({foto:x.foto,file:x.file})),{label:labelFoto,operator:user.nama});
       if(tempel.error){
         // ditolak server (bukan sinyal) - file tetap di layar spt dulu
         alertGagalSimpan(tempel.error,`Simpan foto ${labelFoto}`,{aksi:"simpan foto"});
-        berkas.forEach(x=>{gagal.push(x.s);alasanGagal.push("• "+x.file.name+" - terkirim tapi BELUM tercatat (ditolak server)");});
-      }else if(tempel.tertempel.length){
+        berkas.filter(x=>tempel.gagal.includes(x.foto)).forEach(x=>{gagal.push(x.s);alasanGagal.push("• "+x.file.name+" - terkirim tapi BELUM tercatat (ditolak server)");});
+      }
+      if(tempel.tertempel.length){
         const baru=tempel.tertempel;
         const gabung=(lama:any[])=>[...(lama||[]).filter((f:any)=>!baru.some((x:any)=>x.url===f.url)),...baru];
         if(kodeFoto===null)setPanelsRaw(prev=>prev.map((p:any)=>p.id===panel.id?{...p,pasang_komponen_photos:gabung(p.pasang_komponen_photos)}:p));
@@ -655,6 +657,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
   const simpanFotoArsipTambahan=async(panel:any,kode:string,key:string)=>{
     const staged=stagedFoto[key]||[];
     if(staged.length===0)return;
+    if(staged.length>MAKS_FOTO_PER_SIMPAN){alert(pesanMelebihiBatasFoto(staged.length));return;} // (19 Okt 2026)
     setSavingKey("foto_"+key);
     try{
       const fotoTerupload:any[]=[];
@@ -667,23 +670,23 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
       const labelFoto=`${tugas.label} ${kode} (arsip) - ${String(panel.nama||panel.id).trim()}`;
       const berkas:{foto:any,file:File,s:any}[]=[];
       const diantrekan:any[]=[];
-      for(const s of staged){
-        try{
-          const m=await unggahMediaKeR2(s.file,`${folderFoto}/${panel.id}/${kode}`,{tujuan:tujuanFoto,label:labelFoto,operator:user.nama,foto:{uploaded_by:user.nama}});
-          const foto={url:m.url,mime:m.mime,name:m.name,uploaded_by:user.nama,uploaded_at:new Date().toISOString()};
-          fotoTerupload.push(foto);berkas.push({foto,file:s.file,s});
-        }catch(fotoErr:any){
-          if(sudahDiantrekan(fotoErr)){diantrekan.push(s);continue;}
-          console.error("Upload dokumentasi arsip Pasang Komponen gagal:",s.file.name,fotoErr);
-          gagal.push(s);
-          alasanGagal.push("• "+s.file.name+" - "+String(fotoErr?.message||fotoErr)); // (18 Okt 2026) alasan nyata di pesan
-        }
-      }
+      // (19 Okt 2026) unggah PARALEL 3 + progres "12/40", ulang per foto, yang sudah terunggah tidak diunggah ulang
+      const hasilUnggah=await unggahBanyak(staged.map((x:any)=>x.file),`${folderFoto}/${panel.id}/${kode}`,{tujuan:tujuanFoto,label:labelFoto,operator:user.nama,foto:{uploaded_by:user.nama}},
+        {onProgres:(n,total)=>setProgresFoto(`${n}/${total}`)});
+      setProgresFoto("");
+      hasilUnggah.forEach((h,i)=>{
+        const s=staged[i];
+        if(h.status==="ok"){const m=h.media;const foto={url:m.url,mime:m.mime,name:m.name,...(m.thumb?{thumb:m.thumb}:{}),uploaded_by:user.nama,uploaded_at:new Date().toISOString()};
+          fotoTerupload.push(foto);berkas.push({foto,file:s.file,s});}
+        else if(h.status==="diantrekan")diantrekan.push(s);
+        else{console.error("Upload dokumentasi arsip Pasang Komponen gagal:",s.file.name,h.alasan);gagal.push(s);alasanGagal.push("• "+s.file.name+" - "+h.alasan);}
+      });
       const tempel=await tempelAtauAntrekan(tujuanFoto,berkas.map(x=>({foto:x.foto,file:x.file})),{label:labelFoto,operator:user.nama});
       if(tempel.error){
         alertGagalSimpan(tempel.error,`Simpan foto ${labelFoto}`,{aksi:"simpan foto"});
-        berkas.forEach(x=>{gagal.push(x.s);alasanGagal.push("• "+x.file.name+" - terkirim tapi BELUM tercatat (ditolak server)");});
-      }else if(tempel.tertempel.length){
+        berkas.filter(x=>tempel.gagal.includes(x.foto)).forEach(x=>{gagal.push(x.s);alasanGagal.push("• "+x.file.name+" - terkirim tapi BELUM tercatat (ditolak server)");});
+      }
+      if(tempel.tertempel.length){
         const baru=tempel.tertempel;
         setPanelsRaw(prev=>prev.map((p:any)=>p.id!==panel.id?p:{...p,checklist:{...p.checklist,[kode]:{...(p.checklist?.[kode]||{}),
           fotoPemasangan:[...(p.checklist?.[kode]?.fotoPemasangan||[]).filter((f:any)=>!baru.some((x:any)=>x.url===f.url)),...baru]}}}));
@@ -999,7 +1002,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                                 {fotoKodeArr.map((f:any,fi:number)=>(
                                   <div key={`saved_${fi}`} style={{position:"relative" as const}}>
                                     <div onClick={()=>setFotoViewer({fotos:fotoKodeArr,startIndex:fi,label:`${r.nama}_${p.nama}`})}
-                                      style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:"1px solid #eef0f3",cursor:"pointer"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
+                                      style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:"1px solid #eef0f3",cursor:"pointer"}}><ThumbMedia url={f.url} thumb={f.thumb} video={isVideoFoto(f)}/></div>
                                     <button onClick={(e:any)=>{e.stopPropagation();hapusFotoTersimpan(p,r.kode,f.url);}}
                                       style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                       <i className="ti ti-trash" style={{fontSize:10}}/>
@@ -1026,7 +1029,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                               {stagedKodeFoto.length>0&&(
                                 <button onClick={()=>simpanFotoStaged(p,key,`${p.id}/${r.kode}`)} disabled={savingKey==="foto_"+key}
                                   style={{fontSize:11,fontWeight:700,color:"#fff",background:tugas.color,border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>
-                                  {savingKey==="foto_"+key?"⏳ Menyimpan...":"💾 Simpan Foto"}
+                                  {savingKey==="foto_"+key?(progresFoto?`⏳ Mengunggah ${progresFoto}`:"⏳ Menyimpan..."):"💾 Simpan Foto"}
                                 </button>
                               )}
                             </div>
@@ -1079,7 +1082,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                               <div style={{display:"flex",flexWrap:"wrap" as const,gap:6,marginBottom:8}}>
                                 {fotoKodeArr.map((f:any,fi:number)=>(
                                   <div key={`saved_${fi}`} onClick={()=>setFotoViewer({fotos:fotoKodeArr,startIndex:fi,label:`${r.nama}_${p.nama}`})}
-                                    style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:"1px solid #eef0f3",cursor:"pointer"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
+                                    style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:"1px solid #eef0f3",cursor:"pointer"}}><ThumbMedia url={f.url} thumb={f.thumb} video={isVideoFoto(f)}/></div>
                                 ))}
                                 {stagedKodeFoto.map((s,si)=>(
                                   <div key={`staged_${si}`} style={{position:"relative" as const}}>
@@ -1101,7 +1104,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                               {stagedKodeFoto.length>0&&(
                                 <button onClick={()=>simpanFotoArsipTambahan(p,r.kode,key)} disabled={savingFoto}
                                   style={{fontSize:11,fontWeight:700,color:"#fff",background:"#16a34a",border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>
-                                  {savingFoto?"⏳ Menyimpan...":"💾 Simpan Foto"}
+                                  {savingFoto?(progresFoto?`⏳ Mengunggah ${progresFoto}`:"⏳ Menyimpan..."):"💾 Simpan Foto"}
                                 </button>
                               )}
                               {tugas.seksi==="assembling_luar"&&(
@@ -1130,7 +1133,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                           {fotoPanelArr.map((f:any,fi:number)=>(
                             <div key={`saved_${fi}`} style={{position:"relative" as const}}>
                               <div onClick={()=>setFotoViewer({fotos:fotoPanelArr,startIndex:fi,label:p.nama})}
-                                style={{width:62,height:62,borderRadius:10,overflow:"hidden",border:"1px solid #eef0f3",cursor:"pointer"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
+                                style={{width:62,height:62,borderRadius:10,overflow:"hidden",border:"1px solid #eef0f3",cursor:"pointer"}}><ThumbMedia url={f.url} thumb={f.thumb} video={isVideoFoto(f)}/></div>
                               <button onClick={(e:any)=>{e.stopPropagation();hapusFotoTersimpan(p,null,f.url);}}
                                 style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                 <i className="ti ti-trash" style={{fontSize:10}}/>
@@ -1157,7 +1160,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                         <button onClick={()=>simpanFotoStaged(p,stagedPanelKey,`${p.id}`)} disabled={savingPanelFoto}
                           style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12,width:"100%",
                             background:savingPanelFoto?"#cbd5e1":tugas.color,color:"#fff",border:"none",borderRadius:11,padding:"11px 10px",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>
-                          {savingPanelFoto?"Menyimpan...":"💾 Simpan Foto"}
+                          {savingPanelFoto?(progresFoto?`Mengunggah ${progresFoto}`:"Menyimpan..."):"💾 Simpan Foto"}
                         </button>
                       )}
                     </div>

@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { hapusFotoDariStorage } from "../lib/fotoHelpers";
-import { unggahMediaKeR2, sudahDiantrekan, PESAN_DIANTREKAN } from "../lib/siapkanMedia";
+import { PESAN_DIANTREKAN, unggahBanyak, MAKS_FOTO_PER_SIMPAN, pesanMelebihiBatasFoto } from "../lib/siapkanMedia";
 import { tempelAtauAntrekan } from "../lib/antreanFoto";
 import { isVideoFoto } from "../lib/mediaThumb";
 import { ThumbMedia } from "./ui/ThumbMedia";
@@ -75,6 +75,7 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
   },[mode]);
   const[poinList,setPoinList]=useState<Poin[]>([]);
   const[uploadingPoinId,setUploadingPoinId]=useState<number|null>(null);
+  const[progresFoto,setProgresFoto]=useState(""); // (19 Okt 2026) "12/40"
   const[fotoViewer,setFotoViewer]=useState<{fotos:FotoViewerPekerja[],startIndex:number,label:string}|null>(null);
 
   const bukaDetail=(m:MomFat)=>{setActiveMomFat(m);setMode("detail");};
@@ -127,17 +128,17 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
     const tujuan={jenis:"mom_fat_poin" as const,id:p.id};
     const berkas:{foto:any,file:File}[]=[];
     let jmlAntre=0;
-    for(const file of Array.from(files)){
-      try{
-        const m=await unggahMediaKeR2(file,`mom-fat/${p.mom_fat_id}/${p.id}`,{tujuan,label,operator,foto:{uploaded_by:operator}});
-        const foto={url:m.url,mime:m.mime,name:m.name,uploaded_by:operator,uploaded_at:new Date().toISOString()};
-        fotoBaru.push(foto);berkas.push({foto,file});
-      }catch(err:any){
-        if(sudahDiantrekan(err)){jmlAntre++;continue;}
-        console.error("Upload dokumentasi MOM FAT gagal:",file.name,err);
-        gagal.push("• "+file.name+" - "+(err?.message||"unknown error"));
-      }
-    }
+    // (19 Okt 2026) unggah PARALEL 3 + progres "12/40", ulang per foto
+    const daftar=Array.from(files);
+    if(daftar.length>MAKS_FOTO_PER_SIMPAN){alert(pesanMelebihiBatasFoto(daftar.length));setUploadingPoinId(null);return;}
+    const hasilUnggah=await unggahBanyak(daftar,`mom-fat/${p.mom_fat_id}/${p.id}`,{tujuan,label,operator,foto:{uploaded_by:operator}},
+      {onProgres:(n,total)=>setProgresFoto(`${n}/${total}`)});
+    setProgresFoto("");
+    hasilUnggah.forEach(h=>{
+      if(h.status==="ok"){const m=h.media;const foto={url:m.url,mime:m.mime,name:m.name,...(m.thumb?{thumb:m.thumb}:{}),uploaded_by:operator,uploaded_at:new Date().toISOString()};fotoBaru.push(foto);berkas.push({foto,file:h.file});}
+      else if(h.status==="diantrekan")jmlAntre++;
+      else{console.error("Upload dokumentasi MOM FAT gagal:",h.file.name,h.alasan);gagal.push("• "+h.file.name+" - "+h.alasan);}
+    });
     if(fotoBaru.length>0){
       const t=await tempelAtauAntrekan(tujuan,berkas,{label,operator});
       jmlAntre+=t.diantrekan.length;
@@ -193,7 +194,7 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
                           triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:10.5,fontWeight:600,marginLeft:"auto"}}
                           onFiles={(files)=>uploadFotoPoin(p,files)}>
                           <i className={uploadingPoinId===p.id?"ti ti-loader-2":"ti ti-camera-plus"} style={{fontSize:12}}/>
-                          Tambah Foto
+                          {uploadingPoinId===p.id&&progresFoto?`Mengunggah ${progresFoto}`:"Tambah Foto"}
                         </MediaPickerSheet>
                       </div>
                       {(p.foto||[]).length>0&&(
@@ -201,7 +202,7 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
                           {p.foto.map((f,fi)=>(
                             <div key={fi} style={{position:"relative",aspectRatio:"1",borderRadius:7,overflow:"hidden",cursor:"pointer",background:"#f1f5f9"}}
                               onClick={()=>setFotoViewer({fotos:p.foto,startIndex:fi,label:p.teks})}>
-                              <ThumbMedia url={f.url} video={isVideoFoto(f)}/>
+                              <ThumbMedia url={f.url} thumb={f.thumb} video={isVideoFoto(f)}/>
                               <button onClick={(e)=>{e.stopPropagation();hapusFotoPoin(p,f.url);}}
                                 style={{position:"absolute",top:2,right:2,width:15,height:15,borderRadius:99,background:"rgba(15,23,42,0.6)",color:"#fff",border:"none",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                 <i className="ti ti-x" style={{fontSize:8}}/>
