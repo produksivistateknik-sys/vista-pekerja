@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
+import { alertGagalSimpan } from "../lib/koneksi";
 import { SectionCard, SegmentedControl, EmptyState, DatePickerField } from "./gudang/GudangUI";
 import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
 import { getLocalDateStr, rentangHariLokal, rentangBulanLokal, tanggalLokalDari } from "../lib/dateHelpers";
@@ -47,43 +48,24 @@ const fmtDateTime=(d:string)=>d?new Date(d).toLocaleString("id-ID",{day:"numeric
 // qty item saat ini -> row asli di-update jadi qty yang beneran dikeluarkan, SISA jadi row
 // hutang BARU (is_hutang=true, induk_item_id nunjuk ke row ini, bisa dicicil lagi berkali-kali
 // - row hutang yang gak lunas juga lewat fungsi ini lagi, rantainya nyambung otomatis).
-const prosesSubmitDenganQty=async(item:any,qtyDipenuhi:number,adminName:string,targetDivisi?:string)=>{
+// (19 Okt 2026) SATU RPC atomik proses_pemenuhan_permintaan (migration vista-teknik 20261019010000): dulu 3 langkah
+// terpisah dari browser tanpa cek error - sinyal putus di antaranya bisa menghapus item tanpa membuat baris hutang
+// (barang hilang dari permintaan), tombol tertekan 2x / 2 petugas bisa membuat hutang dobel. Sekarang item dikunci &
+// wajib masih 'pending'; perilaku penuh/sebagian/0 SAMA PERSIS dgn dulu (lihat komentar di migration). Return false =
+// gagal (pesan sudah ditampilkan), pemanggil memuat ulang daftar.
+const prosesSubmitDenganQty=async(item:any,qtyDipenuhi:number,adminName:string,targetDivisi?:string):Promise<boolean>=>{
   const qtyLama=Number(item.qty);
   const lunasPenuh=qtyDipenuhi>=qtyLama;
-  // qtyDipenuhi=0 (7 Sep 2026, min qty diturunkan dari 1 ke 0) - gudang BENAR-BENAR gak ada
-  // stok sama sekali saat ini, BUKAN cuma "dipenuhi sebagian". Row asli DIHAPUS (bukan di-update
-  // jadi status submit+qty:0) - kalau tetap di-update, operator bakal lihat badge palsu "✓ Sudah
-  // Siap x0" plus tombol "Konfirmasi Sudah Diambil" buat barang yang gak pernah diserahkan sama
-  // sekali. Row hutang baru di bawah tetap dibuat qty PENUH seperti biasa - itu satu-satunya
-  // jejak yang tersisa, cukup buat merepresentasikan "seluruh jumlah jadi hutang".
-  // induk_item_id sengaja TIDAK diisi di kasus ini (item.id sudah dihapus, gak ada row "asal
-  // pemenuhan" buat dilacak - field ini murni jejak DB, gak pernah dibaca UI manapun).
-  if(qtyDipenuhi>0){
-    await supabase.from("permintaan_item").update({
-      status:"submit",qty:qtyDipenuhi,
-      updated_by:adminName,updated_at:new Date().toISOString(),dilihat_operator:false,
-    }).eq("id",item.id);
-  } else {
-    await supabase.from("permintaan_item").delete().eq("id",item.id);
+  // SENGAJA tanpa withRetry: kalau jawaban server hilang padahal sudah diproses, ulang otomatis akan ditolak
+  // "sudah diproses" & petugas melihat pesan gagal palsu. RPC menolak proses ulang, jadi aman dikonfirmasi lagi.
+  const{data:hasil,error}=await supabase.rpc("proses_pemenuhan_permintaan" as any,{p_item_id:item.id,p_qty_dipenuhi:qtyDipenuhi,p_oleh:adminName} as any) as any;
+  if(error){
+    alertGagalSimpan(error,`Proses permintaan ${item.nama_komponen} (item ${item.id})`,{aksi:"memproses permintaan",
+      catatanServer:"Item mungkin sudah diproses petugas lain - daftar dimuat ulang, periksa statusnya.",
+      catatanKoneksi:"Status belum pasti (jawaban server tidak sampai) - daftar dimuat ulang. Kalau item masih di daftar, konfirmasi lagi; kalau sudah pindah, berarti sudah tersimpan."});
+    return false;
   }
-  let sisaQty=0;
-  if(!lunasPenuh){
-    sisaQty=qtyLama-qtyDipenuhi;
-    await supabase.from("permintaan_item").insert({
-      permintaan_id:item.permintaan_id,
-      komponen_bbmb_master_id:item.komponen_bbmb_master_id,
-      komponen_master_id:item.komponen_master_id,
-      kode_komponen:item.kode_komponen,
-      nama_komponen:item.nama_komponen,
-      satuan:item.satuan,
-      satuan_dipilih:item.satuan_dipilih,
-      qty:sisaQty,
-      qty_diminta_awal:qtyLama,
-      status:"pending",
-      is_hutang:true,
-      ...(qtyDipenuhi>0?{induk_item_id:item.id}:{}),
-    });
-  }
+  const sisaQty=Number(hasil?.sisa??Math.max(0,qtyLama-qtyDipenuhi));
   // Fitur tambahan, GAGAL DI SINI TIDAK BOLEH gagalin update status yang udah beres di atas.
   if(targetDivisi){
     try{
@@ -94,6 +76,7 @@ const prosesSubmitDenganQty=async(item:any,qtyDipenuhi:number,adminName:string,t
       }});
     }catch{/* notifikasi gagal - diabaikan, status tetap tersimpan */}
   }
+  return true;
 };
 
 // Modal konfirmasi qty saat submit - default qty = qty diminta (paling umum: dipenuhi penuh,
