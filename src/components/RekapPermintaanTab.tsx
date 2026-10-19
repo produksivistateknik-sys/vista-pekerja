@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
-import { gabungDenganArsip, muatItemRekap, type WoRekap } from "../lib/rekapPermintaanArsip";
+import { gabungDenganArsip, muatItemRekap, muatPermintaanTanpaRincian, type WoRekap, type PermintaanTanpaRincian } from "../lib/rekapPermintaanArsip";
 import { halamanCetakBerkop } from "../lib/kopSuratKonfig";
 import { asetKopHtml } from "../lib/kopSuratAsetUrl";
 import { EmptyState } from "./ui/Primitives";
@@ -47,6 +47,7 @@ export function RekapPermintaanTab(){
   const[woSearch,setWoSearch]=useState("");
   const[selectedWoId,setSelectedWoId]=useState<number|null>(null);
   const[scopePanelId,setScopePanelId]=useState<number|null>(null);
+  const[tanpaRincian,setTanpaRincian]=useState<PermintaanTanpaRincian[]>([]); // (18 Okt 2026) kepala tanpa item
   const[search,setSearch]=useState("");
   const[rekapLoading,setRekapLoading]=useState(false);
   const[rawItems,setRawItems]=useState<{komponen_master_id:number|null,nama_komponen:string,satuan_dipilih:string|null,satuan:string|null,qty:number,panel_id:number,divisi:string|null}[]>([]);
@@ -100,8 +101,9 @@ export function RekapPermintaanTab(){
     try{
       // (17 Okt 2026) panel aktif lewat permintaan.panel_id, panel arsip lewat permintaan.panel_id_arsip (lib/rekapPermintaanArsip.ts)
       const panelsWo=woSemua.find(w=>w.id===woId)?.panels||[];
-      if(panelsWo.length===0){setRawItems([]);setRekapLoading(false);return;}
-      setRawItems(await muatItemRekap(panelsWo));
+      if(panelsWo.length===0){setRawItems([]);setTanpaRincian([]);setRekapLoading(false);return;}
+      const[items,tr]=await Promise.all([muatItemRekap(panelsWo),muatPermintaanTanpaRincian(panelsWo)]);
+      setRawItems(items);setTanpaRincian(tr);
     }catch(e:any){
       alert("Gagal memuat rekap: "+e.message);
     }
@@ -291,9 +293,28 @@ ${kop.body}
         <div style={{fontSize:10.5,color:"#94a3b8",marginTop:6}}>Item yang sudah keluar dari Gudang</div>
       </div>
 
+      {/* (18 Okt 2026) permintaan yang kepalanya ada tapi tanpa satu pun item - ditampilkan, kepala tidak dihapus */}
+      {!rekapLoading&&(()=>{
+        const daftar=tanpaRincian.filter(t=>!scopePanelId||t.panel_id===scopePanelId);
+        if(!daftar.length)return null;
+        const namaPanel=(id:number)=>panelsInWo.find(p=>p.id===id)?.nama||`panel ${id}`;
+        return(
+          <div style={{margin:"10px 0",padding:"10px 12px",borderRadius:10,background:"#fffbeb",border:"1px solid #fcd34d"}}>
+            {[...new Set(daftar.map(t=>t.penyebab))].map(py=>(
+              <div key={py} style={{marginBottom:6}}>
+                <div style={{fontSize:12,fontWeight:800,color:"#92400e",marginBottom:3}}>⚠️ Permintaan tanpa rincian ({py})</div>
+                {daftar.filter(t=>t.penyebab===py).map(t=>(
+                  <div key={t.id} style={{fontSize:11,color:"#78350f",padding:"1px 0 1px 18px"}}>#{t.id} · {t.jenis} · {t.divisi||"-"} · {new Date(t.created_at).toLocaleString("id-ID",{day:"numeric",month:"short",year:"numeric",hour:"2-digit",minute:"2-digit"})} · {namaPanel(t.panel_id)}</div>
+                ))}
+              </div>
+            ))}
+            <div style={{fontSize:10,color:"#a16207"}}>Kepala permintaan tersimpan, tapi isi barangnya tidak ada di data - tidak ikut terhitung di rekap.</div>
+          </div>
+        );
+      })()}
       {rekapLoading?(
         <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
-      ):rowsDisplayed.length===0?(
+      ):rowsDisplayed.length===0&&rowsFull.length===0&&tanpaRincian.some(t=>!scopePanelId||t.panel_id===scopePanelId)?null:rowsDisplayed.length===0?(
         <EmptyState title={rowsFull.length===0?"Belum ada item":"Tidak cocok dengan pencarian"}
           description={rowsFull.length===0?"Belum ada permintaan barang yang sudah keluar dari Gudang untuk cakupan ini.":`Coba kata kunci lain (pencarian: "${search}").`}/>
       ):(

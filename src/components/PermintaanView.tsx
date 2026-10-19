@@ -4,6 +4,7 @@ import { Lbl, Card, SectionCard, EmptyState, CardToggle, SearchableSelect } from
 import { DIVISI_CONFIG } from "../lib/panelTypes";
 import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
 import { ringkasAlasanGagal } from "../lib/koneksi";
+import { penyebabTanpaRincian, sudahCukupUmurTanpaRincian } from "../lib/rekapPermintaanArsip";
 import { getLocalDateStr, rentangHariLokal } from "../lib/dateHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -561,6 +562,12 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
                   diambil, BBMU cuma badge status). Sekarang 1 blok yang sama buat keduanya -
                   konfirmasi "sudah diambil" berlaku BBMU juga, bukan BBMB doang. */}
               <div style={{display:"flex",flexDirection:"column" as const,gap:6}}>
+                {/* (18 Okt 2026) kepala tanpa satu pun item -> keterangan, bukan kartu kosong (aturan sama Rekap & K15) */}
+                {(r.items||[]).length===0&&sudahCukupUmurTanpaRincian(r.created_at)&&(
+                  <div style={{background:"#fffbeb",border:"1px solid #fcd34d",borderRadius:8,padding:"6px 10px",fontSize:11.5,color:"#92400e",fontWeight:700}}>
+                    ⚠️ Permintaan tanpa rincian ({penyebabTanpaRincian(r.created_at)}) · #{r.id}
+                  </div>
+                )}
                 {(r.items||[]).map((it:any)=>(
                   <div key={it.id} style={{background:"#f8fafc",borderRadius:8,padding:"6px 10px"}}>
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
