@@ -21,8 +21,8 @@ export const PROSES_TANPA_MAPPING_KOMPONEN=["QC TEST","PACKING"];
 // lagi kalau lupa disinkron manual - guard di sini gak bergantung ke situ sama sekali.
 // JENIS PANEL "BUSBAR" (17 Okt 2026, permintaan user) - CERMIN vista-teknik lib/panelHelpers.ts
 // TIPE_PANEL_BUSBAR_SAJA: pekerjaannya HANYA proses BUSBAR (tanpa proses mekanik, tanpa QC TEST/PACKING/
-// NAMEPLATE/YELLOWMARK). Tahap busbar SAMA dgn jenis lain (getUrutanTahapBusbar, keputusan user 17 Okt
-// 2026 sore - versi awal "FABRIKASI saja" dibatalkan). Kalau diubah, ubah keduanya.
+// NAMEPLATE/YELLOWMARK). Tahap busbar: 3 tahap Fabrikasi/Plating/Pasang TANPA Heat-Shrink utk semua komponen
+// (getUrutanTahapBusbar, keputusan user 19 Okt 2026; 17 Okt masih sama dgn jenis lain). Kalau diubah, ubah keduanya.
 export const TIPE_PANEL_BUSBAR_SAJA=new Set<string>(["BUSBAR"]);
 // (17 Okt 2026) jenis busbar-saja juga TANPA Nameplate/Yellowmark (cermin prosesBerlakuUntukTipe vista-teknik)
 export const punyaNameplateYellowmark=(tipe:string|undefined|null):boolean=>!(tipe&&TIPE_PANEL_BUSBAR_SAJA.has(tipe));
@@ -115,9 +115,11 @@ export const BUSBAR_URUTAN_TAHAP_SINGKAT=["FABRIKASI","PLATING","PASANG"];
 export const BUSBAR_TAHAP_LABEL:Record<string,string>={FABRIKASI:"Fabrikasi",PLATING:"Plating",HEATSHRINK:"Heat-Shrink",PASANG:"Pasang"};
 // Nama icon tabler (dipakai lewat className={`ti ti-${...}`}) buat kartu grid tahap BUSBAR.
 export const BUSBAR_TAHAP_ICON:Record<string,string>={FABRIKASI:"tool",PLATING:"droplet",HEATSHRINK:"flame",PASANG:"plug"};
-// tipe (17 Okt 2026): titik masuk aturan tahap per jenis panel - SAAT INI semua jenis (termasuk jenis
-// "BUSBAR") pakai aturan yang sama (keputusan user), parameter dipertahankan supaya pemanggil tak berubah.
-export function getUrutanTahapBusbar(kode:string,_tipe?:string|null):string[]{
+// tipe (17 Okt 2026): titik masuk aturan tahap per jenis panel. (19 Okt 2026, permintaan user "hapus heat shrink
+// di jenis panel busbar") jenis busbar-saja (TIPE_PANEL_BUSBAR_SAJA) -> SEMUA komponen 3 tahap tanpa HEATSHRINK.
+// WAJIB sama dgn trigger DB panels_validate_busbar_cap_progress (migration vista-teknik 20261019030000).
+export function getUrutanTahapBusbar(kode:string,tipe?:string|null):string[]{
+  if(tipe&&TIPE_PANEL_BUSBAR_SAJA.has(tipe))return BUSBAR_URUTAN_TAHAP_SINGKAT;
   return(kode==="COUPLER"||kode==="GROUND"||kode==="COUPLE-AN")?BUSBAR_URUTAN_TAHAP_SINGKAT:BUSBAR_URUTAN_TAHAP_LENGKAP;
 }
 // PASANG KOMPONEN 2-tahap (Box Control/Pintu: ASSEMBLING punya Assembling Luar, WIRING punya
