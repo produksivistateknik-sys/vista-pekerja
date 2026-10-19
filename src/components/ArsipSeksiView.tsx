@@ -187,7 +187,7 @@ export function ArsipSeksiView({seksi}:{seksi:string}){
                             <div style={{display:"flex",flexWrap:"wrap" as const,gap:6}}>
                               {fotoList.map((f:any,fi:number)=>(
                                 <div key={fi} onClick={()=>setLightbox({fotos:fotoList,startIndex:fi,label:r.panel_nama})}
-                                  style={{width:56,height:56,borderRadius:6,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}}><ThumbMedia url={f.url} video={isVideoFoto(f)}/></div>
+                                  style={{width:56,height:56,borderRadius:6,overflow:"hidden",border:"1px solid #e2e8f0",cursor:"pointer"}}><ThumbMedia url={f.url} thumb={f.thumb} video={isVideoFoto(f)}/></div>
                               ))}
                             </div>
                           )}

@@ -6,7 +6,7 @@ import { fetchRotasiBatch, rotateMedia } from "../lib/mediaRotasi";
 // ─────────────────────────────────────────────────────────────────────────────
 // FOTO ZOOM VIEWER - dipisah dari App.tsx (Sprint 6)
 // ─────────────────────────────────────────────────────────────────────────────
-export type FotoViewerPekerja={url:string,uploaded_at?:string,uploaded_by?:string,name?:string,mime?:string};
+export type FotoViewerPekerja={url:string,thumb?:string,uploaded_at?:string,uploaded_by?:string,name?:string,mime?:string};
 
 // Viewer gaya ClickUp: prev/next antar foto dalam galeri yang sama, toolbar atas rapi
 // (nama+posisi, Download, Close), scroll-wheel zoom + drag buat geser waktu di-zoom (mouse),

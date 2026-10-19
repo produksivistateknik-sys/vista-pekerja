@@ -97,21 +97,34 @@ export async function tempelFotoDokumentasi(tujuan: TujuanFoto, fotos: Record<st
 
 // Simpan normal: tempel foto yang SUDAH masuk R2. Gagal karena sinyal -> masuk antrean dgn url (tidak diunggah ulang).
 // Ditolak server -> `error` dikembalikan (pemanggil menampilkan pesan & membiarkan file di layar, perilaku lama).
+// (19 Okt 2026) dikirim per POTONGAN 20 foto: insiden BAGAS 19 Okt 09.30 - 57 foto Proyek Luar 14 terunggah tapi
+// RPC menolak semuanya (maks 20 per panggilan). Potongan 20 berlaku utk RPC lama (maks 20) MAUPUN baru (maks 80).
+// Potongan yang gagal karena SINYAL -> foto potongan itu & sesudahnya masuk antrean (url sudah ada, tidak diunggah ulang);
+// ditolak SERVER -> berhenti, `error` + yang sudah tertempel dikembalikan.
+export const MAKS_FOTO_PER_PANGGILAN = 20
 export async function tempelAtauAntrekan(tujuan: TujuanFoto, fotos: { foto: Record<string, any>; file: Blob; key?: string }[], info: { label: string; operator: string }):
-  Promise<{ tertempel: Record<string, any>[]; diantrekan: Record<string, any>[]; error: any; ditemukan: boolean }> {
-  if (!fotos.length) return { tertempel: [], diantrekan: [], error: null, ditemukan: true }
-  const objs = fotos.map(f => f.foto)
-  const t = await tempelFotoDokumentasi(tujuan, objs)
-  if (!t.error) return { tertempel: t.ditemukan ? objs : [], diantrekan: [], error: null, ditemukan: t.ditemukan }
-  if (klasifikasiErrorSimpan(t.error).jenis !== 'koneksi') return { tertempel: [], diantrekan: [], error: t.error, ditemukan: true }
-  const diantrekan: Record<string, any>[] = []
-  for (const f of fotos) {
-    const { url, ...sisa } = f.foto
-    const ok = await antrekanFoto({ ...info, tujuan, key: f.key || String(url), blob: f.file, contentType: f.file.type || 'application/octet-stream', foto: sisa, url, alasan: String(t.error?.message || t.error) })
-    if (!ok) return { tertempel: [], diantrekan, error: t.error, ditemukan: true }
-    diantrekan.push(f.foto)
+  Promise<{ tertempel: Record<string, any>[]; diantrekan: Record<string, any>[]; error: any; ditemukan: boolean; gagal: Record<string, any>[] }> {
+  const tertempel: Record<string, any>[] = [], diantrekan: Record<string, any>[] = []
+  for (let i = 0; i < fotos.length; i += MAKS_FOTO_PER_PANGGILAN) {
+    const potong = fotos.slice(i, i + MAKS_FOTO_PER_PANGGILAN)
+    const objs = potong.map(f => f.foto)
+    const t = await tempelFotoDokumentasi(tujuan, objs)
+    if (!t.error) {
+      if (!t.ditemukan) return { tertempel, diantrekan, error: null, ditemukan: false, gagal: [] }
+      tertempel.push(...objs)
+      continue
+    }
+    if (klasifikasiErrorSimpan(t.error).jenis !== 'koneksi') return { tertempel, diantrekan, error: t.error, ditemukan: true, gagal: fotos.slice(i).map(f => f.foto) }
+    // sinyal putus: sisa (potongan ini + sesudahnya) diantrekan
+    for (const f of fotos.slice(i)) {
+      const { url, ...sisa } = f.foto
+      const ok = await antrekanFoto({ ...info, tujuan, key: f.key || String(url), blob: f.file, contentType: f.file.type || 'application/octet-stream', foto: sisa, url, alasan: String(t.error?.message || t.error) })
+      if (!ok) return { tertempel, diantrekan, error: t.error, ditemukan: true, gagal: fotos.slice(i).filter(x => !diantrekan.includes(x.foto)).map(x => x.foto) }
+      diantrekan.push(f.foto)
+    }
+    break
   }
-  return { tertempel: [], diantrekan, error: null, ditemukan: true }
+  return { tertempel, diantrekan, error: null, ditemukan: true, gagal: [] }
 }
 
 // ── masukkan ke antrean ──

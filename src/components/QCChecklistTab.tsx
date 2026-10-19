@@ -4,7 +4,7 @@ import { QC_ITEMS } from "../lib/panelTypes";
 import { getUrgensiPanel } from "../lib/progressHelpers";
 import { fetchAllPanels } from "../lib/panelHelpers";
 import { hapusFotoDariStorage } from "../lib/fotoHelpers";
-import { unggahMediaKeR2, sudahDiantrekan, PESAN_DIANTREKAN } from "../lib/siapkanMedia";
+import { unggahMediaKeR2, sudahDiantrekan, PESAN_DIANTREKAN, unggahBanyak, MAKS_FOTO_PER_SIMPAN, pesanMelebihiBatasFoto } from "../lib/siapkanMedia";
 import { tempelAtauAntrekan } from "../lib/antreanFoto";
 import { useSaatFotoAntreanTertempel } from "../lib/useSaatFotoAntreanTertempel";
 import { alertGagalSimpan } from "../lib/koneksi";
@@ -138,7 +138,7 @@ export function QCChecklistTab({user,registerBackHandler}:any){
       // bersama siapkanMedia (foto dikompres, video dikompres ke 720p, file lain apa adanya) +
       // batas waktu upload, sama dgn fitur dokumentasi lain. 18 Okt 2026: helper mengulang otomatis
       // saat koneksi putus, lalu menyimpan ke antrean HP kalau tetap gagal karena sinyal.
-      let media:{url:string,mime:string,name:string};
+      let media:{url:string,mime:string,name:string,thumb?:string};
       try{
         media=await unggahMediaKeR2(file,`qc/${panelId}/${itemKey}`,{tujuan,label,operator:user.nama,foto:{uploaded_by:user.nama}});
       }catch(upErr:any){
@@ -151,7 +151,7 @@ export function QCChecklistTab({user,registerBackHandler}:any){
         }
         setUploadingId(null);return;
       }
-      const foto={url:media.url,name:media.name,mime:media.mime,uploaded_by:user.nama,uploaded_at:new Date().toISOString()};
+      const foto={url:media.url,name:media.name,mime:media.mime,...(media.thumb?{thumb:media.thumb}:{}),uploaded_by:user.nama,uploaded_at:new Date().toISOString()};
       const t=await tempelAtauAntrekan(tujuan,[{foto,file}],{label,operator:user.nama});
       if(t.error){
         alertGagalSimpan(t.error,`Simpan foto QC ${itemKey} panel ${panelId}`,{aksi:"simpan foto",ulangi:"Ulangi"});
@@ -165,6 +165,46 @@ export function QCChecklistTab({user,registerBackHandler}:any){
     }catch(err:any){
       alert("Terjadi kesalahan: "+err.message);
     }
+    setUploadingId(null);
+  };
+
+  // (19 Okt 2026) BANYAK foto sekaligus: unggah PARALEL 3 + progres "12/40", dicatat SEKALIGUS per 20 (dulu 1 RPC per foto
+  // = puluhan perjalanan tambahan di sinyal lemah), SATU pesan ringkasan. Foto gagal -> kotak "belum terkirim" (Ulangi
+  // tidak mengunggah ulang file yang sudah masuk R2). Tombol Ulangi per foto tetap lewat uploadFotoSeksi.
+  const[progresQc,setProgresQc]=useState<Record<string,string>>({});
+  const unggahBanyakSeksi=async(panelId:number,itemKey:string,files:File[])=>{
+    if(!files.length)return;
+    if(files.length===1){await uploadFotoSeksi(panelId,itemKey,files[0]);return;}
+    if(files.length>MAKS_FOTO_PER_SIMPAN){alert(pesanMelebihiBatasFoto(files.length));return;}
+    const uploadKey=`${panelId}_${itemKey}`;
+    const panelNama=String(panelsList.find((p:any)=>p.id===panelId)?.nama||panelId).trim();
+    const label=`QC ${QC_ITEMS.find(i=>i.key===itemKey)?.label||itemKey} - ${panelNama}`;
+    const tujuan={jenis:"qc" as const,id:panelId,kunci:itemKey};
+    setUploadingId(uploadKey);
+    try{
+      const hasil=await unggahBanyak(files,`qc/${panelId}/${itemKey}`,{tujuan,label,operator:user.nama,foto:{uploaded_by:user.nama}},
+        {onProgres:(n,total)=>setProgresQc(prev=>({...prev,[uploadKey]:`${n}/${total}`}))});
+      const berkas:{foto:any,file:File}[]=[];
+      let antre=0;const gagal:string[]=[];
+      for(const h of hasil){
+        if(h.status==="ok"){const m=h.media;berkas.push({file:h.file,foto:{url:m.url,name:m.name,mime:m.mime,...(m.thumb?{thumb:m.thumb}:{}),uploaded_by:user.nama,uploaded_at:new Date().toISOString()}});}
+        else if(h.status==="diantrekan")antre++;
+        else{tambahFotoGagal(uploadKey,h.file,h.alasan);gagal.push("• "+h.file.name+" - "+h.alasan);}
+      }
+      const t=await tempelAtauAntrekan(tujuan,berkas,{label,operator:user.nama});
+      t.tertempel.forEach(f=>tambahFotoKeLayar(panelId,itemKey,f));
+      antre+=t.diantrekan.length;
+      if(t.error){
+        alertGagalSimpan(t.error,`Simpan foto QC ${itemKey} panel ${panelId}`,{aksi:"simpan foto",ulangi:"Ulangi"});
+        berkas.filter(b=>t.gagal.includes(b.foto)).forEach(b=>{tambahFotoGagal(uploadKey,b.file,"Foto terkirim tapi BELUM tercatat di data QC (ditolak server) - tekan Ulangi");gagal.push("• "+b.file.name+" - belum tercatat (ditolak server)");});
+      }else if(!t.ditemukan)alert(`Panel ${panelNama} sudah tidak ada - foto tidak dicatat.`);
+      if(gagal.length)alert(`${t.tertempel.length} dari ${files.length} foto tersimpan. ${gagal.length} foto BELUM tersimpan:\n${gagal.slice(0,10).join("\n")}${gagal.length>10?`\n... dan ${gagal.length-10} lainnya`:""}\n\nFoto yang belum tersimpan ada di kotak merah "belum terkirim" - tekan Ulangi.${antre?`\n\n${antre} foto lain ${PESAN_DIANTREKAN}.`:""}`);
+      else if(antre)alert(`${t.tertempel.length} foto tersimpan. Sinyal putus - ${antre} foto ${PESAN_DIANTREKAN}.`);
+    }catch(err:any){
+      console.error("[QC] unggah banyak foto gagal:",err);
+      alert("Terjadi kesalahan: "+err.message);
+    }
+    setProgresQc(prev=>{const n={...prev};delete n[uploadKey];return n;});
     setUploadingId(null);
   };
 
@@ -356,9 +396,9 @@ export function QCChecklistTab({user,registerBackHandler}:any){
                           <span style={{fontSize:10.5,fontWeight:600,color:"#64748b"}}>Foto {fotoSeksi.length}</span>
                           <MediaPickerSheet allowVideo allowAnyFile
                             triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:10.5,fontWeight:600}}
-                            onFiles={(files)=>{(async()=>{for(const f of Array.from(files))await uploadFotoSeksi(p.id,item.key,f);})();}}>
+                            onFiles={(files)=>{unggahBanyakSeksi(p.id,item.key,Array.from(files));}}>
                             <i className={uploadingId===uploadKey?"ti ti-loader-2":"ti ti-plus"} style={{fontSize:12}}/>
-                            Tambah
+                            {progresQc[uploadKey]?`Mengunggah ${progresQc[uploadKey]}`:"Tambah"}
                           </MediaPickerSheet>
                         </div>
                         {fotoSeksi.length>0&&(
@@ -378,7 +418,7 @@ export function QCChecklistTab({user,registerBackHandler}:any){
                                       <div style={{fontSize:7,color:"#64748b",marginTop:2,wordBreak:"break-all" as const}}>{f.name||"File"}</div>
                                     </div>
                                   ):(
-                                    <img src={f.url} loading="lazy" style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
+                                    <img src={f.thumb||f.url} loading="lazy" decoding="async" style={{width:"100%",height:"100%",objectFit:"cover" as const}}/>
                                   )}
                                   {isVideo&&(
                                     <div style={{position:"absolute" as const,inset:0,display:"flex",alignItems:"center",justifyContent:"center",pointerEvents:"none" as const}}>
