@@ -16,7 +16,7 @@ import {
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
   computeProsesStatus, computeBusbarTahapStatus, getBusbarCapTahap, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
-  PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA, getMekanikCap, maxQtyUntukPct, getMekanikFloor, minQtyUntukPct,
+  isKomponenTahapPasang, getMekanikCap, maxQtyUntukPct, getMekanikFloor, minQtyUntukPct,
 } from "../lib/panelHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { Badge, Card, Lbl, Inp, Btn } from "./ui/Primitives";
@@ -1445,7 +1445,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // kesimpen di atas.
     if(proses==="PASANG KOMPONEN"&&user.sub_bagian==="Assembling Luar"){
       const itemNama=getEffCfg(panel.tipe)?.wps.flatMap((w:any)=>w.items).find((it:any)=>it.kode===kode)?.nama||kode;
-      if(!PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(itemNama)){
+      if(!isKomponenTahapPasang(panel.tipe,itemNama)){
         try{
           const{data:woRow}=panel.wo_id?await supabase.from("work_orders").select("wo").eq("id",panel.wo_id).maybeSingle():{data:null};
           const{error:arsipErr}=await withRetry(()=>supabase.from("panel_seksi_archived").upsert({

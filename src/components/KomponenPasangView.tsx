@@ -7,7 +7,7 @@ import { tutupTimerKomponenSelesai } from "../lib/tutupTimerKomponen";
 import { catatCheckpoint } from "../lib/catatCheckpoint";
 import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress, cekPasangKomponenSiapArsip, updateComponentProcessProgressPhotos, batalkanSudahDisimpan100 } from "../lib/componentProcessProgress";
-import { fetchAllPanels, isKomponenRelevant, PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA } from "../lib/panelHelpers";
+import { fetchAllPanels, isKomponenRelevant, isKomponenTahapPasang } from "../lib/panelHelpers";
 import { bacaSemuaProsesRelevan } from "../lib/prosesRelevan";
 import { bacaSemuaHalaman } from "../lib/bacaSemua";
 import { getUrgensiPanel, fmtTanggalDeadlineNp } from "../lib/progressHelpers";
@@ -292,10 +292,10 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       if(!((cl?.qty||0)>0))return false;
       if(!isKomponenRelevant(kode,panel.tipe,"PASANG KOMPONEN",relevanSet,hasMappingSet))return false;
       const nama=namaKode(kode);
-      const isTahapNama=PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(nama);
+      const isTahapNama=isKomponenTahapPasang(panel.tipe,nama);
       if(tugas.seksi==="wiring_control")return isTahapNama;
       return !isTahapNama; // assembling_luar: TIDAK PERNAH Pintu/Box Control
-    }).map(([kode]:any)=>({kode,nama:namaKode(kode),isTahap:PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(namaKode(kode))}));
+    }).map(([kode]:any)=>({kode,nama:namaKode(kode),isTahap:isKomponenTahapPasang(panel.tipe,namaKode(kode))}));
   };
 
   const getProgress=(panel:any,kode:string,isTahap:boolean):number=>{
@@ -309,7 +309,7 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
   // filter relevansi seksi dulu, foto bisa disentuh dari mana aja).
   const tahapUntukKode=(panel:any,kode:string):string|null=>{
     const nama=kodeNamaMap[`${panel.tipe}|${kode}`]||kode;
-    return PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(nama)?tugas.tahap:null;
+    return isKomponenTahapPasang(panel.tipe,nama)?tugas.tahap:null;
   };
 
   // PCT_STEPS klik - persist LANGSUNG ke checklist (live), TIDAK checkpoint/archive - sama

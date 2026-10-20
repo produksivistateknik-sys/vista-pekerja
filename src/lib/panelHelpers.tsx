@@ -126,6 +126,14 @@ export function getUrutanTahapBusbar(kode:string,tipe?:string|null):string[]{
 // Wiring Control) - export dari sini (7 Agu 2026) biar OperatorView DAN KomponenPasangView
 // (tab "Komponen" baru) pakai satu sumber yang sama, gak duplikat literal berisiko kepencar.
 export const PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA=["Box Control","Pintu"];
+// (20 Okt 2026, permintaan user) komponen tahap tambahan KHUSUS jenis panel tertentu - OU_FS: Groundplate Control &
+// Pintu Dalam dikerjakan Wiring Control, bukan Assembling Luar. Nama sama di jenis lain (mis. "Pintu Dalam" di WM)
+// TIDAK ikut. Cermin vista-teknik lib/panelHelpers.ts isKomponenTahapPasang - kalau diubah, ubah keduanya.
+export const PASANG_KOMPONEN_TAHAP_PER_TIPE:Record<string,string[]>={OU_FS:["Groundplate Control","Pintu Dalam"]};
+// SATU sumber: komponen ini dikerjakan Wiring Control (progres di checklist[kode].pasangKomponenTahap.WIRING)?
+export function isKomponenTahapPasang(tipe:string|null|undefined,nama:string):boolean{
+  return PASANG_KOMPONEN_TAHAP_KOMPONEN_NAMA.includes(nama)||!!(tipe&&PASANG_KOMPONEN_TAHAP_PER_TIPE[tipe]?.includes(nama));
+}
 export const PASANG_KOMPONEN_URUTAN_TAHAP=["ASSEMBLING","WIRING"];
 export function hitungProgressBusbarGabungan(busbarTahap:any,urutan:string[]):number{
   if(!busbarTahap||urutan.length===0)return 0;
