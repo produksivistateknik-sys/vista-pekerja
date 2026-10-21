@@ -157,6 +157,21 @@ export function getProgressOnDate(cl:any, proses:string, date:string){
   if(byDate&&byDate[date]!==undefined) return byDate[date];
   return cl?.progress?.[proses]||0;
 }
+// "Komponen ini SUDAH selesai SEBELUM `tanggal`" (21 Okt 2026, insiden SISWOYO 547 FS.13 STEL: komponen
+// selesai 20 Okt terbit lagi di renhar 21 Okt krn rebalance Atur Kapasitas -> operator simpan ulang).
+// Basi vs baru selesai hari ini (aturan B.3): TIDAK dianggap selesai-sebelumnya kalau progress terkini <100,
+// kalau progressByDate[tanggal]>=100 (selesai/selesai lagi TEPAT hari itu), atau tidak ada catatan tanggal.
+// CERMIN PERSIS vista-teknik src/lib/kodeJadwalAktif.ts selesaiSebelumTanggal & cek Kesehatan Data K16 -
+// ubah ketiganya bersamaan.
+export function selesaiSebelumTanggal(cl:any, proses:string, tanggal:string):boolean{
+  if((Number(cl?.progress?.[proses])||0)<100)return false;
+  const byDate:Record<string,any>=cl?.progressByDate?.[proses]||{};
+  if(Number(byDate[tanggal])>=100)return false;
+  if(Object.entries(byDate).some(([t,p])=>t<tanggal&&Number(p)>=100))return true;
+  const hist:any[]=cl?.history?.[proses]||[]; // fallback data tanpa progressByDate
+  if(hist.some((h:any)=>h?.tanggal===tanggal&&Number(h?.pct)>=100))return false;
+  return hist.some((h:any)=>h?.tanggal&&h.tanggal<tanggal&&Number(h?.pct)>=100);
+}
 export function getLatestProgress(cl:any, proses:string){
   const byDate=cl?.progressByDate?.[proses];
   if(byDate&&Object.keys(byDate).length>0){

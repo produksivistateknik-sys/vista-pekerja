@@ -13,7 +13,7 @@ import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress } from "../lib/componentProcessProgress";
 import {
   timerKey, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_ICON, BUSBAR_URUTAN_TAHAP_LENGKAP,
-  getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate,
+  getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate, selesaiSebelumTanggal,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
   computeProsesStatus, computeBusbarTahapStatus, getBusbarCapTahap, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
   isKomponenTahapPasang, getMekanikCap, maxQtyUntukPct, getMekanikFloor, minQtyUntukPct,
@@ -2291,13 +2291,15 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         {myProses.map(pr=>{
           const tasks=tasksByProses[pr]||[];
           if(!tasks.length)return null;
+          // Komponen yang selesai SEBELUM viewDate tidak dihitung (sama dgn daftar kartu - 21 Okt 2026).
+          const bukanSisaSelesai=(panel:any,k:string)=>pr==="BUSBAR"||!selesaiSebelumTanggal(panel?.checklist?.[k],pr,viewDate);
           const totalKomp=tasks.reduce((a:number,t:any)=>{
             const panel=panelsMap[t.panel_id||t.panelId];
-            return a+(t.komponen||[]).filter((k:string)=>(panel?.checklist?.[k]?.qty||0)>0).length;
+            return a+(t.komponen||[]).filter((k:string)=>(panel?.checklist?.[k]?.qty||0)>0&&bukanSisaSelesai(panel,k)).length;
           },0);
           const doneKomp=tasks.reduce((a:number,t:any)=>{
             const panel=panelsMap[t.panel_id||t.panelId];
-            return a+(t.komponen||[]).filter((k:string)=>getLatestProgress(panel?.checklist?.[k],pr)>=100).length;
+            return a+(t.komponen||[]).filter((k:string)=>getLatestProgress(panel?.checklist?.[k],pr)>=100&&bukanSisaSelesai(panel,k)).length;
           },0);
           const pc=PROSES_COLOR[pr]||"#64748b";
           return(
@@ -2422,6 +2424,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
             // BENDING/RAKIT/POTONG/QC TEST semua kena di data hari ini). BUSBAR dikecualikan - proses
             // itu emang gak punya konsep qty per-komponen sama sekali (qtyKomp selalu 0 by design).
             if(!isBusbarKomp&&qtyKomp<=0)return;
+            // (21 Okt 2026, insiden SISWOYO 547 FS.13 STEL) komponen yang SUDAH selesai SEBELUM viewDate bukan
+            // pekerjaan hari ini - walau baris renhar masih memuatnya (jadwal terbit ulang / multi-hari selesai
+            // lebih cepat). Dulu kartu cuma disembunyikan kalau disimpan 100% PADA viewDate -> operator
+            // mengerjakan & menyimpan ulang. Selesai tepat hari ini tetap tampil seperti biasa (aturan B.3).
+            // BUSBAR dikecualikan: progress-nya per tahap (busbarTahap), bukan progressByDate per proses.
+            if(!isBusbarKomp&&selesaiSebelumTanggal(cl,proses,viewDate))return;
             const qtyProses=isBusbarKomp?0:cl.qtyProsesByDate?.[proses]?.[viewDate]??cl.qtyProses?.[proses]??0;
             const pct=isBusbarKomp?(cl.progress?.[proses]||0):getProgressOnDate(cl,proses,viewDate);
             const wpDef=isBusbarKomp?null:panelCfg.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
