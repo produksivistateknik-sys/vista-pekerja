@@ -11,12 +11,13 @@ import { bersihkanJadwalWiringSelesai } from "../lib/jadwalWiring";
 import { tambahAntrean, bacaAntrean, gagalKarenaKoneksi, EVENT_HASIL_ANTREAN, type HasilKirim } from "../lib/antreanSimpan";
 import { mergePanelChecklistDalam } from "../lib/checklistHelpers";
 import { upsertComponentProcessProgress } from "../lib/componentProcessProgress";
+import { laporError } from "../lib/laporError";
 import {
   timerKey, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_ICON, BUSBAR_URUTAN_TAHAP_LENGKAP,
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate, selesaiSebelumTanggal,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
   computeProsesStatus, computeBusbarTahapStatus, getBusbarCapTahap, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
-  isKomponenTahapPasang, getMekanikCap, maxQtyUntukPct, getMekanikFloor, minQtyUntukPct,
+  isKomponenTahapPasang, getUrutanCap, maxQtyUntukPct, getUrutanFloor, minQtyUntukPct, muatAturanUrutan,
 } from "../lib/panelHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
 import { Badge, Card, Lbl, Inp, Btn } from "./ui/Primitives";
@@ -153,6 +154,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         relevanSet.add(r.kode_komponen+"|"+r.tipe_panel+"|"+r.jenis_pekerjaan);
         hasMappingSet.add(r.kode_komponen+"|"+r.tipe_panel);
       });
+      // (22 Okt 2026) aturan kunci urutan (tabel urutan_proses) dimuat di sini juga - cap hanya aktif kalau KEDUANYA
+      // terbaca lengkap (gerbang prosesRelevanLoaded). Gagal muat aturan = cap urutan mati (server tetap menolak).
+      const okAturan=await muatAturanUrutan(supabase);
+      if(!okAturan)laporError('supabase_error',{message:'gagal memuat urutan_proses (cap qty urutan dimatikan sementara)'},{aksi:'muat urutan_proses'});
       setProsesRelevanSet(relevanSet);
       setProsesRelevanHasMapping(hasMappingSet);
       setProsesRelevanLoaded(!gagal);
@@ -774,7 +779,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
 
   // (29 Sep 2026) Batas qty Mekanik (BENDING/STEL/FINISHING) dari progress tahap sebelumnya -
   // SATU sumber buat updateQtyProses (penegakan) & input kartu mobile/tabel desktop (max + petunjuk).
-  // Lihat getMekanikCap (lib/panelHelpers.tsx, cermin trigger DB). null = gak dicap: bukan tahap
+  // Lihat getUrutanCap (lib/panelHelpers.tsx, cermin trigger DB, aturan tabel urutan_proses). null = gak dicap: bukan pasangan kunci/tahap
   // Mekanik/tahap pertama/gak relevan, ATAU bom_proses_relevan belum kebaca lengkap (lihat
   // prosesRelevanLoaded - lebih aman gak nge-cap daripada nge-cap salah).
   const capQtyMekanik=(panelId:number,kode:string,proses:string):{capQty:number;prosesSebelum:string;pctSebelum:number}|null=>{
@@ -782,7 +787,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const panel=panelsMap[panelId];
     const cl=panel?.checklist?.[kode];
     if(!panel||!cl)return null;
-    const cap=getMekanikCap(kode,panel.tipe,proses,cl.progress,prosesRelevanSet);
+    const cap=getUrutanCap(kode,panel.tipe,proses,cl.progress,prosesRelevanSet,prosesRelevanHasMapping);
     if(!cap)return null;
     const qtyKomp=cl.qty||0;
     return{capQty:maxQtyUntukPct(qtyKomp,cap.pctSebelum),...cap};
@@ -797,7 +802,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const panel=panelsMap[panelId];
     const cl=panel?.checklist?.[kode];
     if(!panel||!cl)return null;
-    const fl=getMekanikFloor(kode,panel.tipe,proses,cl.progress,prosesRelevanSet);
+    const fl=getUrutanFloor(kode,panel.tipe,proses,cl.progress,prosesRelevanSet,prosesRelevanHasMapping);
     if(!fl)return null;
     const minQty=minQtyUntukPct(cl.qty||0,fl.pctSesudah);
     return minQty>0?{minQty,...fl}:null;
@@ -972,7 +977,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // tau urutan koreksi yang benar & angka dikembalikan ke nilai tersimpan di server.
     const bawahMek=batasBawahMekanik(panelId,kode,proses);
     if(bawahMek&&typedVal<bawahMek.minQty){
-      alert(`${proses} tidak bisa di bawah ${bawahMek.minQty} - ${bawahMek.prosesSesudah} komponen ini sudah ${bawahMek.pctSesudah}%.\n\nKalau memang mau koreksi turun, turunkan ${bawahMek.prosesSesudah} dulu (urutan koreksi: dari tahap paling akhir ke POTONG), baru ${proses}.\n\nAngka dikembalikan ke nilai yang tersimpan.`);
+      alert(`${proses} tidak bisa di bawah ${bawahMek.minQty} - ${bawahMek.prosesSesudah} komponen ini sudah ${bawahMek.pctSesudah}%.\n\nKalau memang mau koreksi turun, turunkan ${bawahMek.prosesSesudah} dulu (urutan koreksi: dari proses paling akhir ke POTONG), baru ${proses}. Kalau angka ${bawahMek.prosesSesudah} yang salah, hubungi Admin Produksi untuk koreksi.\n\nAngka dikembalikan ke nilai yang tersimpan.`);
       pulihkanKomponenDariServer(panelId,kode);
       return;
     }
@@ -1285,6 +1290,15 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const panel=panelsMap[panelId];
     if(!panel)return;
     const cl=panel.checklist?.[kode]||{qty:0,qtyProses:{},progress:{},progressByDate:{}};
+    // (22 Okt 2026) kunci urutan progres utk proses mode persen (mis. RAKIT) - sama aturan dgn trigger DB; ditolak di
+    // sini dgn pesan yang sama supaya tidak perlu bolak-balik ke server. Turun (koreksi) tidak dicek di sini.
+    const capUrut=capQtyMekanik(panelId,kode,proses);
+    if(capUrut&&pct>capUrut.pctSebelum&&pct>(Number(cl.progress?.[proses])||0)){
+      alert(`Tidak bisa disimpan: ${proses} komponen ${kode} (${pct}%) melebihi ${capUrut.prosesSebelum} (baru ${capUrut.pctSebelum}%).
+
+Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi Admin Produksi kalau angka ${capUrut.prosesSebelum} yang salah.`);
+      return;
+    }
     const newChecklist={
       ...panel.checklist,
       [kode]:{

@@ -48,26 +48,34 @@ export function getRelevantProsesForKode(kode:string,tipe:string,relevanSet:Set<
   return [...new Set([...base,...PROSES_TANPA_MAPPING_KOMPONEN])];
 }
 
-// ── Cap progress bertahap MEKANIK (29 Sep 2026) - CERMIN PERSIS trigger DB
-// panels_validate_mekanik_cap_progress (vista-teknik migration 20260921020000): progress tahap N
-// gak boleh melebihi tahap N-1 di urutan POTONG->BENDING->STEL->FINISHING. Dulu cuma di-reject di
-// DB tanpa pembatas di layar - kasus AGIS (LVMDP F3B.34): layar izinin BENDING 12/12 padahal
-// POTONG baru 10/12, server nolak berkali-kali. SENGAJA niru trigger apa adanya (BUKAN
-// isKomponenRelevant): "punya mapping" dihitung KHUSUS 4 proses ini & tanpa fallback
-// KOMPONEN_PROSES_MAP - biar pembatas layar gak pernah LEBIH KETAT dari server (kalau lebih ketat,
-// operator keblokir padahal server mau nerima). Skip-case (mis. FS.10 skip BENDING -> STEL dicap
-// ke POTONG) ikut otomatis dari bom_proses_relevan, sama kayak trigger.
-export const MEKANIK_URUTAN=["POTONG","BENDING","STEL","FINISHING"];
-export function getMekanikUrutanRelevan(kode:string,tipe:string,relevanSet:Set<string>):string[]{
-  const punyaMapping=MEKANIK_URUTAN.some((p)=>relevanSet.has(`${kode}|${tipe}|${p}`));
-  return punyaMapping?MEKANIK_URUTAN.filter((p)=>relevanSet.has(`${kode}|${tipe}|${p}`)):MEKANIK_URUTAN;
+// ── Kunci urutan progres (22 Okt 2026, menggantikan cap khusus MEKANIK 29 Sep 2026) - CERMIN trigger DB
+// panels_validate_urutan_progres (vista-teknik migration 20261022010000). ATURAN = tabel public.urutan_proses
+// (SATU sumber, sama dgn trigger, peringatan Raw Schedule & K17/K18) - dimuat sekali di OperatorView
+// (muatAturanUrutan). Pasangan mode 'kunci' (22 Okt 2026): POTONG>BENDING>STEL>FINISHING>RENDAM>PAINTING>RAKIT;
+// PASANG KOMPONEN & WIRING = 'peringatan' (tidak dicap). Pendahulu = kandidat pertama yang relevan
+// (bom_proses_relevan); kode tanpa mapping sama sekali = semua relevan (sama dgn trigger). Gagal muat = aturan
+// kosong = tidak ada cap (lebih aman gak nge-cap daripada nge-cap salah; server tetap menolak).
+// Kasus asal: AGIS LVMDP F3B.34 (BENDING > POTONG, 29 Sep) & 521 Box Control FS.5 (PAINTING 3/3 > RENDAM 2/3, 21 Okt).
+export type AturanUrutan={proses:string;pendahulu:string[];mode:'kunci'|'peringatan'};
+let ATURAN_URUTAN:AturanUrutan[]=[];
+export const ambilAturanUrutan=()=>ATURAN_URUTAN;
+export async function muatAturanUrutan(db:any):Promise<boolean>{
+  const{data,error}=await db.from('urutan_proses').select('proses,pendahulu,mode').order('proses').range(0,999);
+  if(error){console.error('[urutan proses] gagal memuat urutan_proses - cap qty urutan dimatikan sementara:',error);ATURAN_URUTAN=[];return false;}
+  ATURAN_URUTAN=(data||[]).map((r:any)=>({proses:r.proses,pendahulu:r.pendahulu||[],mode:r.mode}));
+  return true;
 }
-// null = proses ini gak dicap (bukan tahap Mekanik, tahap pertama, atau gak relevan buat kode ini).
-export function getMekanikCap(kode:string,tipe:string,proses:string,progress:any,relevanSet:Set<string>):{prosesSebelum:string;pctSebelum:number}|null{
-  const urut=getMekanikUrutanRelevan(kode,tipe,relevanSet);
-  const i=urut.indexOf(proses);
-  if(i<=0)return null;
-  return{prosesSebelum:urut[i-1],pctSebelum:Number(progress?.[urut[i-1]])||0};
+const relevanUrutan=(kode:string,tipe:string,proses:string,relevanSet:Set<string>,hasMappingSet:Set<string>)=>
+  !hasMappingSet.has(`${kode}|${tipe}`)||relevanSet.has(`${kode}|${tipe}|${proses}`);
+const pendahuluKunci=(kode:string,tipe:string,proses:string,relevanSet:Set<string>,hasMappingSet:Set<string>):string|null=>{
+  const r=ATURAN_URUTAN.find(x=>x.proses===proses&&x.mode==='kunci');
+  if(!r||!r.pendahulu.length||!relevanUrutan(kode,tipe,proses,relevanSet,hasMappingSet))return null;
+  return r.pendahulu.find(p=>relevanUrutan(kode,tipe,p,relevanSet,hasMappingSet))||null;
+};
+// null = proses ini gak dicap (bukan pasangan 'kunci', proses pertama, atau gak relevan buat kode ini).
+export function getUrutanCap(kode:string,tipe:string,proses:string,progress:any,relevanSet:Set<string>,hasMappingSet:Set<string>):{prosesSebelum:string;pctSebelum:number}|null{
+  const a=pendahuluKunci(kode,tipe,proses,relevanSet,hasMappingSet);
+  return a?{prosesSebelum:a,pctSebelum:Number(progress?.[a])||0}:null;
 }
 // Qty terbesar yang pct-nya (rumus SAMA PERSIS updateQtyProses: round(qty/qtyKomp*100), maks 100)
 // masih <= pctMaks - trigger bandingin angka PERSEN, jadi batas qty diturunkan dari persen.
@@ -76,17 +84,17 @@ export function maxQtyUntukPct(qtyKomp:number,pctMaks:number):number{
   while(q>0&&Math.min(100,Math.round((q/qtyKomp)*100))>pctMaks)q--;
   return q;
 }
-// Batas BAWAH (29 Sep 2026) - pasangan dari getMekanikCap, dari trigger yang SAMA (pasangan
-// tahap N-1 vs N dicek dua arah): tahap ini gak boleh DI BAWAH tahap SESUDAHNYA (mis. koreksi
-// turun POTONG sampai di bawah BENDING ditolak server). null = gak ada tahap sesudahnya yang
-// relevan (tahap terakhir / gak relevan) atau tahap sesudahnya masih 0% (gak membatasi apa-apa).
-export function getMekanikFloor(kode:string,tipe:string,proses:string,progress:any,relevanSet:Set<string>):{prosesSesudah:string;pctSesudah:number}|null{
-  const urut=getMekanikUrutanRelevan(kode,tipe,relevanSet);
-  const i=urut.indexOf(proses);
-  if(i<0||i>=urut.length-1)return null;
-  const pctSesudah=Number(progress?.[urut[i+1]])||0;
-  if(pctSesudah<=0)return null;
-  return{prosesSesudah:urut[i+1],pctSesudah};
+// Batas BAWAH (29 Sep 2026, digeneralisasi 22 Okt 2026) - pasangan dari getUrutanCap, trigger yang SAMA: proses ini
+// gak boleh DI BAWAH proses sesudahnya yang dikunci ke proses ini (mis. koreksi turun RENDAM di bawah PAINTING).
+// Kalau beberapa proses sesudah (mis. tidak ada), diambil yang persennya tertinggi. null = tidak membatasi.
+export function getUrutanFloor(kode:string,tipe:string,proses:string,progress:any,relevanSet:Set<string>,hasMappingSet:Set<string>):{prosesSesudah:string;pctSesudah:number}|null{
+  let hasil:{prosesSesudah:string;pctSesudah:number}|null=null;
+  for(const r of ATURAN_URUTAN){
+    if(r.mode!=='kunci'||pendahuluKunci(kode,tipe,r.proses,relevanSet,hasMappingSet)!==proses)continue;
+    const pct=Number(progress?.[r.proses])||0;
+    if(pct>0&&(!hasil||pct>hasil.pctSesudah))hasil={prosesSesudah:r.proses,pctSesudah:pct};
+  }
+  return hasil;
 }
 // Qty terkecil yang pct-nya (rumus sama maxQtyUntukPct) sudah >= pctMin.
 export function minQtyUntukPct(qtyKomp:number,pctMin:number):number{

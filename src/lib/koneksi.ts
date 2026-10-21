@@ -61,6 +61,18 @@ export async function withRetry<T>(fn:()=>PromiseLike<T>, timeoutMs:number=TIMER
 // raise = P0001, RLS = 42501, constraint = 23xxx, dst) SELALU bawa `code` tidak kosong; error
 // koneksi = Error polos dari withTimeout() (tanpa code) atau fetch gagal dari supabase-js
 // (code: "" kosong). Jadi patokannya code NON-KOSONG, bukan sekadar ada properti `code`.
+// (22 Okt 2026) Penolakan kunci urutan progres dari trigger panels_validate_urutan_progres (P0001, pesan
+// "Urutan proses: PAINTING (3/3) tidak boleh melebihi RENDAM (2/3) - komponen FS.5") -> kalimat untuk operator.
+// null = bukan penolakan urutan. Penolakan server (kode tidak kosong) TIDAK pernah masuk antrean kirim ulang
+// (lib/antreanSimpan.ts gagalKarenaKoneksi).
+export function pesanTolakUrutan(err:any):string|null{
+  const k=klasifikasiErrorSimpan(err);
+  if(k.jenis!=="server")return null;
+  const m=k.pesan.match(/Urutan proses: (.+?) \((.+?)\) tidak boleh melebihi (.+?) \((.+?)\) - komponen (\S+)/);
+  if(!m)return null;
+  const[,sesudah,nilaiSesudah,awal,nilaiAwal,kode]=m;
+  return `Tidak bisa disimpan: ${sesudah} komponen ${kode} (${nilaiSesudah}) melebihi ${awal} (baru ${nilaiAwal}).\n\nMinta operator ${awal} menyimpan progresnya dulu, atau hubungi Admin Produksi kalau angka ${awal} yang salah.\n\nAngka di layar dikembalikan ke nilai yang tersimpan.`;
+}
 export function klasifikasiErrorSimpan(err:any):{jenis:"server"|"koneksi";kode:string;pesan:string}{
   const kode=err&&typeof err==="object"&&typeof err.code==="string"?err.code.trim():"";
   const pesan=String((err&&typeof err==="object"?err.message:err)||"tidak ada pesan");
@@ -85,7 +97,10 @@ export function alertGagalSimpan(err:any,konteks:string,opts:{ulangi?:string;cat
     online:typeof navigator!=='undefined'?navigator.onLine:undefined,
     kunciKelompok:ref.kode?[ref.panelId,ref.kode,ref.proses,ref.tahap||''].join('|'):undefined});
   const aksi=opts.aksi||"simpan progress";
-  if(k.jenis==="server"&&k.kode==="22023"){
+  const tolakUrutan=pesanTolakUrutan(err);
+  if(tolakUrutan){
+    alert(tolakUrutan);
+  } else if(k.jenis==="server"&&k.kode==="22023"){
     // (19 Okt 2026) 22023 = validasi RPC aplikasi sendiri (mis. "Terlalu banyak foto dalam satu kali simpan..."), pesannya
     // sudah bahasa Indonesia untuk operator - tampilkan tanpa kode teknis.
     alert(`Gagal ${aksi}: ${k.pesan}`);
@@ -104,5 +119,7 @@ ${opts.catatanKoneksi||(opts.ulangi?`Angka tetap di layar. Tekan ${opts.ulangi} 
 // pakai klasifikasi yang sama persis alertGagalSimpan di atas.
 export function ringkasAlasanGagal(err:any):string{
   const k=klasifikasiErrorSimpan(err);
+  const tolakUrutan=pesanTolakUrutan(err);
+  if(tolakUrutan)return tolakUrutan.split("\n")[0]; // kalimat pertama cukup utk rangkuman per panel
   return k.jenis==="server"?`ditolak server (kode ${k.kode}): ${k.pesan}`:"koneksi lambat/putus";
 }
