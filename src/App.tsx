@@ -379,7 +379,9 @@ export default function App(){
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[user?.id,user?.divisi]);
 
-  const headerSubtitle=selectedTile?`${selectedTile.icon} ${selectedTile.label}`:"Pilih menu di bawah untuk mulai";
+  // Ikon tile = NAMA ikon Tabler (sejak 4cc24bc, 29 Agu 2026), bukan emoji - dulu disambung sebagai teks sehingga header
+  // mencetak "alert-triangle Kendala", "history Riwayat", dst. Sekarang ikon dirender sebagai <i className="ti ti-...">.
+  const headerSubtitle=selectedTile?<><i className={`ti ti-${selectedTile.icon}`} style={{fontSize:13,verticalAlign:"-2px",marginRight:4}} aria-hidden="true"/>{selectedTile.label}</>:"Pilih menu di bawah untuk mulai";
 
   // Banner ajakan aktifkan push notification pengingat Maintenance Rutin - subscribe di-key ke
   // `divisi` (bukan per-orang, device login pakai password bersama per sub-bagian). Cuma muncul
