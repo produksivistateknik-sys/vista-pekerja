@@ -26,6 +26,7 @@ import { OperatorView } from "./components/OperatorView";
 import { ReviewPotongView } from "./components/ReviewPotongView";
 import { ReviewPaintingView } from "./components/ReviewPaintingView";
 import { RiwayatKerjaView } from "./components/RiwayatKerjaView";
+import { TabKendala } from "./components/TabKendala";
 import { KomponenTambahanView } from "./components/KomponenTambahanView";
 import { JadwalPengirimanView } from "./components/JadwalPengirimanView";
 import { ProsesAktifView } from "./components/ProsesAktifView";
@@ -217,12 +218,14 @@ export default function App(){
   const menuTiles:MenuTile[]=!user?[]:(()=>{
     if(user.divisi==="nameplate")return[
       {key:"tugas",label:"Nameplate",icon:"tag"},
+      {key:"kendala",label:"Kendala",icon:"alert-triangle"},
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
       {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
       {key:"wodigital",label:"WO Digital",icon:"file-type-pdf"},
     ];
     if(user.divisi==="qc")return[
       {key:"tugas",label:"QC",icon:"search"},
+      {key:"kendala",label:"Kendala",icon:"alert-triangle"},
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
       {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
       {key:"proyekluar",label:"Proyek Luar",icon:"building"},
@@ -232,6 +235,7 @@ export default function App(){
     ];
     if(user.divisi==="komponen"&&user.sub_bagian==="QS")return[
       {key:"tugas",label:"QS",icon:"clipboard-list"},
+      {key:"kendala",label:"Kendala",icon:"alert-triangle"},
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
       {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
       {key:"wodigital",label:"WO Digital",icon:"file-type-pdf"},
@@ -246,6 +250,8 @@ export default function App(){
       {key:"tugas",label:"Tugas Saya",icon:"clipboard-list"},
       ...(bisaReviewPotong||bisaReviewPainting?[{key:"review",label:"Review",icon:"folder-check"}]:[]),
       {key:"riwayat",label:"Riwayat",icon:"history"},
+      // Kendala (23 Okt 2026) - catat kendala per proyek > panel/Umum (TabKendala, sama dgn admin vista-teknik).
+      {key:"kendala",label:"Kendala",icon:"alert-triangle"},
       ...(bisaReviewPotong?[{key:"tambahan",label:"Tambahan",icon:"plus"}]:[]),
       ...(komponenPasangTugas?[{key:"komponen",label:"Komponen",icon:komponenPasangTugas.seksi==="wiring_control"?"plug":"tool"}]:[]),
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
@@ -581,7 +587,8 @@ export default function App(){
                     <i className="ti ti-arrow-left" style={{fontSize:14}}/> Kembali
                   </button>
                 </div>
-                {selectedMenu==="permintaan"?<PermintaanView user={user} registerBackHandler={registerBackHandler}
+                {selectedMenu==="kendala"?<TabKendala db={supabase} user={user} mode="operator" registerBackHandler={registerBackHandler}/>
+                  :selectedMenu==="permintaan"?<PermintaanView user={user} registerBackHandler={registerBackHandler}
                   navTarget={permintaanNavTarget} onNavTargetConsumed={()=>setPermintaanNavTarget(null)}/>
                   :selectedMenu==="arsip"&&arsipSeksi==="qc"?<ArsipQCView registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
