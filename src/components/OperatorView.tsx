@@ -1277,7 +1277,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         description:`${task?.proses||""}${tahap?"/"+tahap:""} ${kode} panel ${task?.panel||task?.panel_id} (${task?.tanggal||viewDate}): ${fmt(lama)} -> ${fmt(baru)} [${cara}]`,
       }).then(({error:e}:any)=>{if(e)console.error("log ganti operator gagal:",e);});
     };
-    // Tombol Selesai: hentikan SEMUA timer komponen+proses(+tahap) tanggal itu, milik siapa pun (bukan hanya orang
+    // Tombol Selesai: hentikan SEMUA timer yang masih berjalan utk panel+komponen+PROSES(+tahap) yang sama, milik siapa pun &
+    // apa pun kolom tanggal-nya (proses lain di komponen yang sama TIDAK disentuh) (bukan hanya orang
     // yang ada di daftar) - stopTimer dulu utk yang ada di state perangkat ini (notifikasi selesai-lebih-cepat tetap
     // jalan), lalu sisanya langsung dari DB.
     const selesaiSemuaTimer=async(panelId:number,kode:string,proses:string,tahap?:string|null)=>{
