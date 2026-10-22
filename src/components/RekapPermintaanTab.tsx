@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { supabase } from "../lib/supabase";
 import { gabungDenganArsip, muatItemRekap, muatPermintaanTanpaRincian, type WoRekap, type PermintaanTanpaRincian } from "../lib/rekapPermintaanArsip";
+import { muatKoreksiDisetujui, teksTandaKoreksi, qtyEfektif, type KoreksiPermintaan } from "../lib/koreksiPermintaan";
 import { halamanCetakBerkop } from "../lib/kopSuratKonfig";
 import { asetKopHtml } from "../lib/kopSuratAsetUrl";
 import { EmptyState } from "./ui/Primitives";
@@ -50,7 +51,9 @@ export function RekapPermintaanTab(){
   const[tanpaRincian,setTanpaRincian]=useState<PermintaanTanpaRincian[]>([]); // (18 Okt 2026) kepala tanpa item
   const[search,setSearch]=useState("");
   const[rekapLoading,setRekapLoading]=useState(false);
-  const[rawItems,setRawItems]=useState<{komponen_master_id:number|null,nama_komponen:string,satuan_dipilih:string|null,satuan:string|null,qty:number,panel_id:number,divisi:string|null}[]>([]);
+  // (22 Okt 2026) koreksi qty disetujui per item (lib/koreksiPermintaan) - utk tanda "✎ dikoreksi"; angka tidak berubah
+  const[koreksiPeta,setKoreksiPeta]=useState<Record<number,KoreksiPermintaan[]>>({});
+  const[rawItems,setRawItems]=useState<{id:number,komponen_master_id:number|null,nama_komponen:string,satuan_dipilih:string|null,satuan:string|null,qty:number,panel_id:number,divisi:string|null}[]>([]);
 
   useEffect(()=>{
     const fetchWo=async()=>{
@@ -104,6 +107,8 @@ export function RekapPermintaanTab(){
       if(panelsWo.length===0){setRawItems([]);setTanpaRincian([]);setRekapLoading(false);return;}
       const[items,tr]=await Promise.all([muatItemRekap(panelsWo),muatPermintaanTanpaRincian(panelsWo)]);
       setRawItems(items);setTanpaRincian(tr);
+      try{setKoreksiPeta(await muatKoreksiDisetujui(items.map(it=>it.id)));}
+      catch(e:any){console.error("[Rekap] gagal memuat koreksi (tanda dikoreksi tidak tampil):",e);setKoreksiPeta({});}
     }catch(e:any){
       alert("Gagal memuat rekap: "+e.message);
     }
@@ -121,16 +126,17 @@ export function RekapPermintaanTab(){
   // divisi ikut jadi key grouping, item sama yang diminta 2 divisi beda tetap 2 baris terpisah.
   const rowsFull=useMemo(()=>{
     const rows=scopePanelId?rawItems.filter(it=>it.panel_id===scopePanelId):rawItems;
-    const groups:Record<string,{nama:string,satuan:string,totalQty:number,divisi:string}>={};
+    const groups:Record<string,{nama:string,satuan:string,totalQty:number,divisi:string,ids:number[]}>={};
     rows.forEach(it=>{
       const satuan=it.satuan_dipilih||it.satuan||"-";
       const divisi=it.divisi||"-";
       const key=`${divisi}|${it.komponen_master_id??"x"}|${satuan}`;
-      if(!groups[key])groups[key]={nama:it.nama_komponen,satuan,totalQty:0,divisi};
-      groups[key].totalQty+=Number(it.qty)||0;
+      if(!groups[key])groups[key]={nama:it.nama_komponen,satuan,totalQty:0,divisi,ids:[]};
+      groups[key].totalQty+=qtyEfektif(it); // qty efektif = hasil koreksi terakhir (lib/koreksiPermintaan)
+      groups[key].ids.push(it.id);
     });
-    return Object.entries(groups).map(([key,v])=>({key,...v})).sort((a,b)=>a.nama.localeCompare(b.nama));
-  },[rawItems,scopePanelId]);
+    return Object.entries(groups).map(([key,v])=>({key,...v,koreksi:teksTandaKoreksi(v.ids,koreksiPeta,v.satuan)})).sort((a,b)=>a.nama.localeCompare(b.nama));
+  },[rawItems,scopePanelId,koreksiPeta]);
 
   const rowsDisplayed=useMemo(()=>{
     const q=search.trim().toLowerCase();
@@ -160,7 +166,7 @@ export function RekapPermintaanTab(){
   <table class="rekap">
     <thead><tr><th>Divisi</th><th>Nama Item</th><th class="num">Total Qty</th><th class="center">Satuan</th></tr></thead>
     <tbody>
-      ${rows.map(r=>`<tr><td>${escapeHtml(DIVISI_LABEL[r.divisi]||r.divisi)}</td><td>${escapeHtml(r.nama)}</td><td class="num">${escapeHtml(r.totalQty.toLocaleString("id-ID"))}</td><td class="center">${escapeHtml(r.satuan)}</td></tr>`).join("")}
+      ${rows.map(r=>`<tr><td>${escapeHtml(DIVISI_LABEL[r.divisi]||r.divisi)}</td><td>${escapeHtml(r.nama)}${r.koreksi?` <span style="color:#b45309">✎ ${escapeHtml(r.koreksi)}</span>`:""}</td><td class="num">${escapeHtml(r.totalQty.toLocaleString("id-ID"))}</td><td class="center">${escapeHtml(r.satuan)}</td></tr>`).join("")}
     </tbody>
     <tfoot><tr><td colspan="4">Total ${rows.length} jenis item</td></tr></tfoot>
   </table>
@@ -333,7 +339,7 @@ ${kop.body}
                 {rowsDisplayed.map((r,ri)=>(
                   <tr key={r.key} style={{borderBottom:ri<rowsDisplayed.length-1?"1px solid #f1f5f9":"none"}}>
                     <td style={{padding:"10px 12px",color:"#64748b",fontWeight:600,whiteSpace:"nowrap" as const}}>{DIVISI_LABEL[r.divisi]||r.divisi}</td>
-                    <td style={{padding:"10px 12px",color:"#1e293b",fontWeight:600}}>{r.nama}</td>
+                    <td style={{padding:"10px 12px",color:"#1e293b",fontWeight:600}}>{r.nama}{r.koreksi&&<span title={r.koreksi} style={{marginLeft:6,fontSize:10.5,fontWeight:700,color:"#b45309",background:"#fffbeb",border:"1px solid #fde68a",borderRadius:10,padding:"1px 7px",whiteSpace:"nowrap" as const,cursor:"help"}}>✎ dikoreksi</span>}{r.koreksi&&<div style={{fontSize:10.5,fontWeight:500,color:"#b45309",marginTop:2}}>{r.koreksi}</div>}</td>
                     <td style={{padding:"10px 12px",textAlign:"right" as const,fontWeight:700,color:"#1e293b"}}>{r.totalQty.toLocaleString("id-ID")}</td>
                     <td style={{padding:"10px 12px",textAlign:"center" as const,color:"#64748b"}}>{r.satuan}</td>
                   </tr>

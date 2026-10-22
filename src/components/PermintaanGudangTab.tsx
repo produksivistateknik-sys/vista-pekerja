@@ -173,7 +173,8 @@ export function PermintaanGudangTab({user}:{user:any}){
   // - count row pending tetap jalan otomatis ngikutin apa pun perubahannya).
   const[hutangCount,setHutangCount]=useState(0);
   const fetchHutangCount=async()=>{
-    const{count}=await supabase.from("permintaan_item").select("id",{count:"exact",head:true}).eq("is_hutang",true).eq("status","pending");
+    const{count,error}=await supabase.from("permintaan_item").select("id",{count:"exact",head:true}).eq("is_hutang",true).eq("status","pending");
+    if(error){console.error("[Gudang] hitung hutang gagal - angka lama dipertahankan:",error);return;} // (22 Okt 2026)
     setHutangCount(count||0);
   };
 

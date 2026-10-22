@@ -2,6 +2,8 @@ import { useState, useEffect, useRef } from "react";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
 import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
+import { KartuKoreksi } from "./KartuKoreksi";
+import { laporError } from "../lib/laporError";
 import { getLocalDateStr, rentangHariLokal, rentangBulanLokal, tanggalLokalDari } from "../lib/dateHelpers";
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -167,7 +169,13 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
   const toggleSudahDiinput=async(item:any)=>{
     const next=!item.sudah_diinput;
     setRows(prev=>prev.map((r:any)=>r.id===item.id?{...r,sudah_diinput:next}:r));
-    await supabase.from("permintaan_item").update({sudah_diinput:next}).eq("id",item.id);
+    const{error}=await supabase.from("permintaan_item").update({sudah_diinput:next}).eq("id",item.id);
+    if(error){ // (22 Okt 2026) dulu tidak dicek - gagal = tanda di layar dikembalikan + pesan
+      console.error("[Riwayat Gudang] simpan Sudah Diinput gagal:",error);
+      laporError('supabase_error',error,{aksi:'tandai sudah diinput',itemId:item.id});
+      setRows(prev=>prev.map((r:any)=>r.id===item.id?{...r,sudah_diinput:!next}:r));
+      alert("Gagal menyimpan tanda Sudah Diinput: "+error.message);
+    }
   };
 
   // Fitur Pengajuan Koreksi Qty (7 Sep 2026) - Gudang TIDAK bisa langsung ubah qty sendiri,
@@ -180,7 +188,8 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
     let cancelled=false;
     const fetchPending=async()=>{
       const ids=rows.map((r:any)=>r.id);
-      const{data}=await supabase.from("permintaan_item_koreksi").select("*").in("permintaan_item_id",ids).eq("status","menunggu");
+      const{data,error}=await supabase.from("permintaan_item_koreksi").select("*").in("permintaan_item_id",ids).eq("status","menunggu");
+      if(error){console.error("[Riwayat Gudang] baca koreksi menunggu gagal:",error);laporError('supabase_error',error,{aksi:'baca koreksi menunggu'});return;} // (22 Okt 2026) data lama dipertahankan
       if(!cancelled){
         const map:Record<number,any>={};
         (data||[]).forEach((k:any)=>{map[k.permintaan_item_id]=k;});
@@ -255,8 +264,9 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
     setKoreksiAlasan("");
     setKoreksiError("");
     setKoreksiHutangWarning(false);
-    const{data}=await supabase.from("permintaan_item").select("id").or(`id.eq.${item.induk_item_id||0},induk_item_id.eq.${item.id}`).limit(1);
-    if(item.induk_item_id||(data&&data.length>0))setKoreksiHutangWarning(true);
+    const{data,error}=await supabase.from("permintaan_item").select("id").or(`id.eq.${item.induk_item_id||0},induk_item_id.eq.${item.id}`).limit(1);
+    if(error)console.error("[Riwayat Gudang] cek kaitan hutang gagal - peringatan tetap ditampilkan:",error); // (22 Okt 2026) aman: anggap ada kaitan
+    if(item.induk_item_id||error||(data&&data.length>0))setKoreksiHutangWarning(true);
   };
   const tutupKoreksi=()=>{setKoreksiTarget(null);setKoreksiError("");};
   const submitKoreksi=async()=>{
@@ -396,47 +406,12 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
         <div style={{marginTop:14}}>
           <SectionCard icon="✏️" title="Koreksi Qty Diputuskan" subtitle="Pengajuan koreksi yang sudah disetujui/ditolak di tanggal ini">
             <div style={{display:"flex",flexDirection:"column",gap:8}}>
-              {koreksiDecidedFiltered.map((k:any)=>{
-                const disetujui=k.status==="disetujui";
-                const warna=disetujui?"#16a34a":"#dc2626";
-                return(
-                  <div key={k.id} style={{background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"11px 14px"}}>
-                    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:6}}>
-                      <div style={{minWidth:0}}>
-                        <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{k.item.nama_komponen}</div>
-                        <div style={{fontSize:10.5,color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
-                          {k.perm?.proyek||"-"}{k.perm?.panel_nama?` · ${k.perm.panel_nama}`:""}
-                        </div>
-                      </div>
-                      <span style={{flexShrink:0,background:warna+"18",color:warna,borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700,whiteSpace:"nowrap"}}>
-                        {disetujui?"✓ Disetujui":"✕ Ditolak"}
-                      </span>
-                    </div>
-                    <div style={{fontSize:11.5,color:"#334155",marginBottom:4}}>
-                      Qty {k.qty_lama}{k.item.satuan?` ${k.item.satuan}`:""} → <strong>{k.qty_diusulkan}{k.item.satuan?` ${k.item.satuan}`:""}</strong>
-                    </div>
-                    <div style={{display:"flex",flexDirection:"column",gap:2,fontSize:10.5,color:"#64748b"}}>
-                      <span>📝 Diajukan oleh {k.diajukan_oleh} — {fmtDateTime(k.diajukan_at)}</span>
-                      <span>{disetujui?"✅":"✕"} {disetujui?"Disetujui":"Ditolak"} oleh {k.disetujui_oleh||"-"} — {fmtDateTime(k.diputuskan_at)}</span>
-                      {/* Status pengambilan fisik (16 Sep 2026) - k.item udah ke-fetch penuh dari
-                          fetchKoreksiDecided (bukan cuma id), diambil_oleh/diambil_at/sudah_diambil
-                          udah ada di situ, tinggal ditampilkan - user nanya "diambil siapa" gak
-                          kelihatan di section ini. Cuma relevan kalau item-nya status='submit'
-                          (approve_permintaan_koreksi gak pernah ngubah status jadi 'submit' - kalau
-                          koreksi disetujui buat item yang statusnya masih 'pending'/belum diproses
-                          Gudang, pengambilan emang belum relevan sama sekali, sama pola main list
-                          di atas r.status==="submit"). */}
-                      {k.item.status==="submit"&&(
-                        k.item.sudah_diambil
-                          ?<span>📦 Diambil oleh {k.item.diambil_oleh||"-"} — {fmtDateTime(k.item.diambil_at)}</span>
-                          :<span style={{color:"#94a3b8"}}>⏳ Menunggu diambil</span>
-                      )}
-                    </div>
-                    <div style={{fontSize:10.5,color:"#64748b",fontStyle:"italic" as const,marginTop:4}}>Alasan: {k.alasan}</div>
-                    {!disetujui&&k.catatan_reject&&<div style={{fontSize:11,color:"#dc2626",marginTop:4}}>⚠ {k.catatan_reject}</div>}
-                  </div>
-                );
-              })}
+              {/* (22 Okt 2026) kartu koreksi = komponen bersama KartuKoreksi (sama dgn Riwayat Admin vista-teknik) */}
+              {koreksiDecidedFiltered.map((k:any)=>(
+                <KartuKoreksi key={k.id} k={k} satuan={k.item.satuan} judul={k.item.nama_komponen}
+                  subjudul={`${k.perm?.proyek||"-"}${k.perm?.panel_nama?` · ${k.perm.panel_nama}`:""}`}
+                  ambil={{relevan:k.item.status==="submit",sudah:!!k.item.sudah_diambil,oleh:k.item.diambil_oleh,at:k.item.diambil_at}}/>
+              ))}
             </div>
           </SectionCard>
         </div>

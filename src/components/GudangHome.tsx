@@ -61,7 +61,8 @@ export function GudangHome({user,onLogout}:{user:any;onLogout:()=>void}){
   // dari data yang sudah ada (bukan bikin tabel baru buat sekadar badge titik).
   useEffect(()=>{
     const fetchCount=async()=>{
-      const{count}=await supabase.from("permintaan_item").select("id",{count:"exact",head:true}).eq("status","pending");
+      const{count,error}=await supabase.from("permintaan_item").select("id",{count:"exact",head:true}).eq("status","pending");
+      if(error){console.error("[Gudang] hitung notifikasi gagal - angka lama dipertahankan:",error);return;} // (22 Okt 2026)
       setNotifCount(count??0);
     };
     fetchCount();
