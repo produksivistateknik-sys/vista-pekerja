@@ -1,3 +1,4 @@
+import { hariIniWib } from "./tanggalWib";
 // Duplikat kecil dari src/lib/dateHelpers.ts di vista-teknik (repo terpisah, gak ada shared
 // package) - persis pola yang sama.
 export function getLocalDateStr(d:Date=new Date()){
@@ -6,7 +7,12 @@ export function getLocalDateStr(d:Date=new Date()){
   const day=String(d.getDate()).padStart(2,"0");
   return `${y}-${m}-${day}`;
 }
-export const TODAY = getLocalDateStr();
+// TODAY (23 Okt 2026): dulu konstanta yg dihitung SEKALI saat modul dimuat -> basi bila aplikasi/tab dibiarkan terbuka
+// melewati tengah malam (mis. tanggal timer Komponen Pasang, label "hari ini"). Sekarang BINDING HIDUP (export let):
+// diperbarui tiap menit dari lib/tanggalWib hariIniWib() (tanggal kalender WIB) - semua pembaca TODAY saat render ikut
+// segar tanpa mengubah pemakainya. Yang menyalin TODAY ke state/konstanta saat mount tetap nilai awal (by design).
+export let TODAY=hariIniWib();
+if(typeof window!=="undefined")setInterval(()=>{const t=hariIniWib();if(t!==TODAY)TODAY=t;},60000);
 // (18 Okt 2026) RENTANG TANGGAL MENURUT JAM HP (WIB) untuk filter timestamptz - SATU sumber di aplikasi operator.
 // Dulu banyak layar memakai tanggal+"T00:00:00" TANPA zona waktu -> server membacanya sbg UTC, jadi permintaan
 // pukul 00.00-06.59 WIB masuk ke tanggal SEBELUMNYA (bukti: #1169 17 Okt 06.16 WIB tampil di 16 Okt; 37 dari 633
