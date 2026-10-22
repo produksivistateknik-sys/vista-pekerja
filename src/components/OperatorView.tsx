@@ -6,6 +6,7 @@ import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVI
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai, hentikanTimerKomponenHari } from "../lib/tutupTimerKomponen";
+import { hariKerjaWib } from "../lib/tanggalWib";
 import { daftarOperatorHarian, LABEL_STATUS_OPERATOR, labelMenit } from "../lib/operatorHarian";
 import { catatCheckpoint } from "../lib/catatCheckpoint";
 import { bersihkanJadwalWiringSelesai } from "../lib/jadwalWiring";
@@ -513,9 +514,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const mapPernahMulai:Record<string,boolean>={};
     const mapSelesaiHariIni:Record<string,boolean>={};
     const mapDurasiSelesai:Record<string,number>={};
+    // (23 Okt 2026, bug B) timer BERJALAN selalu dianggap aktif di kartu, apa pun kolom tanggal-nya: timer baru kini
+    // bertanggal hari mulai (WIB), jadi timer yang dimulai dari kartu tanggal lain tetap tampil berjalan & bisa
+    // dihentikan dari kartu itu. Sesi SELESAI tetap per tanggal kartu.
     all.forEach((t:any)=>{
       const key=timerKey(t.panel_id,t.kode_komponen,t.proses,t.pekerja_id,t.tahap);
-      if(!t.selesai&&t.tanggal===viewDate)mapAktif[key]=t;
+      if(!t.selesai)mapAktif[key]=t;
       mapPernahMulai[key]=true;
       if(t.tanggal===viewDate&&t.selesai){
         mapSelesaiHariIni[key]=true;
@@ -526,7 +530,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     setTimerPernahMulai(mapPernahMulai);
     setTimerSelesaiHariIni(mapSelesaiHariIni);
     setTimerDurasiSelesai(mapDurasiSelesai);
-    setTimerHariIni(all.filter((t:any)=>t.tanggal===viewDate));
+    setTimerHariIni(all.filter((t:any)=>t.tanggal===viewDate||!t.selesai));
   };
 
   // Versi TARGETED refreshTimerData - cuma re-query 1 kombinasi panel+kode+proses+pekerja
@@ -547,10 +551,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     if(error){console.error("[refreshTimerKey] gagal muat timer:",error);return;}
     const rows=data||[];
     setTimerHariIni(prev=>[...prev.filter((t:any)=>!(t.panel_id===panelId&&t.kode_komponen===kode&&t.proses===proses&&t.pekerja_id===pekerjaId&&(t.tahap||null)===(tahap||null))),
-      ...rows.filter((t:any)=>t.tanggal===viewDate)]);
+      ...rows.filter((t:any)=>t.tanggal===viewDate||!t.selesai)]);
     let aktif:any=null,pernahMulai=false,selesaiHariIni=false,durasiSelesai=0;
     rows.forEach((t:any)=>{
-      if(!t.selesai&&t.tanggal===viewDate)aktif=t;
+      if(!t.selesai)aktif=t; // (23 Okt 2026) berjalan = aktif, apa pun tanggal-nya (lihat refreshTimerData)
       pernahMulai=true;
       if(t.tanggal===viewDate&&t.selesai){
         selesaiHariIni=true;
@@ -1026,7 +1030,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     return ids.some((pid:number)=>timerSelesaiHariIni[`${panelId}_${kode}_${proses}_${pid}`]);
   };
 
-  const startTimer=async(pekerjaId:number,panelId:number,kode:string,proses:string,tanggal:string,tahap?:string)=>{
+  const startTimer=async(pekerjaId:number,panelId:number,kode:string,proses:string,_tanggalKartu:string,tahap?:string)=>{
+    // (23 Okt 2026, bug B - insiden RIFKI/FAHRI 544 FS.4 & 9 timer BUSBAR 521) tanggal timer = HARI KERJA saat mulai (WIB; 00.00-06.59 = hari sebelumnya, shift malam - lib/tanggalWib),
+    // BUKAN tanggal kartu yang sedang dibuka (viewDate bisa digeser < >). Parameter tanggal kartu dibiarkan (pemanggil
+    // tidak berubah) tapi tidak dipakai utk menulis.
+    const tanggal=hariKerjaWib();
     const key=timerKey(panelId,kode,proses,pekerjaId,tahap);
     setTimerLoading(key);
     // Query builder Supabase sekali-pakai per .await() - dibungkus fungsi biar bisa dipanggil
@@ -1275,7 +1283,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const selesaiSemuaTimer=async(panelId:number,kode:string,proses:string,tahap?:string|null)=>{
       const lokal=timerHariIni.filter((t:any)=>!t.selesai&&t.panel_id===panelId&&t.kode_komponen===kode&&t.proses===proses&&(t.tahap||null)===(tahap||null));
       for(const t of lokal){if(timerAktif[timerKey(panelId,kode,proses,t.pekerja_id,tahap)])await stopTimer(t.pekerja_id,panelId,kode,proses,tahap||undefined);}
-      const{n,error}=await hentikanTimerKomponenHari(panelId,kode,proses,viewDate,tahap);
+      const{n,error}=await hentikanTimerKomponenHari(panelId,kode,proses,null,tahap); // (23 Okt) semua yang berjalan, apa pun tanggal
       if(error)alertGagalSimpan(error,`Selesai-in semua timer ${proses} ${kode} panel ${panelId}`,{ref:{panelId,kode,proses,tahap:tahap||undefined},aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
       if(n>0||error)await refreshTimerData();
     };
@@ -1758,7 +1766,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
       for(const wid of idsKomp){
         const{data:row,error:selErr}=await supabase.from('fcs_timer_kerja')
           .select('id').eq('panel_id',panelId).eq('kode_komponen',kode).eq('tahap',tahap)
-          .eq('tanggal',viewDate).eq('pekerja_id',wid)
+          .in("tanggal",[...new Set([viewDate,hariKerjaWib()])]).eq('pekerja_id',wid)
           .order('mulai',{ascending:false}).limit(1).maybeSingle();
         if(selErr){console.warn('[simpanProgressTahapBusbar] gagal cari baris fcs_timer_kerja utk progress (non-fatal)',selErr);continue;}
         if(!row)continue;

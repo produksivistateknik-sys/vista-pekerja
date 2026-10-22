@@ -42,10 +42,13 @@ export async function tutupTimerKomponenSelesai(panelId:number,kode:string,prose
 // FAHRI 544 FS.4) timer orang yang dikeluarkan terus menghitung. Ini membaca LANGSUNG dari DB semua timer yang masih
 // berjalan utk panel+komponen+proses(+tahap) bertanggal `tanggal`, milik SIAPA PUN, lalu menutupnya sekarang.
 // BUKAN best-effort: error dikembalikan supaya pemanggil memberi tahu operator (aturan A.2).
-export async function hentikanTimerKomponenHari(panelId:number,kode:string,proses:string,tanggal:string,tahap?:string|null):Promise<{n:number;error:any}>{
+// tanggal null (23 Okt 2026) = SEMUA timer yang masih berjalan utk komponen itu, apa pun kolom tanggal-nya (timer baru
+// bertanggal hari mulai - bisa beda dgn tanggal kartu tempat tombol Selesai ditekan).
+export async function hentikanTimerKomponenHari(panelId:number,kode:string,proses:string,tanggal:string|null,tahap?:string|null):Promise<{n:number;error:any}>{
   const{data,error}=await withRetry(()=>{
     let q=supabase.from("fcs_timer_kerja").select("id")
-      .eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses",proses).eq("tanggal",tanggal).is("selesai",null);
+      .eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses",proses).is("selesai",null);
+    if(tanggal)q=q.eq("tanggal",tanggal);
     q=tahap?q.eq("tahap",tahap):q.is("tahap",null);
     return q.order("id").limit(200);
   });

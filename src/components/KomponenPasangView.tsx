@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { hariKerjaWib } from "../lib/tanggalWib";
 import { supabase } from "../lib/supabase";
 import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
@@ -225,7 +226,9 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     const tKey=`${panelId}_${kode}`;
     setTimerLoading(tKey);
     try{
-      const tanggal=TODAY;
+      // (23 Okt 2026) hari kerja WIB dihitung SAAT tombol ditekan - konstanta TODAY dihitung sekali saat aplikasi dibuka
+      // (basi bila aplikasi dibiarkan terbuka melewati tengah malam -> timer bertanggal kemarin).
+      const tanggal=hariKerjaWib();
       // Scope-by-tanggal (BUG FIX 16 Sep 2026, sama pola OperatorView.startTimer) - timer "aktif"
       // dari HARI LAIN yang ketinggalan jalan gak boleh ke-nyambung diam-diam ke sesi hari ini.
       const{data:existing}=await withRetry(()=>supabase.from("fcs_timer_kerja").select("*")
