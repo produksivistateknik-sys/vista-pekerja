@@ -205,8 +205,6 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     window.addEventListener("storage",onStorage);
     return()=>window.removeEventListener("storage",onStorage);
   },[wsKey,hariKerjaAwal]);
-  const [catatan,setCatatan]=useState<Record<string,string>>({});
-  const [savedNote,setSavedNote]=useState<Record<string,boolean>>({});
   const [lockMsg,setLockMsg]=useState(false);
   const [pernahDikunci,setPernahDikunci]=useState(false);
   const [lockedCells,setLockedCells]=useState<Record<string,boolean>>({});
@@ -2200,46 +2198,12 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
       ));
     }
 
-    // simpan catatan ke tabel kendala - 1 baris per (proses, panel) supaya bisa dikelompokkan per proyek/panel
-    // Cek dulu kendala yang sudah ada hari ini biar gak dobel kalau isinya sama pas dikunci ulang
-    const { data: existingKendalaHariIni } = await supabase.from("kendala")
-      .select("proses,panel_id,catatan")
-      .eq("tanggal",viewDate)
-      .eq("operator",user.nama);
-    const existingKendalaMap=new Map();
-    (existingKendalaHariIni||[]).forEach((e:any)=>{
-      existingKendalaMap.set(e.proses+"|"+e.panel_id,e.catatan);
-    });
-
-    const kendalaLogged=new Set();
-    for(const task of todayTasks){
-      const proses=task.proses;
-      if(!catatan[proses]?.trim())continue;
-      const panelIdTask=task.panel_id||task.panelId;
-      const comboKey=proses+"|"+panelIdTask;
-      if(kendalaLogged.has(comboKey))continue;
-      kendalaLogged.add(comboKey);
-      const catatanTrim=catatan[proses].trim();
-      if(existingKendalaMap.get(comboKey)===catatanTrim)continue;
-      try{
-        await withRetry(()=>supabase.from("kendala").insert({
-          divisi:user.divisi,
-          divisi_label:cfg.label,
-          tanggal:viewDate,
-          proses,
-          catatan:catatanTrim,
-          operator:user.nama,
-          ts:new Date().toISOString(),
-          proyek:task.proyek||null,
-          panel:task.panel||null,
-          panel_id:panelIdTask||null,
-        }));
-      }catch{ /* best-effort, gak blok progress utama kalau cuma catatan kendala yang gagal */ }
-    }
+    // Catatan kendala per proses (tabel kendala) DIHAPUS 23 Okt 2026 - digantikan menu Kendala (kendala_produksi,
+    // TabKendala). Dulu satu catatan disalin ke semua panel prosesnya & hanya tersimpan lewat tombol ini.
 
     // Hitung busbar tasks juga
     const busbarCount=todayTasks.filter((t:any)=>t.proses==="BUSBAR").length;
-    if(count>0||busbarCount>0||Object.keys(catatan).some(k=>catatan[k]?.trim())){
+    if(count>0||busbarCount>0){
       setLockedCells(newLocked);
       if(panelGagal.length===0){
         setLockMsg(true);
@@ -4115,22 +4079,9 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
               </table>
             </div>
             )}
-            {/* catatan per proses */}
-            <div style={{padding:"12px 16px",borderTop:"1px solid #f1f5f9",background:"#fafafa"}}>
-              <div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:6}}>📝 CATATAN {proses}</div>
-              <div style={{display:"flex",gap:8}}>
-                <input value={catatan[proses]||""} onChange={e=>setCatatan(prev=>({...prev,[proses]:e.target.value}))}
-                  placeholder={`Catatan kendala untuk ${proses}...`}
-                  style={{flex:1,padding:"7px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
-                    background:"#fff",fontSize:12,color:"#1e293b"}}/>
-                <Btn color={cfg.color} style={{padding:"7px 16px",fontSize:12}}
-                  onClick={()=>{
-                    setSavedNote(prev=>({...prev,[proses]:true}));
-                    setTimeout(()=>setSavedNote(prev=>({...prev,[proses]:false})),2000);
-                  }}>
-                  {savedNote[proses]?"✓ Terkirim":"Simpan"}
-                </Btn>
-              </div>
+            {/* catatan per proses DIHAPUS 23 Okt 2026 - kendala dicatat di menu Kendala */}
+            <div style={{padding:"8px 16px",borderTop:"1px solid #f1f5f9",background:"#fafafa",fontSize:11,color:"#64748b"}}>
+              Ada kendala? Catat di menu <b>Kendala</b> (per proyek &amp; panel).
             </div>
           </Card>
         );
