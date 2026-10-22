@@ -26,7 +26,7 @@ import { OperatorView } from "./components/OperatorView";
 import { ReviewPotongView } from "./components/ReviewPotongView";
 import { ReviewPaintingView } from "./components/ReviewPaintingView";
 import { RiwayatKerjaView } from "./components/RiwayatKerjaView";
-import { TabKendala } from "./components/TabKendala";
+import { KendalaOperator } from "./components/KendalaOperator";
 import { KomponenTambahanView } from "./components/KomponenTambahanView";
 import { JadwalPengirimanView } from "./components/JadwalPengirimanView";
 import { ProsesAktifView } from "./components/ProsesAktifView";
@@ -587,7 +587,7 @@ export default function App(){
                     <i className="ti ti-arrow-left" style={{fontSize:14}}/> Kembali
                   </button>
                 </div>
-                {selectedMenu==="kendala"?<TabKendala db={supabase} user={user} mode="operator" registerBackHandler={registerBackHandler}/>
+                {selectedMenu==="kendala"?<KendalaOperator db={supabase} user={user} registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="permintaan"?<PermintaanView user={user} registerBackHandler={registerBackHandler}
                   navTarget={permintaanNavTarget} onNavTargetConsumed={()=>setPermintaanNavTarget(null)}/>
                   :selectedMenu==="arsip"&&arsipSeksi==="qc"?<ArsipQCView registerBackHandler={registerBackHandler}/>
