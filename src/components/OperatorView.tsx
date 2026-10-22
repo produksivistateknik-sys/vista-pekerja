@@ -5,7 +5,8 @@ import { bacaSemuaHalaman } from "../lib/bacaSemua";
 import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVISI_CONFIG, QC_ITEMS, BUSBAR_KOMPONEN_VALID } from "../lib/panelTypes";
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
-import { tutupTimerKomponenSelesai } from "../lib/tutupTimerKomponen";
+import { tutupTimerKomponenSelesai, hentikanTimerKomponenHari } from "../lib/tutupTimerKomponen";
+import { daftarOperatorHarian, LABEL_STATUS_OPERATOR, labelMenit } from "../lib/operatorHarian";
 import { catatCheckpoint } from "../lib/catatCheckpoint";
 import { bersihkanJadwalWiringSelesai } from "../lib/jadwalWiring";
 import { tambahAntrean, bacaAntrean, gagalKarenaKoneksi, EVENT_HASIL_ANTREAN, type HasilKirim } from "../lib/antreanSimpan";
@@ -406,6 +407,9 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   const [timerPernahMulai,setTimerPernahMulai]=useState<Record<string,boolean>>({});
   const [timerSelesaiHariIni,setTimerSelesaiHariIni]=useState<Record<string,boolean>>({});
   const [timerDurasiSelesai,setTimerDurasiSelesai]=useState<Record<string,number>>({});
+  // (22 Okt 2026, operator harian) SEMUA baris timer bertanggal viewDate (milik siapa pun) - sumber daftar pengerja
+  // kartu (lib/operatorHarian, sama dgn Rencana Harian admin). Diisi refreshTimerData & refreshTimerKey.
+  const [timerHariIni,setTimerHariIni]=useState<any[]>([]);
   const [timerLoading,setTimerLoading]=useState<string|null>(null);
   const [, setTimerTick]=useState(0);
   useEffect(()=>{
@@ -500,7 +504,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     let from=0;
     const step=1000;
     while(true){
-      const{data}=await supabase.from("fcs_timer_kerja").select("*").or(`selesai.is.null,tanggal.eq.${viewDate}`).range(from,from+step-1);
+      const{data,error}=await supabase.from("fcs_timer_kerja").select("*").or(`selesai.is.null,tanggal.eq.${viewDate}`).order("id").range(from,from+step-1);
+      if(error){console.error("[refreshTimerData] gagal muat timer:",error);laporError("supabase_error",error,{aksi:"muat timer"});return;}
       if(!data)break;
       all=all.concat(data);
       if(data.length<step)break;
@@ -523,6 +528,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     setTimerPernahMulai(mapPernahMulai);
     setTimerSelesaiHariIni(mapSelesaiHariIni);
     setTimerDurasiSelesai(mapDurasiSelesai);
+    setTimerHariIni(all.filter((t:any)=>t.tanggal===viewDate));
   };
 
   // Versi TARGETED refreshTimerData - cuma re-query 1 kombinasi panel+kode+proses+pekerja
@@ -539,8 +545,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       .eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses",proses).eq("pekerja_id",pekerjaId)
       .or(`selesai.is.null,tanggal.eq.${viewDate}`);
     q=tahap?q.eq("tahap",tahap):q.is("tahap",null);
-    const{data}=await q;
+    const{data,error}=await q;
+    if(error){console.error("[refreshTimerKey] gagal muat timer:",error);return;}
     const rows=data||[];
+    setTimerHariIni(prev=>[...prev.filter((t:any)=>!(t.panel_id===panelId&&t.kode_komponen===kode&&t.proses===proses&&t.pekerja_id===pekerjaId&&(t.tahap||null)===(tahap||null))),
+      ...rows.filter((t:any)=>t.tanggal===viewDate)]);
     let aktif:any=null,pernahMulai=false,selesaiHariIni=false,durasiSelesai=0;
     rows.forEach((t:any)=>{
       if(!t.selesai&&t.tanggal===viewDate)aktif=t;
@@ -629,8 +638,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   const loadData=async()=>{
     setLoadingData(true);
     // ambil renhar berdasarkan divisi dan tanggal
-    const {data:renharData}=await supabase.from("renhar").select("*")
+    const {data:renharData,error:renharErr}=await supabase.from("renhar").select("*")
       .eq("tanggal",viewDate).eq("divisi",user.divisi);
+    if(renharErr){console.error("[loadData] gagal muat tugas:",renharErr);laporError("supabase_error",renharErr,{aksi:"muat tugas renhar"});
+      alert("Gagal memuat tugas hari ini - periksa koneksi lalu tarik untuk muat ulang.\n("+(renharErr.message||renharErr)+")");}
     const tasks=renharData??[];
     setRenhar(tasks);
 
@@ -1082,6 +1093,9 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       if(data){
         setTimerAktif(prev=>({...prev,[key]:data}));
         setTimerPernahMulai(prev=>({...prev,[key]:true}));
+        setTimerHariIni(prev=>prev.some((t:any)=>t.id===data.id)||data.tanggal!==viewDate?prev:[...prev,data]);
+        // (22 Okt 2026, operator harian) memulai timer = otomatis masuk daftar operator komponen itu hari itu
+        await pastikanDiDaftar(pekerjaId,panelId,kode,proses,tanggal,tahap);
       }
     }catch(err:any){
       // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama.
@@ -1178,7 +1192,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     //    bersamaan (bulk ATAU satu-satu dari qty onChange) diantre, gak jalan interleaved.
     // 2. Base map buat merge diambil FRESH dari DB (bukan renhar di state lokal yang bisa
     //    lag dari render), biar gak ketinggalan tulisan dari panggilan lain yang barusan lewat.
-    const updatePekerjaPerKomponenBatch=async(rowsToAssign:any[],getPekerjaIds:(r:any)=>number[])=>{
+    // (22 Okt 2026) getter menerima daftar SEKARANG dari DB (utk menambah tanpa menimpa) & error tidak lagi diabaikan.
+    // Hasil: true bila semua tersimpan.
+    const updatePekerjaPerKomponenBatch=async(rowsToAssign:any[],getPekerjaIds:(r:any,sekarang:number[])=>number[]):Promise<boolean>=>{
+      let semuaOk=true;
       const byTask=new Map<number,any[]>();
       rowsToAssign.forEach(r=>{
         if(!byTask.has(r.task.id))byTask.set(r.task.id,[]);
@@ -1187,7 +1204,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       for(const[taskId,rowsSatuTask] of byTask){
         const prevInQueue=pekerjaPerKomponenQueue.current[taskId]||Promise.resolve();
         const thisWrite=prevInQueue.then(async()=>{
-          const{data:fresh}=await supabase.from("renhar").select("pekerja_per_komponen").eq("id",taskId).maybeSingle();
+          const{data:fresh,error:freshErr}=await supabase.from("renhar").select("pekerja_per_komponen").eq("id",taskId).maybeSingle();
+          if(freshErr){semuaOk=false;alertGagalSimpan(freshErr,`Baca daftar operator tugas ${taskId}`,{aksi:"simpan operator",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
           const baseMap=fresh?.pekerja_per_komponen||{};
           const newMap={...baseMap};
           rowsSatuTask.forEach(r=>{
@@ -1207,32 +1225,104 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
               // di-merge di atasnya.
               const existingRaw=newMap[r.kode];
               const existingForKode=Array.isArray(existingRaw)?{ASSEMBLING:existingRaw}:((existingRaw&&typeof existingRaw==="object")?existingRaw:{});
-              newMap[r.kode]={...existingForKode,[r.tahap]:getPekerjaIds(r)};
+              newMap[r.kode]={...existingForKode,[r.tahap]:getPekerjaIds(r,(existingForKode[r.tahap]||[]).map(Number))};
             } else {
-              newMap[r.kode]=getPekerjaIds(r);
+              const sekarang=Array.isArray(newMap[r.kode])?newMap[r.kode].map(Number):[];
+              newMap[r.kode]=getPekerjaIds(r,sekarang);
             }
           });
           const{error}=await supabase.from("renhar").update({pekerja_per_komponen:newMap}).eq("id",taskId);
           if(!error){
             setRenhar(prev=>prev.map((t:any)=>t.id===taskId?{...t,pekerja_per_komponen:newMap}:t));
+          } else {
+            semuaOk=false;
+            alertGagalSimpan(error,`Simpan daftar operator tugas ${taskId}`,{aksi:"simpan operator",ulangi:"Simpan",catatanServer:"Laporkan ke admin beserta pesan ini."});
           }
         });
-        pekerjaPerKomponenQueue.current[taskId]=thisWrite;
-        await thisWrite;
+        pekerjaPerKomponenQueue.current[taskId]=thisWrite.catch(()=>{});
+        try{await thisWrite;}catch(err:any){semuaOk=false;alertGagalSimpan(err,`Simpan daftar operator tugas ${taskId}`,{aksi:"simpan operator",ulangi:"Simpan"});}
       }
+      return semuaOk;
     };
     // Assign SATU komponen (dipanggil dari modal "Pilih Operator" per-komponen individual di
     // tabel desktop) - didelegasikan ke versi batch yang udah dibenerin (serialisasi + fetch
     // fresh dari DB sebelum merge), biar gak ada lagi jalur terpisah yang masih rawan stale-
     // closure race (baca renhar state lokal yang bisa lag, nimpa balik assignment kode lain
     // di task yang sama kalau ada penulisan lain yang nyaris bersamaan).
-    const updatePekerjaPerKomponen=async(taskId:number,kode:string,pekerjaIds:number[])=>{
-      await updatePekerjaPerKomponenBatch([{task:{id:taskId},kode}],()=>pekerjaIds);
+    // (22 Okt 2026) updatePekerjaPerKomponen/updateOperatorBusbarTahap digantikan simpanEditOperator (konfirmasi hentikan /
+    // salah pilih + log GANTI OPERATOR); semua tetap menulis lewat updatePekerjaPerKomponenBatch.
+    // ── OPERATOR HARIAN (22 Okt 2026, aturan final user) ──
+    // Memulai timer = orang itu otomatis masuk daftar komponen tsb (tugas renhar tanggal itu). Tanpa tugas (kartu dari
+    // hari lain) tidak ada daftar yang bisa diisi - dilewati (Kesehatan Data K20 menandainya).
+    const pastikanDiDaftar=async(pekerjaId:number,panelId:number,kode:string,proses:string,tanggal:string,tahap?:string|null)=>{
+      const task=renharRef.current.find((t:any)=>Number(t.panel_id||t.panelId)===Number(panelId)&&t.proses===proses&&t.tanggal===tanggal&&(t.komponen||[]).includes(kode));
+      if(!task)return;
+      const raw=(task.pekerja_per_komponen||{})[kode];
+      const sudah=(tahap?(raw&&typeof raw==="object"&&!Array.isArray(raw)?raw[tahap]||[]:(Array.isArray(raw)&&tahap==="ASSEMBLING"?raw:[])):(Array.isArray(raw)?raw:[])).map(Number);
+      if(sudah.includes(Number(pekerjaId)))return;
+      const ok=await updatePekerjaPerKomponenBatch([{task:{id:task.id},kode,tahap:tahap||undefined}],(_r,sekarang)=>sekarang.includes(Number(pekerjaId))?sekarang:[...sekarang,Number(pekerjaId)]);
+      if(ok)catatGantiOperator(task,kode,tahap,sudah,[...sudah,Number(pekerjaId)],"mulai timer");
     };
-    // Assign operator KHUSUS SATU TAHAP BUSBAR - beda operator per tahap boleh keisi
-    // bersamaan (gak saling timpa), lihat catatan nested-merge di updatePekerjaPerKomponenBatch.
-    const updateOperatorBusbarTahap=async(taskId:number,kode:string,tahap:string,pekerjaIds:number[])=>{
-      await updatePekerjaPerKomponenBatch([{task:{id:taskId},kode,tahap}],()=>pekerjaIds);
+    const namaPekerja=(id:any)=>pekerjaList.find((p:any)=>Number(p.id)===Number(id))?.nama||`#${id}`;
+    const catatGantiOperator=(task:any,kode:string,tahap:string|null|undefined,lama:number[],baru:number[],cara:string)=>{
+      const fmt=(ids:number[])=>ids.length?ids.map(namaPekerja).join(", "):"-";
+      supabase.from("activity_log").insert({
+        user_name:user.nama,action:"GANTI OPERATOR",module:"operator",halaman:"Vista Pekerja",panel:task?.panel||null,proyek:task?.proyek||null,
+        description:`${task?.proses||""}${tahap?"/"+tahap:""} ${kode} panel ${task?.panel||task?.panel_id} (${task?.tanggal||viewDate}): ${fmt(lama)} -> ${fmt(baru)} [${cara}]`,
+      }).then(({error:e}:any)=>{if(e)console.error("log ganti operator gagal:",e);});
+    };
+    // Tombol Selesai: hentikan SEMUA timer komponen+proses(+tahap) tanggal itu, milik siapa pun (bukan hanya orang
+    // yang ada di daftar) - stopTimer dulu utk yang ada di state perangkat ini (notifikasi selesai-lebih-cepat tetap
+    // jalan), lalu sisanya langsung dari DB.
+    const selesaiSemuaTimer=async(panelId:number,kode:string,proses:string,tahap?:string|null)=>{
+      const lokal=timerHariIni.filter((t:any)=>!t.selesai&&t.panel_id===panelId&&t.kode_komponen===kode&&t.proses===proses&&(t.tahap||null)===(tahap||null));
+      for(const t of lokal){if(timerAktif[timerKey(panelId,kode,proses,t.pekerja_id,tahap)])await stopTimer(t.pekerja_id,panelId,kode,proses,tahap||undefined);}
+      const{n,error}=await hentikanTimerKomponenHari(panelId,kode,proses,viewDate,tahap);
+      if(error)alertGagalSimpan(error,`Selesai-in semua timer ${proses} ${kode} panel ${panelId}`,{ref:{panelId,kode,proses,tahap:tahap||undefined},aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
+      if(n>0||error)await refreshTimerData();
+    };
+    // Simpan Edit Operator: orang yang DIKELUARKAN & timernya masih berjalan -> konfirmasi hentikan (dia sempat
+    // mengerjakan, tetap tercatat) atau SALAH PILIH (timer hari ini dibatalkan lewat RPC batalkan_timer_salah_pilih,
+    // dipindah ke log batal, tidak dihitung). Orang dikeluarkan yang timernya sudah selesai hari ini: ditawari salah pilih.
+    const simpanEditOperator=async(taskId:number,kode:string,tahap:string|null|undefined,baruIds:number[])=>{
+      const task=renharRef.current.find((t:any)=>t.id===taskId);
+      const raw=(task?.pekerja_per_komponen||{})[kode];
+      const lama:number[]=(tahap?(raw&&typeof raw==="object"&&!Array.isArray(raw)?raw[tahap]||[]:[]):(Array.isArray(raw)?raw:[])).map(Number);
+      const panelId=Number(task?.panel_id||task?.panelId);
+      const proses=task?.proses||"";
+      const timerKode=timerHariIni.filter((t:any)=>t.panel_id===panelId&&t.kode_komponen===kode&&t.proses===proses&&(t.tahap||null)===(tahap||null));
+      const keluar=[...new Set([...lama,...timerKode.map((t:any)=>Number(t.pekerja_id))])].filter(id=>!baruIds.includes(id));
+      const hentikan:number[]=[];const batal:number[]=[];
+      for(const id of keluar){
+        const milik=timerKode.filter((t:any)=>Number(t.pekerja_id)===id);
+        if(milik.length===0)continue;
+        const jalan=milik.some((t:any)=>!t.selesai);
+        if(jalan){
+          if(window.confirm(`${namaPekerja(id)} masih punya timer BERJALAN di ${kode}.\n\nOK = hentikan timernya (dia SEMPAT mengerjakan, tetap tercatat hari ini).\nCancel = pilihan lain (salah pilih / batal simpan).`)){hentikan.push(id);continue;}
+          if(window.confirm(`${namaPekerja(id)} SALAH PILIH (tidak mengerjakan ${kode})?\n\nOK = batalkan timer ${namaPekerja(id)} hari ini (dipindah ke log batal, tidak dihitung jam kerja).\nCancel = batal simpan, daftar tidak diubah.`)){batal.push(id);continue;}
+          return;
+        }
+        if(window.confirm(`${namaPekerja(id)} sudah tercatat mengerjakan ${kode} hari ini (timer selesai).\n\nOK = tetap tercatat (hanya dikeluarkan dari daftar).\nCancel = SALAH PILIH, batalkan catatan timernya hari ini.`))continue;
+        batal.push(id);
+      }
+      for(const id of hentikan)for(const t of timerKode.filter((x:any)=>Number(x.pekerja_id)===id&&!x.selesai)){
+        const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",t.id).is("selesai",null));
+        if(error){alertGagalSimpan(error,`Hentikan timer ${namaPekerja(id)} ${kode}`,{aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
+      }
+      if(batal.length){
+        const ids=timerKode.filter((t:any)=>batal.includes(Number(t.pekerja_id))).map((t:any)=>t.id);
+        const{error}=await supabase.rpc("batalkan_timer_salah_pilih" as any,{p_timer_ids:ids,p_alasan:`Salah pilih operator (Edit Operator): ${batal.map(namaPekerja).join(", ")} tidak mengerjakan ${proses} ${kode}`,p_oleh:user.nama,p_sumber:"operator"} as any);
+        if(error){alertGagalSimpan(error,`Batalkan timer salah pilih ${kode}`,{aksi:"batalkan timer",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
+      }
+      const ok=tahap?await updatePekerjaPerKomponenBatch([{task:{id:taskId},kode,tahap}],()=>baruIds):await updatePekerjaPerKomponenBatch([{task:{id:taskId},kode}],()=>baruIds);
+      if(ok&&task)catatGantiOperator(task,kode,tahap,lama,baruIds,"Edit Operator"+(hentikan.length?`; dihentikan: ${hentikan.map(namaPekerja).join(", ")}`:"")+(batal.length?`; salah pilih (timer dibatalkan): ${batal.map(namaPekerja).join(", ")}`:""));
+      if(hentikan.length||batal.length)await refreshTimerData();
+      // orang yang DITAMBAHKAN saat timer komponen ini sedang berjalan -> tawarkan langsung mulai
+      const masuk=baruIds.filter(id=>!lama.includes(id)&&!timerKode.some((t:any)=>Number(t.pekerja_id)===id&&!t.selesai));
+      const adaJalan=timerKode.some((t:any)=>!t.selesai&&!hentikan.includes(Number(t.pekerja_id))&&!batal.includes(Number(t.pekerja_id)));
+      if(ok&&masuk.length&&adaJalan&&window.confirm(`Mulai timer untuk ${masuk.map(namaPekerja).join(", ")} sekarang?`)){
+        for(const id of masuk)await startTimer(id,panelId,kode,proses,viewDate,tahap||undefined);
+      }
     };
     // Assign operator + LANGSUNG start timer buat SATU tahap spesifik (misal FABRIKASI) di SEMUA
     // komponen dalam satu grup BUSBAR sekaligus - satu kali pilih tahap+operator, gak perlu klik
@@ -1268,6 +1358,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
 
     const bulkStopDesktop=async(proses:string,rowsToStop:any[])=>{
       for(const r of rowsToStop){
+        await selesaiSemuaTimer(r.panelId,r.kode,proses); // (22 Okt) termasuk timer orang di luar daftar
         const idsKomp=(r.task.pekerja_per_komponen||{})[r.kode]||[];
         for(const pid of idsKomp){
           const key=`${r.panelId}_${r.kode}_${proses}_${pid}`;
@@ -1280,7 +1371,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
 
     // Khusus POTONG: operator = pekerja yang lagi login (gak ada picker), assign + start timer sekaligus.
     const startUntukUserSendiri=async(proses:string,rowsToAssign:any[])=>{
-      await updatePekerjaPerKomponenBatch(rowsToAssign,()=>[user.id]);
+      await updatePekerjaPerKomponenBatch(rowsToAssign,(_r,sekarang)=>sekarang.includes(Number(user.id))?sekarang:[...sekarang,Number(user.id)]); // (22 Okt) tambah, bukan timpa
       for(const r of rowsToAssign){
         await startTimer(user.id,r.panelId,r.kode,proses,viewDate);
       }
@@ -3406,6 +3497,10 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                 const isBusbarProses=proses==="BUSBAR";
                 const idsKomp=isBusbarProses?[]:getFlatOperatorIds(r.task,r.kode);
                 const workers=idsKomp.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
+                // (22 Okt 2026) daftar operator HARIAN kartu ini (lib/operatorHarian - sama dgn Rencana Harian admin):
+                // pengerja = timer komponen+proses tanggal ini (berjalan/selesai), daftar renhar = rencana (redup).
+                const daftarK=isBusbarProses?null:daftarOperatorHarian({timer:timerHariIni.filter((t:any)=>t.panel_id===r.panelId&&t.kode_komponen===r.kode&&t.proses===proses&&!t.tahap),
+                  rencanaIds:idsKomp,namaById:(id:any)=>pekerjaList.find((p:any)=>Number(p.id)===Number(id))?.nama,tanggal:viewDate,hariIni:getLocalDateStr()});
                 const busbarUrutan=isBusbarProses?getUrutanTahapBusbar(r.kode,panelsMap[r.panelId]?.tipe):[];
                 const busbarTahapState=isBusbarProses?getBusbarTahapState(panelsMap[r.panelId]?.checklist?.[r.kode],r.kode,panelsMap[r.panelId]?.tipe):null;
                 // REVISI 11 Sep 2026 (ganti model gate biner -> cap dinamis): BUSBAR gak lagi kena
@@ -3439,7 +3534,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                           const capTahap=getBusbarCapTahap(busbarTahapState,busbarUrutan,t);
                           const tahapSebelumnyaLabel=ti>0?BUSBAR_TAHAP_LABEL[busbarUrutan[ti-1]]:null;
                           const timerKeysTahap=workersTahap.map((w:any)=>timerKey(r.panelId,r.kode,"BUSBAR",w.id,t));
-                          const anyTimerRunningTahap=timerKeysTahap.some((k:string)=>!!timerAktif[k]);
+                          const anyTimerRunningTahap=timerKeysTahap.some((k:string)=>!!timerAktif[k])||timerHariIni.some((x:any)=>!x.selesai&&x.panel_id===r.panelId&&x.kode_komponen===r.kode&&x.proses==="BUSBAR"&&x.tahap===t); // (22 Okt) termasuk di luar daftar
                           const anyLoadingTahap=timerKeysTahap.some((k:string)=>timerLoading===k);
                           let durasiLabelTahap="";
                           const runningKeyTahap=timerKeysTahap.find((k:string)=>timerAktif[k]);
@@ -3481,10 +3576,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                                 <button disabled={anyLoadingTahap}
                                   onClick={()=>{
                                     if(anyTimerRunningTahap){
-                                      workersTahap.forEach((w:any)=>{
-                                        const k=timerKey(r.panelId,r.kode,"BUSBAR",w.id,t);
-                                        if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,"BUSBAR",t);
-                                      });
+                                      selesaiSemuaTimer(r.panelId,r.kode,"BUSBAR",t); // (22 Okt) semua timer tahap ini, milik siapa pun
                                     } else {
                                       workersTahap.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,"BUSBAR",viewDate,t));
                                     }
@@ -3546,7 +3638,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                       }
                     })():(
                     <div style={{display:"flex",flexDirection:"column",gap:6}}>
-                      {workers.length===0&&(
+                      {workers.length===0&&!(daftarK&&daftarK.pengerja.length>0)&&(
                         operatorPerKartu?(
                           <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
                             style={{fontSize:12,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:10,padding:"10px 12px",cursor:"pointer",textAlign:"center"}}>
@@ -3569,28 +3661,29 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                           ))}
                         </div>
                       )}
-                      {workers.length>0&&proses!=="POTONG"&&(()=>{
+                      {(workers.length>0||(daftarK?.pengerja.length||0)>0)&&proses!=="POTONG"&&daftarK&&(()=>{
+                        // (22 Okt 2026) status & tombol dari SEMUA timer komponen ini hari ini (bukan hanya orang di daftar):
+                        // Selesai menghentikan semuanya (dulu timer orang yang dikeluarkan dari daftar terus berjalan).
                         const timerKeys=workers.map((w:any)=>timerKey(r.panelId,r.kode,proses,w.id));
-                        const anyTimerRunning=timerKeys.some((k:string)=>!!timerAktif[k]);
+                        const anyTimerRunning=daftarK.entri.some(e=>e.status==="berjalan");
                         const anyLoading=timerKeys.some((k:string)=>timerLoading===k);
-                        let durasiLabel="";
-                        const runningKey=timerKeys.find((k:string)=>timerAktif[k]);
-                        if(runningKey){
-                          const timer=timerAktif[runningKey];
-                          const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
-                          const totalMenit=(timerDurasiSelesai[runningKey]||0)+menitBerjalan;
-                          durasiLabel=labelDurasiTimer(totalMenit);
-                        }
+                        const jalan=daftarK.entri.filter(e=>e.status==="berjalan");
+                        const durasiLabel=jalan.length?labelDurasiTimer(Math.max(...jalan.map(e=>e.menit))):"";
                         return(
                           <div style={{display:"flex",flexDirection:"column",gap:6}}>
                             <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
-                              {workers.map((w:any)=>(
-                                <span key={w.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,
-                                  color:DIVISI_CONFIG[w.divisi]?.color||"#64748b",background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
+                              {daftarK.entri.map(e=>{
+                                const w=pekerjaList.find((p:any)=>Number(p.id)===Number(e.id));
+                                const redup=e.status==="belum_mulai"||e.status==="tidak_mulai";
+                                return(
+                                <span key={String(e.id)+e.status} title={LABEL_STATUS_OPERATOR[e.status]+(e.menit>0?` · ${labelMenit(e.menit)}`:"")}
+                                  style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,
+                                  color:redup?"#94a3b8":(DIVISI_CONFIG[w?.divisi]?.color||"#64748b"),background:redup?"#fff":(DIVISI_CONFIG[w?.divisi]?.bg||"#f1f5f9"),
+                                  border:redup?"1px dashed #cbd5e1":"1px solid transparent",
                                   borderRadius:20,padding:"4px 10px"}}>
-                                  {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
-                                </span>
-                              ))}
+                                  {e.status==="berjalan"?"●":e.status==="selesai"?"✓":"○"} {e.nama}{e.status==="belum_mulai"?" · belum mulai":e.status==="tidak_mulai"?" · tidak mulai":""}
+                                </span>);
+                              })}
                               {operatorPerKartu&&(
                                 <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
                                   style={{fontSize:10,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"4px 8px",cursor:"pointer"}}>
@@ -3598,13 +3691,10 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                                 </button>
                               )}
                             </div>
-                            <button disabled={anyLoading}
+                            <button disabled={anyLoading||(!anyTimerRunning&&workers.length===0)}
                               onClick={()=>{
                                 if(anyTimerRunning){
-                                  workers.forEach((w:any)=>{
-                                    const k=timerKey(r.panelId,r.kode,proses,w.id);
-                                    if(timerAktif[k])stopTimer(w.id,r.panelId,r.kode,proses);
-                                  });
+                                  selesaiSemuaTimer(r.panelId,r.kode,proses);
                                 } else {
                                   workers.forEach((w:any)=>startTimer(w.id,r.panelId,r.kode,proses,viewDate));
                                 }
@@ -4093,8 +4183,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
               <button onClick={()=>setOperatorModal(null)}
                 style={{flex:1,padding:"10px",borderRadius:10,border:"1px solid #e2e8f0",background:"#f8fafc",color:"#64748b",fontWeight:700,fontSize:13,cursor:"pointer"}}>Batal</button>
               <button onClick={async()=>{
-                  if(operatorModal.tahap)await updateOperatorBusbarTahap(operatorModal.taskId,operatorModal.kode,operatorModal.tahap,tempPekerjaIds);
-                  else await updatePekerjaPerKomponen(operatorModal.taskId,operatorModal.kode,tempPekerjaIds);
+                  await simpanEditOperator(operatorModal.taskId,operatorModal.kode,operatorModal.tahap||null,tempPekerjaIds); // (22 Okt) hentikan/salah pilih + log
                   setOperatorModal(null);
                 }}
                 style={{flex:1,padding:"10px",borderRadius:10,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>Simpan</button>
