@@ -3525,6 +3525,9 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                       {
                           const idsKompTahap=(r.task.pekerja_per_komponen?.[r.kode]?.[t])||[];
                           const workersTahap=idsKompTahap.map((id:number)=>pekerjaList.find((p:any)=>p.id===id)).filter(Boolean);
+                          // (22 Okt 2026) status operator harian per tahap (lib/operatorHarian, sama dgn kartu proses lain)
+                          const daftarTahap=daftarOperatorHarian({timer:timerHariIni.filter((x:any)=>x.panel_id===r.panelId&&x.kode_komponen===r.kode&&x.proses==="BUSBAR"&&x.tahap===t),
+                            rencanaIds:idsKompTahap,namaById:(id:any)=>pekerjaList.find((p:any)=>Number(p.id)===Number(id))?.nama,tanggal:viewDate,hariIni:getLocalDateStr()});
                           const stTahap=busbarTahapState?.[t]||{progress:0,sudahDisimpan100:false};
                           const pctTahap=stTahap.progress||0;
                           const bisaEditTahap=canSimpanBusbarTahap(r.task,r.panelId,r.kode,t);
@@ -3552,27 +3555,31 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                               <div style={{fontSize:11,fontWeight:800,color:stTahap.sudahDisimpan100?"#16a34a":"#374151"}}>
                                 {stTahap.sudahDisimpan100?"✅ ":""}{ti+1}. {BUSBAR_TAHAP_LABEL[t]}
                               </div>
-                              {workersTahap.length===0?(
+                              {workersTahap.length===0&&daftarTahap.pengerja.length===0?(
                                 <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t});setTempPekerjaIds(idsKompTahap);}}
                                   style={{fontSize:11,color:"#2563eb",fontWeight:700,background:"#eff6ff",border:"1.5px dashed #93c5fd",borderRadius:8,padding:"8px 10px",cursor:"pointer",textAlign:"center"}}>
                                   + Pilih Operator {BUSBAR_TAHAP_LABEL[t]}
                                 </button>
                               ):(
                                 <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
-                                  {workersTahap.map((w:any)=>(
-                                    <span key={w.id} style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,
-                                      color:DIVISI_CONFIG[w.divisi]?.color||"#64748b",background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
-                                      borderRadius:20,padding:"3px 8px"}}>
-                                      {DIVISI_CONFIG[w.divisi]?.icon} {w.nama}
-                                    </span>
-                                  ))}
+                                  {daftarTahap.entri.map(e=>{
+                                    const w=pekerjaList.find((p:any)=>Number(p.id)===Number(e.id));
+                                    const redup=e.status==="belum_mulai"||e.status==="tidak_mulai";
+                                    return(
+                                    <span key={String(e.id)+e.status} title={LABEL_STATUS_OPERATOR[e.status]+(e.menit>0?` · ${labelMenit(e.menit)}`:"")}
+                                      style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,
+                                      color:redup?"#94a3b8":(DIVISI_CONFIG[w?.divisi]?.color||"#64748b"),background:redup?"#fff":(DIVISI_CONFIG[w?.divisi]?.bg||"#f1f5f9"),
+                                      border:redup?"1px dashed #cbd5e1":"1px solid transparent",borderRadius:20,padding:"3px 8px"}}>
+                                      {e.status==="berjalan"?"●":e.status==="selesai"?"✓":"○"} {e.nama}{e.status==="belum_mulai"?" · belum mulai":e.status==="tidak_mulai"?" · tidak mulai":""}
+                                    </span>);
+                                  })}
                                   <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode,tahap:t});setTempPekerjaIds(idsKompTahap);}}
                                     style={{fontSize:9,color:"#64748b",fontWeight:700,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"3px 7px",cursor:"pointer"}}>
                                     ✏️ Edit
                                   </button>
                                 </div>
                               )}
-                              {workersTahap.length>0&&(
+                              {(workersTahap.length>0||anyTimerRunningTahap)&&(
                                 <button disabled={anyLoadingTahap}
                                   onClick={()=>{
                                     if(anyTimerRunningTahap){
