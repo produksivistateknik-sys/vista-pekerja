@@ -36,3 +36,25 @@ export async function tutupTimerKomponenSelesai(panelId:number,kode:string,prose
     return 0;
   }
 }
+
+// HENTIKAN SEMUA TIMER KOMPONEN PADA TANGGAL ITU (22 Okt 2026, aturan operator harian) - tombol "Selesai" dulu hanya
+// menghentikan timer orang yang ada di daftar renhar; kalau daftar diganti saat timer berjalan (insiden IFAL 534 FS.4,
+// FAHRI 544 FS.4) timer orang yang dikeluarkan terus menghitung. Ini membaca LANGSUNG dari DB semua timer yang masih
+// berjalan utk panel+komponen+proses(+tahap) bertanggal `tanggal`, milik SIAPA PUN, lalu menutupnya sekarang.
+// BUKAN best-effort: error dikembalikan supaya pemanggil memberi tahu operator (aturan A.2).
+export async function hentikanTimerKomponenHari(panelId:number,kode:string,proses:string,tanggal:string,tahap?:string|null):Promise<{n:number;error:any}>{
+  const{data,error}=await withRetry(()=>{
+    let q=supabase.from("fcs_timer_kerja").select("id")
+      .eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses",proses).eq("tanggal",tanggal).is("selesai",null);
+    q=tahap?q.eq("tahap",tahap):q.is("tahap",null);
+    return q.order("id").limit(200);
+  });
+  if(error)return{n:0,error};
+  let n=0;
+  for(const t of (data||[]) as any[]){
+    const{error:e}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",t.id).is("selesai",null));
+    if(e)return{n,error:e};
+    n++;
+  }
+  return{n,error:null};
+}
