@@ -146,6 +146,20 @@ export function ProyekLuarView({user}:{user:any}){
 
   // ── Aksi di laporan yang sudah ada (tambah foto, ganti status) ──
   const[stagedFotoTambahan,setStagedFotoTambahan]=useState<StagedFoto[]>([]);
+  // Edit catatan (24 Okt 2026): hanya laporan milik sendiri (daftar ini memang hanya pekerja_id=user.id) & selama Berlangsung;
+  // server memeriksa ulang (RPC ubah_catatan_proyek_luar, jejak diubah_oleh/pada + log). Gagal -> alertGagalSimpan.
+  const[editCat,setEditCat]=useState<{id:number;teks:string}|null>(null);
+  const[simpanCat,setSimpanCat]=useState(false);
+  const simpanCatatan=async(l:any)=>{
+    if(!editCat||simpanCat)return;
+    setSimpanCat(true);
+    try{
+      const{data,error}=await supabase.rpc("ubah_catatan_proyek_luar" as any,{p_id:l.id,p_catatan:editCat.teks,p_oleh:user.nama,p_pekerja_id:user.id,p_admin:false} as any);
+      if(error){alertGagalSimpan(error,`Ubah catatan Proyek Luar ${l.id}`,{aksi:"ubah catatan proyek luar",catatanServer:"Catatan belum berubah. Laporan yang sudah Selesai tidak bisa diubah dari aplikasi ini.",catatanKoneksi:"Catatan BELUM tersimpan - coba lagi saat sinyal kembali."});return;}
+      setLaporanList(prev=>prev.map((x:any)=>x.id===l.id?{...x,...(data as any)}:x));
+      setEditCat(null);
+    }finally{setSimpanCat(false);}
+  };
   const[savingTambahan,setSavingTambahan]=useState(false);
   const tambahFotoKeLaporan=async(laporan:any)=>{
     if(stagedFotoTambahan.length===0)return;
@@ -301,7 +315,21 @@ export function ProyekLuarView({user}:{user:any}){
                 </div>
                 {isExp&&(
                   <div style={{padding:"12px 14px",borderTop:"1px solid #f1f5f9"}}>
-                    {l.catatan&&<div style={{fontSize:12.5,color:"#475569",marginBottom:12,lineHeight:1.5}}>{l.catatan}</div>}
+                    {editCat?.id===l.id?(
+                      <div style={{display:"flex",flexDirection:"column",gap:8,marginBottom:12}}>
+                        <textarea value={editCat!.teks} onChange={e=>setEditCat({id:l.id,teks:e.target.value})} rows={Math.min(12,Math.max(4,editCat!.teks.split(/\r?\n/).length+1))}
+                          placeholder="Deskripsi pekerjaan yang dilakukan..." style={{width:"100%",boxSizing:"border-box",padding:10,borderRadius:8,border:"1.5px solid #e2e8f0",fontSize:13,lineHeight:1.5,fontFamily:"inherit",resize:"vertical"}}/>
+                        <div style={{display:"flex",gap:8,justifyContent:"flex-end"}}>
+                          <button onClick={()=>setEditCat(null)} disabled={simpanCat} style={{padding:"7px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:"#fff",color:"#475569",fontSize:12.5,fontWeight:600,cursor:"pointer"}}>Batal</button>
+                          <button onClick={()=>simpanCatatan(l)} disabled={simpanCat} style={{padding:"7px 14px",borderRadius:8,border:0,background:"#1d4ed8",color:"#fff",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>{simpanCat?"Menyimpan...":"Simpan catatan"}</button>
+                        </div>
+                      </div>
+                    ):(<>
+                      {l.catatan&&<div style={{fontSize:12.5,color:"#475569",marginBottom:6,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{l.catatan}</div>}
+                      {l.catatan_diubah_oleh&&<div style={{fontSize:11,color:"#94a3b8",marginBottom:6}}>Diubah oleh {l.catatan_diubah_oleh}{l.catatan_diubah_pada?" · "+new Date(l.catatan_diubah_pada).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"}):""}</div>}
+                      {l.status==="berlangsung"&&<button onClick={()=>setEditCat({id:l.id,teks:l.catatan||""})} style={{border:0,background:"none",padding:0,marginBottom:12,color:"#2563eb",fontSize:12,fontWeight:700,cursor:"pointer"}}>
+                        <i className="ti ti-pencil" style={{fontSize:12}}/> Ubah catatan</button>}
+                    </>)}
                     {fotoList.length>0&&(
                       <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:12}}>
                         {fotoList.map((f:any,fi:number)=>(
