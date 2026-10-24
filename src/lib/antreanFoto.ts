@@ -17,7 +17,7 @@ export type TujuanFoto =
   | { jenis: 'kolom'; id: number; kunci: 'nameplate_photos' | 'yellowmark_photos' | 'qs_photos' | 'warehouse_photos' | 'pasang_komponen_photos' | string }
   | { jenis: 'qc'; id: number; kunci: string }
   | { jenis: 'komponen'; id: number; kunci: string; tahap?: string | null; keArsip?: boolean }
-  | { jenis: 'proyek_luar' | 'mom_fat_poin'; id: number }
+  | { jenis: 'proyek_luar' | 'proyek_luar_entri' | 'mom_fat_poin'; id: number }   // proyek_luar_entri: multi-hari 25 Okt 2026
 
 export type ItemAntreanFoto = {
   id: string

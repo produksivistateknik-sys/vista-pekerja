@@ -1,5 +1,5 @@
-// KOTAK CATATAN PROYEK LUAR YANG TERSIMPAN OTOMATIS (24 Okt 2026, pantau harian). Dipakai ProyekLuarView utk laporan milik
-// operator yang masih Berlangsung. Alur & aturan kirim ulang: lib/drafCatatanProyekLuar (draf di HP -> RPC dgn cek bentrok).
+// KOTAK CATATAN PROYEK LUAR YANG TERSIMPAN OTOMATIS (24 Okt 2026, pantau harian). Dipakai ProyekLuarView utk ENTRI hari milik
+// operator selama proyek Berlangsung (multi-hari 25 Okt 2026: proyek_luar_entri, RPC ubah_catatan_entri_proyek_luar). Alur & aturan kirim ulang: lib/drafCatatanProyekLuar (draf di HP -> RPC dgn cek bentrok).
 // Disimpan ~2 detik setelah berhenti mengetik dan saat kotak ditinggalkan; status selalu terlihat ("Tersimpan 14:05" /
 // "Belum terkirim" / bentrok). Tidak ada tombol simpan.
 /* eslint-disable @typescript-eslint/no-explicit-any */
@@ -7,21 +7,21 @@ import { useEffect, useRef, useState } from "react";
 import { supabase } from "../lib/supabase";
 import { alertGagalSimpan } from "../lib/koneksi";
 import { labelWaktuPL } from "../lib/proyekLuarPantau";
-import { bacaDraf, simpanDraf, hapusDraf, kirimCatatan, kirimSemuaDraf, normCatatan, bacaSemuaDraf, EVENT_DRAF_CATATAN_PL } from "../lib/drafCatatanProyekLuar";
+import { bacaDraf, simpanDraf, hapusDraf, kirimCatatan, kirimSemuaDraf, normCatatan, bacaSemuaDraf, EVENT_DRAF_CATATAN_PL, kunciEntri } from "../lib/drafCatatanProyekLuar";
 
 type Status = "tersimpan" | "mengetik" | "mengirim" | "tertunda" | "bentrok" | "ditolak";
 const JEDA_SIMPAN_MS = 2000;
 
-export function CatatanProyekLuarOtomatis({ laporan, user, onTersimpan }: { laporan: any; user: any; onTersimpan: (data: any) => void }) {
-  const id = Number(laporan.id);
+export function CatatanProyekLuarOtomatis({ entri, user, onTersimpan }: { entri: any; user: any; onTersimpan: (data: any) => void }) {
+  const id = Number(entri.id), kunci = kunciEntri(id);
   const oleh = String(user?.nama || user?.name || "Operator");
-  const awal = bacaDraf(id);
-  const [teks, setTeks] = useState<string>(awal ? awal.teks : laporan.catatan || "");
+  const awal = bacaDraf(kunci);
+  const [teks, setTeks] = useState<string>(awal ? awal.teks : entri.catatan || "");
   const [status, setStatusState] = useState<Status>(awal ? (awal.bentrok ? "bentrok" : "tertunda") : "tersimpan");
   const [waktu, setWaktu] = useState<string | null>(null);
   const [server, setServer] = useState<any>(null);       // isi server saat bentrok
   const [pesan, setPesan] = useState("");
-  const teksRef = useRef(teks), dasarRef = useRef<string | null>(awal ? awal.dasar : laporan.catatan ?? null);
+  const teksRef = useRef(teks), dasarRef = useRef<string | null>(awal ? awal.dasar : entri.catatan ?? null);
   const statusRef = useRef<Status>(status);
   const setStatus = (v: Status) => { statusRef.current = v; setStatusState(v); };
   const timer = useRef<any>(null), kirimRef = useRef(false), ulangRef = useRef(false);
@@ -29,7 +29,7 @@ export function CatatanProyekLuarOtomatis({ laporan, user, onTersimpan }: { lapo
   useEffect(() => { onTersimpanRef.current = onTersimpan; });
 
   const muatServer = async () => {
-    const { data, error } = await supabase.from("proyek_luar" as any).select("id,catatan,catatan_diubah_oleh,catatan_diubah_pada").eq("id", id).range(0, 0);
+    const { data, error } = await supabase.from("proyek_luar_entri" as any).select("id,catatan,catatan_diubah_oleh,catatan_diubah_pada").eq("id", id).range(0, 0);
     if (error) { console.error("[Catatan Proyek Luar] gagal memuat versi terbaru:", error); return null; }
     return (data as any)?.[0] || null;
   };
@@ -38,23 +38,23 @@ export function CatatanProyekLuarOtomatis({ laporan, user, onTersimpan }: { lapo
     if (kirimRef.current) { ulangRef.current = true; return; }
     if (statusRef.current === "bentrok" || statusRef.current === "ditolak") return;
     const teksKirim = teksRef.current;
-    if (normCatatan(teksKirim) === normCatatan(dasarRef.current)) { hapusDraf(id, teksKirim); setStatus("tersimpan"); return; }
+    if (normCatatan(teksKirim) === normCatatan(dasarRef.current)) { hapusDraf(kunci, teksKirim); setStatus("tersimpan"); return; }
     kirimRef.current = true; setStatus("mengirim");
-    const r = await kirimCatatan(id, { teks: teksKirim, dasar: dasarRef.current, pekerjaId: user.id, oleh });
+    const r = await kirimCatatan(kunci, { teks: teksKirim, dasar: dasarRef.current, pekerjaId: user.id, oleh });
     kirimRef.current = false;
     if (r.status === "ok") {
       dasarRef.current = r.data?.catatan ?? null;
-      hapusDraf(id, teksKirim);
+      hapusDraf(kunci, teksKirim);
       setWaktu(new Date().toISOString()); onTersimpanRef.current(r.data);
-      if (teksRef.current !== teksKirim) { simpanDraf(id, { teks: teksRef.current, dasar: dasarRef.current, pekerjaId: user.id, oleh }); ulangRef.current = true; }
+      if (teksRef.current !== teksKirim) { simpanDraf(kunci, { teks: teksRef.current, dasar: dasarRef.current, pekerjaId: user.id, oleh }); ulangRef.current = true; }
       else setStatus("tersimpan");
     } else if (r.status === "koneksi") {
       setStatus("tertunda");
     } else if (r.status === "bentrok") {
-      const d = bacaDraf(id); if (d) simpanDraf(id, { ...d, bentrok: true });
+      const d = bacaDraf(kunci); if (d) simpanDraf(kunci, { ...d, bentrok: true });
       setServer(await muatServer()); setStatus("bentrok");
     } else {
-      hapusDraf(id); setStatus("ditolak"); setPesan(String(r.error?.message || r.error));
+      hapusDraf(kunci); setStatus("ditolak"); setPesan(String(r.error?.message || r.error));
       alertGagalSimpan(r.error, `Simpan catatan Proyek Luar ${id}`, { aksi: "simpan catatan proyek luar",
         catatanServer: "Catatan belum berubah. Laporan yang sudah Selesai tidak bisa diubah dari aplikasi ini." });
     }
@@ -65,7 +65,7 @@ export function CatatanProyekLuarOtomatis({ laporan, user, onTersimpan }: { lapo
 
   const ubah = (v: string) => {
     teksRef.current = v; setTeks(v);
-    simpanDraf(id, { teks: v, dasar: dasarRef.current, pekerjaId: user.id, oleh });
+    simpanDraf(kunci, { teks: v, dasar: dasarRef.current, pekerjaId: user.id, oleh });
     if (statusRef.current !== "mengirim") setStatus("mengetik");
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => { timer.current = null; kirimRefFn.current(); }, JEDA_SIMPAN_MS);
@@ -76,7 +76,7 @@ export function CatatanProyekLuarOtomatis({ laporan, user, onTersimpan }: { lapo
     if (statusRef.current === "tertunda") kirimRefFn.current();
     if (statusRef.current === "bentrok") muatServer().then(setServer);
     const coba = () => { if (document.visibilityState === "visible" && statusRef.current === "tertunda") kirimRefFn.current(); };
-    const dariLuar = () => { if (statusRef.current === "tertunda" && !bacaSemuaDraf()[String(id)]) setStatus("tersimpan"); }; // terkirim oleh pengirim latar
+    const dariLuar = () => { if (statusRef.current === "tertunda" && !bacaSemuaDraf()[kunci]) setStatus("tersimpan"); }; // terkirim oleh pengirim latar
     window.addEventListener("online", coba); document.addEventListener("visibilitychange", coba); window.addEventListener(EVENT_DRAF_CATATAN_PL, dariLuar);
     return () => {
       window.removeEventListener("online", coba); document.removeEventListener("visibilitychange", coba); window.removeEventListener(EVENT_DRAF_CATATAN_PL, dariLuar);
@@ -86,21 +86,21 @@ export function CatatanProyekLuarOtomatis({ laporan, user, onTersimpan }: { lapo
   }, [id]);
   // Catatan di server berubah (dimuat ulang) & tidak ada tulisan yang belum terkirim -> ikuti server.
   useEffect(() => {
-    if (bacaDraf(id) || ["mengetik", "mengirim", "bentrok"].includes(statusRef.current)) return;
-    dasarRef.current = laporan.catatan ?? null;
-    if (normCatatan(teksRef.current) !== normCatatan(laporan.catatan)) { teksRef.current = laporan.catatan || ""; setTeks(laporan.catatan || ""); }
+    if (bacaDraf(kunci) || ["mengetik", "mengirim", "bentrok"].includes(statusRef.current)) return;
+    dasarRef.current = entri.catatan ?? null;
+    if (normCatatan(teksRef.current) !== normCatatan(entri.catatan)) { teksRef.current = entri.catatan || ""; setTeks(entri.catatan || ""); }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [laporan.catatan]);
+  }, [entri.catatan]);
 
   const pakaiPunyaSaya = () => {
     dasarRef.current = server?.catatan ?? null;
-    simpanDraf(id, { teks: teksRef.current, dasar: dasarRef.current, pekerjaId: user.id, oleh });
+    simpanDraf(kunci, { teks: teksRef.current, dasar: dasarRef.current, pekerjaId: user.id, oleh });
     setServer(null); setStatus("tertunda"); kirim();
   };
   const pakaiTerbaru = () => {
     const t = server?.catatan || "";
     teksRef.current = t; setTeks(t); dasarRef.current = server?.catatan ?? null;
-    hapusDraf(id); setServer(null); setStatus("tersimpan");
+    hapusDraf(kunci); setServer(null); setStatus("tersimpan");
   };
 
   const baris = Math.min(12, Math.max(4, teks.split(/\r?\n/).length + 1));
