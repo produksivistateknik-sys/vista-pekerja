@@ -473,7 +473,7 @@ export default function App(){
             ini TETAP dipakai apa adanya buat semua divisi lain - gak diubah sama sekali. */}
         {user.divisi!=="gudang"&&(
         <div style={{background:"#f1f5f9",padding:"10px 16px 8px",
-          paddingTop:"max(10px, env(safe-area-inset-top))",position:"sticky",top:0,zIndex:100}} data-header-app="">
+          paddingTop:"max(10px, env(safe-area-inset-top))",position:"sticky",top:0,zIndex:100}}>
           {/* Header digabung jadi 1 card (30 Agu 2026, sebelumnya 2 card terpisah: profil warna +
               ringkasan putih). Notifikasi & Keluar DIPINDAH ke AkunView (lihat prop notifCount/
               onLogout di situ) - dihapus dari sini biar gak dobel & header gak sesak. View-toggle

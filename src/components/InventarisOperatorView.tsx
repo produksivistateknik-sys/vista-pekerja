@@ -1,13 +1,13 @@
 // INVENTARIS & MAINTENANCE - MENU OPERATOR HP (T3, 30 Okt 2026). Pengganti scan QR /mesin (halaman lama tetap ada sampai
 // T4). Acuan tampilan: pratinjau "maintenance-mesin.html" yang disepakati user - navigasi Inventaris/Laporan/Maintenance/
-// Riwayat (tab di atas di bawah header aplikasi - revisi 30 Okt: dulu nav bawah kedua di atas nav utama), kartu ringkasan (jumlah, bar proporsi kondisi, tombol filter Perlu
+// Riwayat (bar tab di alur biasa di bawah tombol Kembali, hanya di halaman daftar - revisi 30 Okt; dulu nav bawah kedua), kartu ringkasan (jumlah, bar proporsi kondisi, tombol filter Perlu
 // perhatian/Baik/Belum dinilai), "Perlu perhatian" di atas lalu kotak 2 kolom, detail barang (ubah kondisi sendiri, datasheet,
 // jadwal, Lapor kerusakan), Maintenance "Kerjakan" -> wajib foto/video sebelum Selesai aktif. Hanya barang lokasi divisi
 // sendiri. Data & aksi: lib/inventarisOperator.ts; aturan tampilan: lib/inventarisAturan.ts (identik dgn admin).
 // Realtime + pemulih (fokus/visibility/polling) lewat pasangPemulihRealtime (identik dgn vista-teknik).
 // UKURAN px EKSPLISIT & color-scheme light (alasan sama KendalaOperator: index.css sisa template Vite).
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { Fragment, useCallback, useEffect, useMemo, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { pasangPemulihRealtime } from '../lib/pemulihRealtime'
 import { bacaAntreanFoto, dengarJumlahAntreanFoto } from '../lib/antreanFoto'
@@ -25,7 +25,7 @@ const PILIHAN_OPERATOR = ['baik', 'tidak_maksimal', 'perlu_maintenance']
 
 const CSS = `
 .ivo{--card:#fff;--fg:#16202e;--mute:#5d6b7e;--line:#dfe4ec;--bg:#f3f5f8;--acc:#1d4ed8;--acc-bg:#e3ebff;
-  color-scheme:light;color:var(--fg);text-align:left;font-size:14px;line-height:1.4;letter-spacing:0;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));width:100%;box-sizing:border-box;overflow-x:hidden}
+  color-scheme:light;color:var(--fg);text-align:left;font-size:14px;line-height:1.4;letter-spacing:0;padding:12px 16px calc(72px + env(safe-area-inset-bottom,0px));width:100%;box-sizing:border-box;overflow-x:hidden}
 .ivo *{box-sizing:border-box;letter-spacing:inherit}
 .ivo button,.ivo select,.ivo textarea,.ivo input{font-family:inherit}
 .ivo .t{margin:0 0 10px;font-size:18px;font-weight:700;line-height:1.3}
@@ -62,7 +62,6 @@ const CSS = `
 .ivo .btn.pri{background:var(--acc);border-color:var(--acc);color:#fff}
 .ivo .btn:disabled{opacity:.45;cursor:not-allowed}
 .ivo .full{width:100%;padding:12px}
-.ivo .back{border:0;background:none;color:var(--acc);padding:2px 0 8px;font-weight:600;font-size:13.5px;cursor:pointer}
 .ivo .ko{display:block;width:100%;text-align:left;font-size:13.5px;font-weight:600;border:2px solid transparent;border-radius:9px;padding:10px 12px;margin-bottom:6px;cursor:pointer}
 .ivo .ko[aria-pressed="true"]{border-color:currentColor}
 .ivo .ko[aria-pressed="true"]::before{content:"\\2713  "}
@@ -83,9 +82,10 @@ const CSS = `
 .ivo .thumbs a span{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:700;color:#b91c1c;background:#fde0e0}
 .ivo .lbl{font-weight:700;font-size:13px;margin-bottom:4px}
 .ivo .empty{padding:20px;text-align:center;color:var(--mute);font-size:13px}
-/* tab atas (30 Okt 2026, permintaan user): satu baris di bawah header aplikasi, sama rata, bisa digeser bila sempit, menempel
-   saat digulir (top = tinggi header [data-header-app] diukur ResizeObserver). Di LUAR .ivo: overflow-x .ivo mematikan sticky. */
-.ivo-tab{position:sticky;top:var(--ivo-top,0px);z-index:95;display:flex;overflow-x:auto;scrollbar-width:none;background:#f1f5f9;border-bottom:1px solid #e2e8f0;padding:0 12px;color-scheme:light}
+/* tab atas (30 Okt 2026, permintaan user): satu baris di bawah tombol Kembali, sama rata, bisa digeser bila sempit, HANYA di
+   halaman daftar. SENGAJA TIDAK sticky (revisi 30 Okt): halaman menu digulir oleh div overflowY:auto di App.tsx (bukan window),
+   sticky dgn top = tinggi header dulu mendorong bar 169px ke bawah & menimpa form (bug HP user). */
+.ivo-tab{display:flex;overflow-x:auto;scrollbar-width:none;background:#f1f5f9;border-bottom:1px solid #e2e8f0;padding:0 12px;color-scheme:light}
 .ivo-tab::-webkit-scrollbar{display:none}
 .ivo-tab button{flex:1 0 86px;border:0;border-bottom:3px solid transparent;background:none;padding:11px 6px 8px;font-size:13px;font-weight:700;color:#64748b;display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;cursor:pointer;font-family:inherit;letter-spacing:0}
 .ivo-tab button[aria-selected="true"]{color:var(--aksen);border-bottom-color:var(--aksen)}
@@ -127,14 +127,18 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   const [pesan, setPesan] = useState('')
   const [tertunda, setTertunda] = useState<Set<number>>(new Set())   // jadwal yang "Selesai"-nya masih di antrean HP
   const aksen: string = DIVISI_CONFIG[user.divisi]?.color || '#1d4ed8'   // warna divisi = warna header aplikasi
-  const [tinggiHeader, setTinggiHeader] = useState(0)
-  // tab menempel tepat di bawah header aplikasi (sticky, tingginya berubah bila baris badge turun) - tanpa header: top 0
+  const [formLapor, setFormLapor] = useState(false)   // sub-halaman form Lapor kerusakan
+  // pindah halaman/sub-halaman -> area gulir kembali ke atas (yang menggulir = div overflowY:auto di App, bukan window)
+  const atasRef = useRef<HTMLDivElement>(null)
+  const sudahMuncul = useRef(false)
   useEffect(() => {
-    const el = document.querySelector('[data-header-app]') as HTMLElement | null
-    if (!el || typeof ResizeObserver === 'undefined') return
-    const ro = new ResizeObserver(() => setTinggiHeader(el.offsetHeight)); ro.observe(el)
-    return () => ro.disconnect()
-  }, [])
+    if (!sudahMuncul.current) { sudahMuncul.current = true; return }
+    for (let el = atasRef.current?.parentElement; el; el = el.parentElement) {
+      const oy = getComputedStyle(el).overflowY
+      if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) { el.scrollTop = 0; break }
+    }
+    window.scrollTo?.(0, 0)
+  }, [tab, barangId, kerjaId, formLapor])
 
   const muat = useCallback(async () => {
     try { setData(await muatInventarisDivisi(db, user.divisi)); setGalat('') }
@@ -152,9 +156,9 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   }), [muat])
   useEffect(() => {
     if (!registerBackHandler) return
-    registerBackHandler(() => { if (kerjaId) { setKerjaId(null); return true } if (barangId) { setBarangId(null); return true } return false })
+    registerBackHandler(() => { if (formLapor) { setFormLapor(false); setLapBarang(null); return true } if (kerjaId) { setKerjaId(null); return true } if (barangId) { setBarangId(null); return true } return false })
     return () => registerBackHandler(null)
-  }, [registerBackHandler, kerjaId, barangId])
+  }, [registerBackHandler, kerjaId, barangId, formLapor])
   useEffect(() => { if (!pesan) return; const t = setTimeout(() => setPesan(''), 6000); return () => clearTimeout(t) }, [pesan])
 
   const idx = useMemo(() => {
@@ -163,27 +167,31 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
     return { barang: new Map(data.barang.map(b => [b.id, b])), media, lokasi: new Map(data.lokasi.map(l => [l.kode, l.nama])) }
   }, [data])
   const mediaDari = (tujuan: string, ref: number, peran?: string) => (idx?.media.get(tujuan + ':' + ref) || []).filter(m => !peran || m.peran === peran)
-  const gantiTab = (t: Tab) => { setTab(t); setBarangId(null); setKerjaId(null); setQ(''); window.scrollTo?.(0, 0) }
+  const gantiTab = (t: Tab) => { setTab(t); setBarangId(null); setKerjaId(null); setFormLapor(false); setLapBarang(null); setQ('') }
 
   // badge tab: laporan aktif divisi & jadwal Terlambat+Segera (data yang sudah dimuat; tidak tampil bila 0)
   const badge: Record<Tab, number> = { inventaris: 0, riwayat: 0,
     laporan: data?.laporan.filter(laporanAktif).length || 0,
     maintenance: data?.jadwal.filter(j => j.status_jadwal === 'terlambat' || j.status_jadwal === 'segera').length || 0 }
-  const judul = tab === 'inventaris' ? (barangId ? 'Detail barang' : 'Inventaris divisi saya') : tab === 'laporan' ? 'Laporan kerusakan' : tab === 'maintenance' ? 'Maintenance' : 'Riwayat'
+  const diDaftar = !barangId && !kerjaId && !formLapor   // bar tab hanya di halaman daftar; sub-halaman cukup tombol Kembali aplikasi
+  const judul = tab === 'inventaris' ? (barangId ? 'Detail barang' : 'Inventaris divisi saya') : tab === 'laporan' ? (formLapor ? 'Lapor kerusakan' : 'Laporan kerusakan') : tab === 'maintenance' ? 'Maintenance' : 'Riwayat'
   let isi: any
   if (!data || !idx) isi = galat ? <div className="err">{galat} <button className="btn" onClick={muat}>Coba lagi</button></div> : <div className="empty">Memuat…</div>
   else if (!data.lokasi.length) isi = <div className="empty">Divisi ini belum punya lokasi inventaris.</div>
   else if (tab === 'inventaris') isi = barangId && idx.barang.get(barangId) ? detailBarang(idx.barang.get(barangId)!) : daftarBarang()
-  else if (tab === 'laporan') isi = tabLaporan()
+  else if (tab === 'laporan') isi = formLapor
+    ? <FormLaporan barang={data.barang} awal={lapBarang} user={user} onSelesai={async (m: string) => { setFormLapor(false); setLapBarang(null); setPesan(m); await muat() }} />
+    : tabLaporan()
   else if (tab === 'maintenance') isi = kerjaId && data.jadwal.find(j => j.id === kerjaId) ? kerjakan(data.jadwal.find(j => j.id === kerjaId)!) : daftarJadwal()
   else isi = tabRiwayat()
 
   return <>
     <style>{CSS}</style>
-    <div className="ivo-tab" role="tablist" style={{ ['--ivo-top' as any]: tinggiHeader + 'px', ['--aksen' as any]: aksen }}>
+    <div ref={atasRef} />
+    {diDaftar && <div className="ivo-tab" role="tablist" style={{ ['--aksen' as any]: aksen }}>
       {TABS.map(([t, l]) => <button key={t} role="tab" type="button" aria-selected={tab === t} onClick={() => gantiTab(t)}>
         {l}{badge[t] > 0 && <span className="n">{badge[t]}</span>}</button>)}
-    </div>
+    </div>}
     <div className="ivo">
       <h2 className="t">{judul}</h2>
       {pesan && <div className="toast" role="status">{pesan}</div>}
@@ -230,7 +238,6 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
     const jadwal = data!.jadwal.filter(j => j.barang_id === b.id)
     const ds = mediaDari('barang', b.id, 'datasheet')
     return <>
-      <button className="back" type="button" onClick={() => setBarangId(null)}>← Daftar inventaris</button>
       <div className="item">
         <div className="r"><div><div className="it" style={{ fontSize: 16 }}>{b.nama}</div><div className="mono mute">{b.nomor_inventaris || 'tanpa nomor'}{b.kode_lama ? ' · ' + b.kode_lama : ''}</div></div>{bdgKondisi(b.kondisi)}</div>
         <div className="mute">{idx!.lokasi.get(b.lokasi_kode) || b.lokasi_kode}{b.pengguna ? ' · ' + b.pengguna : ''}{b.merk_spesifikasi ? ' · ' + b.merk_spesifikasi : ''}</div>
@@ -243,7 +250,7 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
         <div className="mute">Terakhir diubah {b.diperbarui_pada ? fmtTanggal(b.diperbarui_pada) : '-'}{b.pelapor ? ' oleh ' + b.pelapor : ''}</div>
       </div>
       {jadwal.length > 0 && <><div className="sec"><span>Jadwal barang ini</span><em>{jadwal.length}</em></div>{jadwal.map(j => <Fragment key={j.id}>{kartuJadwal(j)}</Fragment>)}</>}
-      <div className="chips" style={{ marginTop: 6 }}><button type="button" onClick={() => { setLapBarang(b.id); gantiTab('laporan') }}>Lapor kerusakan</button></div>
+      <div className="chips" style={{ marginTop: 6 }}><button type="button" onClick={() => { setLapBarang(b.id); setTab('laporan'); setBarangId(null); setFormLapor(true) }}>Lapor kerusakan</button></div>
     </>
   }
 
@@ -270,7 +277,6 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
 
   function kerjakan(j: Jadwal) {
     return <>
-      <button className="back" type="button" onClick={() => setKerjaId(null)}>← Daftar tugas</button>
       <FormKerjakan j={j} b={idx!.barang.get(j.barang_id)} user={user} onSelesai={async (m: string) => { setKerjaId(null); setPesan(m); await muat() }} />
     </>
   }
@@ -278,7 +284,7 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   function tabLaporan() {
     const lap = [...data!.laporan].sort((a, z) => Number(laporanAktif(z)) - Number(laporanAktif(a)) || z.dibuat_pada.localeCompare(a.dibuat_pada))
     return <>
-      <FormLaporan barang={data!.barang} awal={lapBarang} user={user} onSelesai={async (m: string) => { setLapBarang(null); setPesan(m); await muat() }} />
+      <button className="btn pri full" type="button" onClick={() => { setLapBarang(null); setFormLapor(true) }}>+ Lapor kerusakan</button>
       <div className="sec"><span>Laporan divisi</span><em>{lap.length}</em></div>
       {!lap.length && <div className="empty">Belum ada laporan.</div>}
       {lap.map(l => <Fragment key={l.id}>{kartuLaporan(l)}</Fragment>)}
