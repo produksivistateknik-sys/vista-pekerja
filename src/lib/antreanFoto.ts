@@ -20,9 +20,9 @@ export type TujuanFoto =
   | { jenis: 'proyek_luar' | 'proyek_luar_entri' | 'mom_fat_poin'; id: number }   // proyek_luar_entri: multi-hari 25 Okt 2026
   // Inventaris & Maintenance (30 Okt 2026). inv_selesai: foto "Kerjakan" jadwal - tempel = RPC inv_selesai_jadwal dgn kunci
   // uuid yang sama utk semua foto (foto pertama yang sampai MENANDAI selesai, berikutnya ditempel ke penyelesaian itu).
-  // inv_media: foto laporan kerusakan yang tertunda (RPC inv_tambah_media). aktor = {pekerja_id, divisi} operator.
+  // inv_media: foto laporan kerusakan / foto barang baru dari operator yang tertunda (RPC inv_tambah_media). aktor = {pekerja_id, divisi} operator.
   | { jenis: 'inv_selesai'; id: number; kunci: string; catatan: string | null; aktor: { pekerja_id: number; divisi: string } }
-  | { jenis: 'inv_media'; id: number; tujuanInv: 'laporan' | 'laporan_update'; peran: 'sebelum' | 'update'; aktor: { pekerja_id: number; divisi: string } }
+  | { jenis: 'inv_media'; id: number; tujuanInv: 'laporan' | 'laporan_update' | 'barang'; peran: 'sebelum' | 'update' | 'foto'; aktor: { pekerja_id: number; divisi: string } }
 
 export type ItemAntreanFoto = {
   id: string

@@ -72,6 +72,23 @@ export async function kirimLaporan(db: any, user: any, b: Barang, masalah: strin
   return { laporan: res.laporan, ...ringkasUnggah(hasil, t) }
 }
 
+// Tambah barang oleh operator (30 Okt 2026, RPC inv_tambah_barang_operator): lokasi dikunci server dari divisi login,
+// nomor inventaris otomatis, barang langsung tampil (admin melihat label "Baru dari operator" sampai ditandai diperiksa).
+// kunci = uuid form: kirim ulang setelah sinyal putus = barang yang sama (tidak dobel, nomor tidak terbuang).
+// Foto opsional, pola kirimLaporan: barang tersimpan dulu, foto menyusul (sinyal putus -> antrean HP).
+export type IsiBarangBaru = { nama: string; merk_spesifikasi: string; nomor_seri: string; kondisi: string; detail_kondisi: string; lokasi_kode?: string }
+export async function tambahBarangOperator(db: any, user: any, isi: IsiBarangBaru, files: File[], kunci: string, onProgres?: (s: number, t: number) => void) {
+  const aktor = aktorOperator(user)
+  const barang: Barang & { dobel?: boolean } = await rpc(db, 'inv_tambah_barang_operator', { p_data: isi, p_kunci: kunci, p_aktor: aktor })
+  if (!files.length) return { barang, ...ringkasUnggah([]) }
+  const tujuan: TujuanFoto = { jenis: 'inv_media', id: barang.id, tujuanInv: 'barang', peran: 'foto', aktor }
+  const info = { label: `Barang baru ${barang.nama}`, operator: user.nama }
+  const hasil = await unggahBanyak(files, `inventaris/${barang.id}/foto`, { tujuan, ...info }, { onProgres })
+  const ok = hasil.filter(h => h.status === 'ok') as any[]
+  const t = ok.length ? await tempelAtauAntrekan(tujuan, ok.map(h => ({ foto: objekFoto(h.media, user.nama), file: h.file })), info) : undefined
+  return { barang, ...ringkasUnggah(hasil, t) }
+}
+
 // "Selesai" jadwal: wajib >=1 foto/video. Foto pertama yang sampai server menandai selesai (kunci sama), sisanya ditempel.
 // Sinyal putus -> semua foto + penandaan selesai menunggu di antrean HP (dikirim otomatis).
 export async function selesaikanJadwal(user: any, j: Jadwal, catatan: string, files: File[], onProgres?: (s: number, t: number) => void): Promise<HasilKirim> {
