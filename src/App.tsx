@@ -36,6 +36,7 @@ import { ProsesAktifView } from "./components/ProsesAktifView";
 const MomFatView = lazy(() => import("./components/MomFatView").then(m => ({ default: m.MomFatView })));
 import { AkunView } from "./components/AkunView";
 import { ProyekLuarView } from "./components/ProyekLuarView";
+import { InventarisOperatorView } from "./components/InventarisOperatorView";
 import { WoDigitalView } from "./components/WoDigitalView";
 import { ProduksiStokView } from "./components/ProduksiStokView";
 import { bacaSemuaPerPotongan } from "./lib/bacaSemua";
@@ -219,6 +220,8 @@ export default function App(){
     if(user.divisi==="nameplate")return[
       {key:"tugas",label:"Nameplate",icon:"tag"},
       {key:"kendala",label:"Kendala",icon:"alert-triangle"},
+      // Inventaris & Maintenance (30 Okt 2026) - pengganti scan QR mesin; barang lokasi divisi sendiri (InventarisOperatorView).
+      {key:"inventaris",label:"Inventaris & Maintenance",icon:"tool"},
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
       {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
       {key:"wodigital",label:"WO Digital",icon:"file-type-pdf"},
@@ -226,6 +229,7 @@ export default function App(){
     if(user.divisi==="qc")return[
       {key:"tugas",label:"QC",icon:"search"},
       {key:"kendala",label:"Kendala",icon:"alert-triangle"},
+      {key:"inventaris",label:"Inventaris & Maintenance",icon:"tool"},
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
       {key:"permintaan",label:"Permintaan",icon:"clipboard-text"},
       {key:"proyekluar",label:"Proyek Luar",icon:"building"},
@@ -252,6 +256,7 @@ export default function App(){
       {key:"riwayat",label:"Riwayat",icon:"history"},
       // Kendala (23 Okt 2026) - catat kendala per proyek > panel/Umum (TabKendala, sama dgn admin vista-teknik).
       {key:"kendala",label:"Kendala",icon:"alert-triangle"},
+      {key:"inventaris",label:"Inventaris & Maintenance",icon:"tool"},
       ...(bisaReviewPotong?[{key:"tambahan",label:"Tambahan",icon:"plus"}]:[]),
       ...(komponenPasangTugas?[{key:"komponen",label:"Komponen",icon:komponenPasangTugas.seksi==="wiring_control"?"plug":"tool"}]:[]),
       ...(arsipSeksi?[{key:"arsip",label:"Arsip",icon:"archive"}]:[]),
@@ -599,6 +604,7 @@ export default function App(){
                   :selectedMenu==="review"?(bisaReviewPainting?<ReviewPaintingView/>:<ReviewPotongView/>)
                   :selectedMenu==="tambahan"?<KomponenTambahanView user={user} registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="proyekluar"?<ProyekLuarView user={user}/>
+                  :selectedMenu==="inventaris"?<InventarisOperatorView user={user} registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="momfat"?<ErrorBoundary label="MOM FAT"><Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat...</div>}><MomFatView user={user} registerBackHandler={registerBackHandler}/></Suspense></ErrorBoundary>
                   :selectedMenu==="wodigital"?<WoDigitalView registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="produksistok"?<ProduksiStokView user={user} registerBackHandler={registerBackHandler}/>

@@ -18,6 +18,11 @@ export type TujuanFoto =
   | { jenis: 'qc'; id: number; kunci: string }
   | { jenis: 'komponen'; id: number; kunci: string; tahap?: string | null; keArsip?: boolean }
   | { jenis: 'proyek_luar' | 'proyek_luar_entri' | 'mom_fat_poin'; id: number }   // proyek_luar_entri: multi-hari 25 Okt 2026
+  // Inventaris & Maintenance (30 Okt 2026). inv_selesai: foto "Kerjakan" jadwal - tempel = RPC inv_selesai_jadwal dgn kunci
+  // uuid yang sama utk semua foto (foto pertama yang sampai MENANDAI selesai, berikutnya ditempel ke penyelesaian itu).
+  // inv_media: foto laporan kerusakan yang tertunda (RPC inv_tambah_media). aktor = {pekerja_id, divisi} operator.
+  | { jenis: 'inv_selesai'; id: number; kunci: string; catatan: string | null; aktor: { pekerja_id: number; divisi: string } }
+  | { jenis: 'inv_media'; id: number; tujuanInv: 'laporan' | 'laporan_update'; peran: 'sebelum' | 'update'; aktor: { pekerja_id: number; divisi: string } }
 
 export type ItemAntreanFoto = {
   id: string
@@ -86,6 +91,7 @@ export function dengarJumlahAntreanFoto(fn: (n: number) => void): () => void {
 const objekFoto = (url: string, foto: Record<string, any>) => ({ url, ...foto })
 export async function tempelFotoDokumentasi(tujuan: TujuanFoto, fotos: Record<string, any>[]): Promise<{ error: any; ditemukan: boolean; tabel?: string }> {
   if (!fotos.length) return { error: null, ditemukan: true }
+  if (tujuan.jenis === 'inv_selesai' || tujuan.jenis === 'inv_media') return tempelInventaris(tujuan, fotos)
   const t: any = tujuan
   const { data, error } = await withRetry(() => supabase.rpc('tambah_foto_dokumentasi' as any, {
     p_tujuan: t.jenis, p_id: t.id, p_kunci: t.kunci ?? null, p_foto: fotos,
@@ -101,6 +107,26 @@ export async function tempelFotoDokumentasi(tujuan: TujuanFoto, fotos: Record<st
 // RPC menolak semuanya (maks 20 per panggilan). Potongan 20 berlaku utk RPC lama (maks 20) MAUPUN baru (maks 80).
 // Potongan yang gagal karena SINYAL -> foto potongan itu & sesudahnya masuk antrean (url sudah ada, tidak diunggah ulang);
 // ditolak SERVER -> berhenti, `error` + yang sudah tertempel dikembalikan.
+// Inventaris: media {url,mime,thumb} ke RPC inv_* (lihat TujuanFoto). Galat server dikembalikan apa adanya (antrean membuang
+// setelah MAKS_DITOLAK_SERVER), galat koneksi -> diantrekan ulang oleh pemanggil.
+/* eslint-disable @typescript-eslint/no-explicit-any -- payload RPC inv_* tanpa tipe hasil generate */
+async function tempelInventaris(t: Extract<TujuanFoto, { jenis: 'inv_selesai' | 'inv_media' }>, fotos: Record<string, any>[]): Promise<{ error: any; ditemukan: boolean }> {
+  const media = fotos.map(f => ({ url: f.url, mime: f.mime || null, thumb: f.thumb || null }))
+  const rpc = (nama: string, arg: Record<string, any>) => withRetry(() => supabase.rpc(nama as any, arg as any) as any) as Promise<any>
+  if (t.jenis === 'inv_media') {
+    const { data, error } = await rpc('inv_tambah_media', { p_tujuan: t.tujuanInv, p_ref_id: t.id, p_peran: t.peran, p_media: media, p_aktor: t.aktor })
+    return error ? { error, ditemukan: true } : { error: null, ditemukan: data?.ditemukan !== false }
+  }
+  const { data, error } = await rpc('inv_selesai_jadwal', { p_jadwal_id: t.id, p_catatan: t.catatan, p_media: media, p_kunci: t.kunci, p_aktor: t.aktor })
+  if (error) return { error, ditemukan: true }
+  if (data?.dobel && data?.selesai?.id) {   // penyelesaian sudah tercatat (kunci sama) -> foto ini ditempel ke sana
+    const r = await rpc('inv_tambah_media', { p_tujuan: 'jadwal_selesai', p_ref_id: data.selesai.id, p_peran: 'selesai', p_media: media, p_aktor: t.aktor })
+    if (r.error) return { error: r.error, ditemukan: true }
+  }
+  return { error: null, ditemukan: true }
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
 export const MAKS_FOTO_PER_PANGGILAN = 20
 export async function tempelAtauAntrekan(tujuan: TujuanFoto, fotos: { foto: Record<string, any>; file: Blob; key?: string }[], info: { label: string; operator: string }):
   Promise<{ tertempel: Record<string, any>[]; diantrekan: Record<string, any>[]; error: any; ditemukan: boolean; gagal: Record<string, any>[] }> {
