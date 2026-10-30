@@ -1,6 +1,6 @@
 // INVENTARIS & MAINTENANCE - MENU OPERATOR HP (T3, 30 Okt 2026). Pengganti scan QR /mesin (halaman lama tetap ada sampai
 // T4). Acuan tampilan: pratinjau "maintenance-mesin.html" yang disepakati user - navigasi Inventaris/Laporan/Maintenance/
-// Riwayat (menempel di atas bottom nav aplikasi), kartu ringkasan (jumlah, bar proporsi kondisi, tombol filter Perlu
+// Riwayat (tab di atas di bawah header aplikasi - revisi 30 Okt: dulu nav bawah kedua di atas nav utama), kartu ringkasan (jumlah, bar proporsi kondisi, tombol filter Perlu
 // perhatian/Baik/Belum dinilai), "Perlu perhatian" di atas lalu kotak 2 kolom, detail barang (ubah kondisi sendiri, datasheet,
 // jadwal, Lapor kerusakan), Maintenance "Kerjakan" -> wajib foto/video sebelum Selesai aktif. Hanya barang lokasi divisi
 // sendiri. Data & aksi: lib/inventarisOperator.ts; aturan tampilan: lib/inventarisAturan.ts (identik dgn admin).
@@ -14,17 +14,18 @@ import { bacaAntreanFoto, dengarJumlahAntreanFoto } from '../lib/antreanFoto'
 import { KONDISI, infoKondisi, STATUS_JADWAL, STATUS_LAPORAN, labelFrekuensi, fmtTanggal, fmtWaktu, teksSisaHari, laporanAktif, isVideo, isPdf,
   type Barang, type Jadwal, type Laporan, type Media } from '../lib/inventarisAturan'
 import { muatInventarisDivisi, setKondisiOperator, kirimLaporan, selesaikanJadwal, RIWAYAT_HARI, buatKunci, type DataDivisi, type HasilKirim } from '../lib/inventarisOperator'
+import { DIVISI_CONFIG } from '../lib/panelTypes'
 import { MediaPickerSheet } from './ui/MediaPickerSheet'
 import { ThumbMedia } from './ui/ThumbMedia'
 
 const db: any = supabase
 type Tab = 'inventaris' | 'laporan' | 'maintenance' | 'riwayat'
-const TABS: [Tab, string, string][] = [['inventaris', 'Inventaris', 'box'], ['laporan', 'Laporan', 'alert-triangle'], ['maintenance', 'Maintenance', 'tool'], ['riwayat', 'Riwayat', 'history']]
+const TABS: [Tab, string][] = [['inventaris', 'Inventaris'], ['laporan', 'Laporan'], ['maintenance', 'Maintenance'], ['riwayat', 'Riwayat']]
 const PILIHAN_OPERATOR = ['baik', 'tidak_maksimal', 'perlu_maintenance']
 
 const CSS = `
 .ivo{--card:#fff;--fg:#16202e;--mute:#5d6b7e;--line:#dfe4ec;--bg:#f3f5f8;--acc:#1d4ed8;--acc-bg:#e3ebff;
-  color-scheme:light;color:var(--fg);text-align:left;font-size:14px;line-height:1.4;letter-spacing:0;padding:12px 16px 24px;width:100%;overflow-x:hidden}
+  color-scheme:light;color:var(--fg);text-align:left;font-size:14px;line-height:1.4;letter-spacing:0;padding:12px 16px calc(16px + env(safe-area-inset-bottom,0px));width:100%;box-sizing:border-box;overflow-x:hidden}
 .ivo *{box-sizing:border-box;letter-spacing:inherit}
 .ivo button,.ivo select,.ivo textarea,.ivo input{font-family:inherit}
 .ivo .t{margin:0 0 10px;font-size:18px;font-weight:700;line-height:1.3}
@@ -82,10 +83,13 @@ const CSS = `
 .ivo .thumbs a span{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:700;color:#b91c1c;background:#fde0e0}
 .ivo .lbl{font-weight:700;font-size:13px;margin-bottom:4px}
 .ivo .empty{padding:20px;text-align:center;color:var(--mute);font-size:13px}
-.ivo-nav{position:sticky;bottom:calc(58px + env(safe-area-inset-bottom,0px));z-index:90;display:flex;background:#fff;border-top:1px solid #e5e9f0;box-shadow:0 -3px 10px #0000000d;margin-top:8px}
-.ivo-nav button{flex:1;border:0;background:none;padding:9px 2px 8px;font-size:11px;font-weight:700;color:#94a3b8;display:flex;flex-direction:column;align-items:center;gap:2px;cursor:pointer;font-family:inherit}
-.ivo-nav button i{font-size:18px}
-.ivo-nav button[aria-selected="true"]{color:#1d4ed8;box-shadow:inset 0 2px 0 #1d4ed8}
+/* tab atas (30 Okt 2026, permintaan user): satu baris di bawah header aplikasi, sama rata, bisa digeser bila sempit, menempel
+   saat digulir (top = tinggi header [data-header-app] diukur ResizeObserver). Di LUAR .ivo: overflow-x .ivo mematikan sticky. */
+.ivo-tab{position:sticky;top:var(--ivo-top,0px);z-index:95;display:flex;overflow-x:auto;scrollbar-width:none;background:#f1f5f9;border-bottom:1px solid #e2e8f0;padding:0 12px;color-scheme:light}
+.ivo-tab::-webkit-scrollbar{display:none}
+.ivo-tab button{flex:1 0 86px;border:0;border-bottom:3px solid transparent;background:none;padding:11px 6px 8px;font-size:13px;font-weight:700;color:#64748b;display:flex;align-items:center;justify-content:center;gap:6px;white-space:nowrap;cursor:pointer;font-family:inherit;letter-spacing:0}
+.ivo-tab button[aria-selected="true"]{color:var(--aksen);border-bottom-color:var(--aksen)}
+.ivo-tab .n{min-width:18px;height:18px;line-height:18px;border-radius:9px;background:#dc2626;color:#fff;font-size:10.5px;font-weight:800;padding:0 5px;text-align:center}
 `
 
 const bdg = (warna: string, latar: string, label: string) => <span className="bdg" style={{ color: warna, background: latar }}>{label}</span>
@@ -122,6 +126,15 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   const [q, setQ] = useState('')
   const [pesan, setPesan] = useState('')
   const [tertunda, setTertunda] = useState<Set<number>>(new Set())   // jadwal yang "Selesai"-nya masih di antrean HP
+  const aksen: string = DIVISI_CONFIG[user.divisi]?.color || '#1d4ed8'   // warna divisi = warna header aplikasi
+  const [tinggiHeader, setTinggiHeader] = useState(0)
+  // tab menempel tepat di bawah header aplikasi (sticky, tingginya berubah bila baris badge turun) - tanpa header: top 0
+  useEffect(() => {
+    const el = document.querySelector('[data-header-app]') as HTMLElement | null
+    if (!el || typeof ResizeObserver === 'undefined') return
+    const ro = new ResizeObserver(() => setTinggiHeader(el.offsetHeight)); ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
 
   const muat = useCallback(async () => {
     try { setData(await muatInventarisDivisi(db, user.divisi)); setGalat('') }
@@ -152,6 +165,10 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   const mediaDari = (tujuan: string, ref: number, peran?: string) => (idx?.media.get(tujuan + ':' + ref) || []).filter(m => !peran || m.peran === peran)
   const gantiTab = (t: Tab) => { setTab(t); setBarangId(null); setKerjaId(null); setQ(''); window.scrollTo?.(0, 0) }
 
+  // badge tab: laporan aktif divisi & jadwal Terlambat+Segera (data yang sudah dimuat; tidak tampil bila 0)
+  const badge: Record<Tab, number> = { inventaris: 0, riwayat: 0,
+    laporan: data?.laporan.filter(laporanAktif).length || 0,
+    maintenance: data?.jadwal.filter(j => j.status_jadwal === 'terlambat' || j.status_jadwal === 'segera').length || 0 }
   const judul = tab === 'inventaris' ? (barangId ? 'Detail barang' : 'Inventaris divisi saya') : tab === 'laporan' ? 'Laporan kerusakan' : tab === 'maintenance' ? 'Maintenance' : 'Riwayat'
   let isi: any
   if (!data || !idx) isi = galat ? <div className="err">{galat} <button className="btn" onClick={muat}>Coba lagi</button></div> : <div className="empty">Memuat…</div>
@@ -163,13 +180,16 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
 
   return <>
     <style>{CSS}</style>
+    <div className="ivo-tab" role="tablist" style={{ ['--ivo-top' as any]: tinggiHeader + 'px', ['--aksen' as any]: aksen }}>
+      {TABS.map(([t, l]) => <button key={t} role="tab" type="button" aria-selected={tab === t} onClick={() => gantiTab(t)}>
+        {l}{badge[t] > 0 && <span className="n">{badge[t]}</span>}</button>)}
+    </div>
     <div className="ivo">
       <h2 className="t">{judul}</h2>
       {pesan && <div className="toast" role="status">{pesan}</div>}
       {data && galat && <div className="err">{galat}</div>}
       {isi}
     </div>
-    <nav className="ivo-nav" role="tablist">{TABS.map(([t, l, i]) => <button key={t} role="tab" type="button" aria-selected={tab === t} onClick={() => gantiTab(t)}><i className={'ti ti-' + i} />{l}</button>)}</nav>
   </>
 
   // ── bagian = fungsi render biasa (dipanggil, BUKAN <Komponen/>): komponen di dalam komponen dibuat ulang tiap render
