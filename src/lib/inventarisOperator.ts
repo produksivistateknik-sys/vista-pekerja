@@ -5,7 +5,7 @@
 // antrean HP (lib/antreanFoto, tujuan inv_selesai / inv_media): sinyal putus -> tersimpan di HP & terkirim otomatis.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { bacaSemuaHalaman, bacaSemuaPerPotongan } from './bacaSemua'
-import { unggahBanyak } from './siapkanMedia'
+import { unggahBanyak, unggahMediaKeR2 } from './siapkanMedia'
 import { tempelAtauAntrekan, type TujuanFoto } from './antreanFoto'
 import type { Lokasi, Barang, Jadwal, Selesai, Laporan, UpdateLaporan, Media } from './inventarisAturan'
 
@@ -87,6 +87,35 @@ export async function tambahBarangOperator(db: any, user: any, isi: IsiBarangBar
   const ok = hasil.filter(h => h.status === 'ok') as any[]
   const t = ok.length ? await tempelAtauAntrekan(tujuan, ok.map(h => ({ foto: objekFoto(h.media, user.nama), file: h.file })), info) : undefined
   return { barang, ...ringkasUnggah(hasil, t) }
+}
+
+// Laporan kerusakan oleh operator (30 Okt 2026, migrasi 20261030050000): ubah status / tambah update / tutup.
+// Foto diunggah ke R2 DULU lalu dikirim bersama perintahnya (keputusan user: butuh sinyal, tanpa antrean HP) - gagal =
+// belum ada yang berubah di laporan; file yang sudah terunggah tidak diunggah ulang saat dicoba lagi (cache unggahMediaKeR2).
+// Menutup: wajib >=1 foto/video sesudah + kondisi setelah perbaikan (server menerapkannya bila tak ada laporan aktif lain).
+async function unggahLangsung(files: File[], prefix: string, onProgres?: (s: number, t: number) => void) {
+  const hasil: { url: string; mime: string; thumb: string | null }[] = []
+  for (const f of files) { const r = await unggahMediaKeR2(f, prefix); hasil.push({ url: r.url, mime: r.mime, thumb: r.thumb || null }); onProgres?.(hasil.length, files.length) }
+  return hasil
+}
+export type IsiLaporanOperator = { status: Laporan['status']; catatan: string; perbaikan: string; kondisi: string; files: File[] }
+export async function simpanLaporanOperator(db: any, user: any, l: Laporan, a: IsiLaporanOperator, onProgres?: (s: number, t: number) => void) {
+  const aktor = aktorOperator(user), catatan = a.catatan.trim() || null
+  const ubahStatus = (status: string, media: any[] | null, extra: Record<string, any> = {}) => rpc(db, 'inv_ubah_status_laporan', {
+    p_laporan_id: l.id, p_status: status, p_catatan: catatan, p_perbaikan: a.perbaikan.trim() || null, p_teknisi: null, p_media_sesudah: media, p_aktor: aktor, ...extra })
+  if (a.status === 'closed') {
+    if (!a.files.length) throw new Error('Tambahkan minimal satu foto/video sesudah perbaikan.')
+    const media = await unggahLangsung(a.files, `inventaris/${l.barang_id}/laporan/${l.id}/sesudah`, onProgres)
+    return ubahStatus('closed', media, { p_kondisi_setelah: a.kondisi })
+  }
+  if (a.status === l.status && !catatan && !a.files.length) throw new Error('Tulis catatan atau tambahkan foto dulu.')
+  const media = a.files.length ? await unggahLangsung(a.files, `inventaris/${l.barang_id}/laporan/${l.id}/update`, onProgres) : []
+  if (a.status !== l.status) {
+    await ubahStatus(a.status, null)
+    if (media.length) await rpc(db, 'inv_tambah_update_laporan', { p_laporan_id: l.id, p_catatan: null, p_media: media, p_aktor: aktor })
+    return
+  }
+  return rpc(db, 'inv_tambah_update_laporan', { p_laporan_id: l.id, p_catatan: catatan, p_media: media.length ? media : null, p_aktor: aktor })
 }
 
 // "Selesai" jadwal: wajib >=1 foto/video. Foto pertama yang sampai server menandai selesai (kunci sama), sisanya ditempel.
