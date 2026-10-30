@@ -17,6 +17,7 @@ import { muatInventarisDivisi, setKondisiOperator, kirimLaporan, selesaikanJadwa
 import { DIVISI_CONFIG } from '../lib/panelTypes'
 import { MediaPickerSheet } from './ui/MediaPickerSheet'
 import { ThumbMedia } from './ui/ThumbMedia'
+import { FotoZoomViewerPekerja, type FotoViewerPekerja } from './FotoZoomViewerPekerja'
 
 const db: any = supabase
 type Tab = 'inventaris' | 'laporan' | 'maintenance' | 'riwayat'
@@ -81,9 +82,10 @@ const CSS = `
 .ivo .toast{background:#dcf5e5;color:#15803d;border-radius:10px;padding:10px 12px;font-weight:600;margin-bottom:10px}
 .ivo .err{background:#fde0e0;color:#b91c1c;border-radius:10px;padding:10px 12px;font-weight:600;margin-bottom:10px}
 .ivo .hint{color:#b91c1c;font-size:12.5px}
-.ivo .thumbs{display:flex;gap:6px;flex-wrap:wrap}
-.ivo .thumbs a{display:block;width:54px;height:54px;border-radius:8px;overflow:hidden;border:1px solid var(--line);position:relative}
-.ivo .thumbs a span{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:700;color:#b91c1c;background:#fde0e0}
+.ivo .thumbs{display:flex;gap:6px;flex-wrap:wrap;align-items:center}
+.ivo .thumbs .n{font-size:12px;color:var(--mute)}
+.ivo .thumbs button{padding:0;background:none;cursor:pointer;display:block;width:54px;height:54px;border-radius:8px;overflow:hidden;border:1px solid var(--line);position:relative}
+.ivo .thumbs button span{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;font-weight:700;color:#b91c1c;background:#fde0e0}
 .ivo .lbl{font-weight:700;font-size:13px;margin-bottom:4px}
 .ivo .empty{padding:20px;text-align:center;color:var(--mute);font-size:13px}
 /* tab atas (30 Okt 2026, permintaan user): satu baris di bawah tombol Kembali, sama rata, bisa digeser bila sempit, HANYA di
@@ -107,10 +109,15 @@ const teksHasil = (h: HasilKirim, aksi: string) => [
   h.gagal.length ? `Gagal: ${h.gagal.join('; ')}` : '',
 ].filter(Boolean).join(' ')
 
-function Thumbs({ media }: { media: Media[] }) {
+// Media dibuka DI DALAM aplikasi lewat FotoZoomViewerPekerja (sama dgn Proyek Luar/QC: geser, zoom, putar, video diputar
+// di tempat, tutup ✕ / ketuk area kosong / usap ke bawah / tombol Kembali; PDF = kartu berkas + "Buka File"). Dulu <a target=_blank>
+// -> di PWA standalone keluar ke browser. State penampil di InventarisOperatorView (agar tombol Kembali menutupnya dulu).
+type Lihat = (media: Media[], mulai: number, label: string) => void
+const keViewer = (m: Media): FotoViewerPekerja => ({ url: m.url, thumb: m.thumb || undefined, mime: m.mime || undefined, uploaded_at: m.dibuat_pada, uploaded_by: m.oleh || undefined, name: isPdf(m) ? m.url.split('/').pop() : undefined })
+function Thumbs({ media, label, lihat }: { media: Media[]; label: string; lihat: Lihat }) {
   if (!media.length) return null
-  return <div className="thumbs">{media.map(m => <a key={m.id} href={m.url} target="_blank" rel="noreferrer">
-    {isPdf(m) ? <span>PDF</span> : <ThumbMedia url={m.url} thumb={m.thumb} video={isVideo(m)} />}</a>)}</div>
+  return <div className="thumbs">{media.map((m, i) => <button key={m.id} type="button" onClick={() => lihat(media, i, label)}>
+    {isPdf(m) ? <span>PDF</span> : <ThumbMedia url={m.url} thumb={m.thumb} video={isVideo(m)} />}</button>)}<span className="n">{media.length} berkas</span></div>
 }
 function PilihFile({ files, setFiles, label }: { files: File[]; setFiles: (f: File[]) => void; label: string }) {
   return <>
@@ -133,6 +140,8 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   const aksen: string = DIVISI_CONFIG[user.divisi]?.color || '#1d4ed8'   // warna divisi = warna header aplikasi
   const [formLapor, setFormLapor] = useState(false)   // sub-halaman form Lapor kerusakan
   const [formTambah, setFormTambah] = useState(false) // sub-halaman form Tambah barang (tab Inventaris)
+  const [penampil, setPenampil] = useState<{ fotos: FotoViewerPekerja[]; mulai: number; label: string } | null>(null)
+  const lihat: Lihat = (media, mulai, label) => setPenampil({ fotos: media.map(keViewer), mulai, label: `${label} · ${media.length} berkas` })
   // pindah halaman/sub-halaman -> area gulir kembali ke atas (yang menggulir = div overflowY:auto di App, bukan window)
   const atasRef = useRef<HTMLDivElement>(null)
   const sudahMuncul = useRef(false)
@@ -161,9 +170,9 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   }), [muat])
   useEffect(() => {
     if (!registerBackHandler) return
-    registerBackHandler(() => { if (formTambah) { setFormTambah(false); return true } if (formLapor) { setFormLapor(false); setLapBarang(null); return true } if (kerjaId) { setKerjaId(null); return true } if (barangId) { setBarangId(null); return true } return false })
+    registerBackHandler(() => { if (penampil) { setPenampil(null); return true } if (formTambah) { setFormTambah(false); return true } if (formLapor) { setFormLapor(false); setLapBarang(null); return true } if (kerjaId) { setKerjaId(null); return true } if (barangId) { setBarangId(null); return true } return false })
     return () => registerBackHandler(null)
-  }, [registerBackHandler, kerjaId, barangId, formLapor, formTambah])
+  }, [registerBackHandler, kerjaId, barangId, formLapor, formTambah, penampil])
   useEffect(() => { if (!pesan) return; const t = setTimeout(() => setPesan(''), 6000); return () => clearTimeout(t) }, [pesan])
 
   const idx = useMemo(() => {
@@ -205,6 +214,7 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
       {data && galat && <div className="err">{galat}</div>}
       {isi}
     </div>
+    {penampil && <FotoZoomViewerPekerja fotos={penampil.fotos} startIndex={penampil.mulai} label={penampil.label} onClose={() => setPenampil(null)} />}
   </>
 
   // ── bagian = fungsi render biasa (dipanggil, BUKAN <Komponen/>): komponen di dalam komponen dibuat ulang tiap render
@@ -249,9 +259,9 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
       <div className="item">
         <div className="r"><div><div className="it" style={{ fontSize: 16 }}>{b.nama}</div><div className="mono mute">{b.nomor_inventaris || 'tanpa nomor'}{b.kode_lama ? ' · ' + b.kode_lama : ''}</div></div>{bdgKondisi(b.kondisi)}</div>
         <div className="mute">{idx!.lokasi.get(b.lokasi_kode) || b.lokasi_kode}{b.pengguna ? ' · ' + b.pengguna : ''}{b.merk_spesifikasi ? ' · ' + b.merk_spesifikasi : ''}</div>
-        <div className="mute">{ds.length ? ds.map(m => <a key={m.id} href={m.url} target="_blank" rel="noreferrer" style={{ marginRight: 10 }}>Datasheet PDF</a>) : 'Datasheet belum diunggah'}</div>
+        {ds.length ? <Thumbs media={ds} label="Datasheet" lihat={lihat} /> : <div className="mute">Datasheet belum diunggah</div>}
         {b.nomor_seri && <div className="mute">Nomor seri {b.nomor_seri}</div>}
-        {foto.length > 0 && <Thumbs media={foto} />}
+        {foto.length > 0 && <Thumbs media={foto} label={`Foto ${b.nama}`} lihat={lihat} />}
       </div>
       <div className="item">
         <div className="lbl">Kondisi barang saat ini</div>
@@ -308,9 +318,9 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
       <div className="r"><div className="it">{l.judul}</div>{bdg(st.warna, st.latar, st.label)}</div>
       <div className="mute">{b?.nama} · {fmtTanggal(l.dibuat_pada)} · {l.pelapor}</div>
       {l.masalah && l.masalah !== l.judul && <div className="mute" style={{ whiteSpace: 'pre-wrap' }}>{l.masalah}</div>}
-      <Thumbs media={[...mediaDari('laporan', l.id, 'sebelum'), ...mediaDari('laporan', l.id, 'lama')]} />
+      <Thumbs media={[...mediaDari('laporan', l.id, 'sebelum'), ...mediaDari('laporan', l.id, 'lama')]} label="Sebelum" lihat={lihat} />
       {upd.map(u => <div key={u.id} className="mute">↳ {fmtWaktu(u.waktu)} {u.oleh}{u.status_ke ? ` · ${STATUS_LAPORAN[u.status_ke as Laporan['status']]?.label || u.status_ke}` : ''}{u.catatan ? ': ' + u.catatan : ''}</div>)}
-      {l.status === 'closed' && <><div className="mute">Sesudah perbaikan{l.perbaikan ? ': ' + l.perbaikan : ''}</div><Thumbs media={mediaDari('laporan', l.id, 'sesudah')} /></>}
+      {l.status === 'closed' && <><div className="mute">Sesudah perbaikan{l.perbaikan ? ': ' + l.perbaikan : ''}</div><Thumbs media={mediaDari('laporan', l.id, 'sesudah')} label="Sesudah" lihat={lihat} /></>}
     </div>
   }
 
@@ -319,13 +329,14 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
       ...data!.selesai.map(s => ({ k: 's' + s.id, tgl: s.tanggal, jenis: 'Rutin', judul: data!.jadwal.find(j => j.id === s.jadwal_id)?.jenis || 'Maintenance rutin',
         ket: `${idx!.barang.get(s.barang_id)?.nama || ''} · oleh ${s.oleh}${s.tanpa_dokumentasi ? ' · tanpa dokumentasi' : ''}`, media: mediaDari('jadwal_selesai', s.id) })),
       ...data!.laporan.map(l => ({ k: 'l' + l.id, tgl: l.dibuat_pada.slice(0, 10), jenis: 'Kerusakan', judul: l.judul,
-        ket: `${idx!.barang.get(l.barang_id)?.nama || ''} · ${STATUS_LAPORAN[l.status].label}`, media: [] as Media[] })),
+        ket: `${idx!.barang.get(l.barang_id)?.nama || ''} · ${STATUS_LAPORAN[l.status].label}`,
+        media: [...mediaDari('laporan', l.id, 'sebelum'), ...mediaDari('laporan', l.id, 'lama'), ...mediaDari('laporan', l.id, 'sesudah')] })),
     ].sort((a, z) => z.tgl.localeCompare(a.tgl))
     return <>
       <div className="mute" style={{ marginBottom: 8 }}>Maintenance {RIWAYAT_HARI} hari terakhir & semua laporan divisi.</div>
       {!ev.length && <div className="empty">Belum ada riwayat.</div>}
       {ev.map(e => <div key={e.k} className="item"><div className="r"><div className="it">{e.judul}</div>{e.jenis === 'Rutin' ? bdg('#64748b', '#eef1f5', 'Rutin') : bdg('#6d28d9', '#ece3ff', 'Kerusakan')}</div>
-        <div className="mute">{fmtTanggal(e.tgl)} · {e.ket}</div><Thumbs media={e.media} /></div>)}
+        <div className="mute">{fmtTanggal(e.tgl)} · {e.ket}</div><Thumbs media={e.media} label={`${e.judul} ${fmtTanggal(e.tgl)}`} lihat={lihat} /></div>)}
     </>
   }
 }
