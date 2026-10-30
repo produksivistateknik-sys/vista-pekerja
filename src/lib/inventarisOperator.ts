@@ -16,6 +16,8 @@ export function aktorOperator(user: any): Aktor {
   if (!user?.id) throw new Error('Nama login tidak terdaftar di data pekerja - login ulang dengan memilih nama dari daftar')
   return { pekerja_id: Number(user.id), divisi: String(user.divisi) }
 }
+// uuid anti-dobel; cadangan utk Chrome HP lama tanpa crypto.randomUUID (pola buatId di lib/antreanFoto)
+export const buatKunci = (): string => { try { return crypto.randomUUID() } catch { const h = Array.from({ length: 32 }, () => Math.floor(Math.random() * 16).toString(16)).join(''); return `${h.slice(0, 8)}-${h.slice(8, 12)}-4${h.slice(13, 16)}-a${h.slice(17, 20)}-${h.slice(20)}` } }
 export const RIWAYAT_HARI = 120   // riwayat di HP: 120 hari terakhir (data tetap utuh di server, admin melihat semua)
 
 export async function muatInventarisDivisi(db: any, divisi: string): Promise<DataDivisi> {
@@ -74,7 +76,7 @@ export async function kirimLaporan(db: any, user: any, b: Barang, masalah: strin
 // Sinyal putus -> semua foto + penandaan selesai menunggu di antrean HP (dikirim otomatis).
 export async function selesaikanJadwal(user: any, j: Jadwal, catatan: string, files: File[], onProgres?: (s: number, t: number) => void): Promise<HasilKirim> {
   if (!files.length) throw new Error('Tambahkan minimal satu foto atau video dulu.')
-  const tujuan: TujuanFoto = { jenis: 'inv_selesai', id: j.id, kunci: crypto.randomUUID(), catatan: catatan.trim() || null, aktor: aktorOperator(user) }
+  const tujuan: TujuanFoto = { jenis: 'inv_selesai', id: j.id, kunci: buatKunci(), catatan: catatan.trim() || null, aktor: aktorOperator(user) }
   const info = { label: `Maintenance ${j.jenis}`, operator: user.nama }
   const hasil = await unggahBanyak(files, `inventaris/${j.barang_id}/jadwal/${j.id}`, { tujuan, ...info }, { onProgres })
   const ok = hasil.filter(h => h.status === 'ok') as any[]

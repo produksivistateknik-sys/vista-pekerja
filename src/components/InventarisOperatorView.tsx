@@ -13,7 +13,7 @@ import { pasangPemulihRealtime } from '../lib/pemulihRealtime'
 import { bacaAntreanFoto, dengarJumlahAntreanFoto } from '../lib/antreanFoto'
 import { KONDISI, infoKondisi, STATUS_JADWAL, STATUS_LAPORAN, labelFrekuensi, fmtTanggal, fmtWaktu, teksSisaHari, laporanAktif, isVideo, isPdf,
   type Barang, type Jadwal, type Laporan, type Media } from '../lib/inventarisAturan'
-import { muatInventarisDivisi, setKondisiOperator, kirimLaporan, selesaikanJadwal, RIWAYAT_HARI, type DataDivisi, type HasilKirim } from '../lib/inventarisOperator'
+import { muatInventarisDivisi, setKondisiOperator, kirimLaporan, selesaikanJadwal, RIWAYAT_HARI, buatKunci, type DataDivisi, type HasilKirim } from '../lib/inventarisOperator'
 import { MediaPickerSheet } from './ui/MediaPickerSheet'
 import { ThumbMedia } from './ui/ThumbMedia'
 
@@ -350,7 +350,7 @@ function FormLaporan({ barang, awal, user, onSelesai }: { barang: Barang[]; awal
   const [pilih, setPilih] = useState<number | null>(awal)
   const [masalah, setMasalah] = useState('')
   const [files, setFiles] = useState<File[]>([])
-  const [kunci, setKunci] = useState(() => crypto.randomUUID())
+  const [kunci, setKunci] = useState(() => buatKunci())
   const [sibuk, setSibuk] = useState('')
   const [galat, setGalat] = useState('')
   const [cari, setCari] = useState('')
@@ -361,7 +361,7 @@ function FormLaporan({ barang, awal, user, onSelesai }: { barang: Barang[]; awal
     setSibuk('Mengirim…'); setGalat('')
     try {
       const h = await kirimLaporan(supabase, user, b, masalah.trim(), files, kunci, (s, t) => setSibuk(`Mengirim foto ${s}/${t}…`))
-      setMasalah(''); setFiles([]); setKunci(crypto.randomUUID()); setPilih(null)
+      setMasalah(''); setFiles([]); setKunci(buatKunci()); setPilih(null)
       await onSelesai(`Laporan terkirim ke admin (status Open, kondisi ${b.nama} menjadi Rusak).` + (files.length ? ' ' + teksHasil(h, 'Foto/video terkirim') : ''))
     } catch (e: any) { setGalat(pesanGalat(e) + ' - laporan BELUM terkirim, coba lagi.') } finally { setSibuk('') }
   }
