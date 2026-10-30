@@ -13,7 +13,7 @@ import { pasangPemulihRealtime } from '../lib/pemulihRealtime'
 import { bacaAntreanFoto, dengarJumlahAntreanFoto } from '../lib/antreanFoto'
 import { KONDISI, infoKondisi, STATUS_JADWAL, STATUS_LAPORAN, labelFrekuensi, fmtTanggal, fmtWaktu, teksSisaHari, laporanAktif, isVideo, isPdf,
   type Barang, type Jadwal, type Laporan, type Media } from '../lib/inventarisAturan'
-import { muatInventarisDivisi, setKondisiOperator, kirimLaporan, selesaikanJadwal, RIWAYAT_HARI, buatKunci, type DataDivisi, type HasilKirim } from '../lib/inventarisOperator'
+import { muatInventarisDivisi, setKondisiOperator, kirimLaporan, selesaikanJadwal, tambahBarangOperator, RIWAYAT_HARI, buatKunci, type DataDivisi, type HasilKirim } from '../lib/inventarisOperator'
 import { DIVISI_CONFIG } from '../lib/panelTypes'
 import { MediaPickerSheet } from './ui/MediaPickerSheet'
 import { ThumbMedia } from './ui/ThumbMedia'
@@ -40,6 +40,10 @@ const CSS = `
 .ivo .hst button{color:#fff;background:rgba(255,255,255,.14);border:1.5px solid transparent;border-radius:10px;padding:7px 4px;display:flex;flex-direction:column;align-items:center;gap:1px;cursor:pointer}
 .ivo .hst button b{font-size:17px}.ivo .hst button span{font-size:10.5px;opacity:.92}
 .ivo .hst button[aria-pressed="true"]{background:rgba(255,255,255,.3);border-color:#fff}
+.ivo .carib{display:flex;gap:8px;align-items:center;margin:10px 0 2px}
+.ivo .carib .cari{margin:0;flex:1;min-width:0}
+.ivo .carib .btn{height:38px;padding:0 14px;white-space:nowrap}
+.ivo input.isi{width:100%;height:40px;font-size:14px;color:var(--fg);background:var(--bg);border:1px solid var(--line);border-radius:9px;padding:0 10px}
 .ivo .cari{width:100%;margin:10px 0 2px;height:38px;border:1px solid var(--line);border-radius:10px;padding:0 12px;font-size:14px;background:var(--card);color:var(--fg)}
 .ivo .sec{display:flex;align-items:center;gap:6px;font-size:11.5px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;color:var(--mute);margin:14px 0 6px}
 .ivo .sec em{font-style:normal;background:#e8ecf2;border-radius:99px;padding:1px 8px;font-size:11px}
@@ -128,6 +132,7 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   const [tertunda, setTertunda] = useState<Set<number>>(new Set())   // jadwal yang "Selesai"-nya masih di antrean HP
   const aksen: string = DIVISI_CONFIG[user.divisi]?.color || '#1d4ed8'   // warna divisi = warna header aplikasi
   const [formLapor, setFormLapor] = useState(false)   // sub-halaman form Lapor kerusakan
+  const [formTambah, setFormTambah] = useState(false) // sub-halaman form Tambah barang (tab Inventaris)
   // pindah halaman/sub-halaman -> area gulir kembali ke atas (yang menggulir = div overflowY:auto di App, bukan window)
   const atasRef = useRef<HTMLDivElement>(null)
   const sudahMuncul = useRef(false)
@@ -138,7 +143,7 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
       if ((oy === 'auto' || oy === 'scroll') && el.scrollHeight > el.clientHeight) { el.scrollTop = 0; break }
     }
     window.scrollTo?.(0, 0)
-  }, [tab, barangId, kerjaId, formLapor])
+  }, [tab, barangId, kerjaId, formLapor, formTambah])
 
   const muat = useCallback(async () => {
     try { setData(await muatInventarisDivisi(db, user.divisi)); setGalat('') }
@@ -156,9 +161,9 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   }), [muat])
   useEffect(() => {
     if (!registerBackHandler) return
-    registerBackHandler(() => { if (formLapor) { setFormLapor(false); setLapBarang(null); return true } if (kerjaId) { setKerjaId(null); return true } if (barangId) { setBarangId(null); return true } return false })
+    registerBackHandler(() => { if (formTambah) { setFormTambah(false); return true } if (formLapor) { setFormLapor(false); setLapBarang(null); return true } if (kerjaId) { setKerjaId(null); return true } if (barangId) { setBarangId(null); return true } return false })
     return () => registerBackHandler(null)
-  }, [registerBackHandler, kerjaId, barangId, formLapor])
+  }, [registerBackHandler, kerjaId, barangId, formLapor, formTambah])
   useEffect(() => { if (!pesan) return; const t = setTimeout(() => setPesan(''), 6000); return () => clearTimeout(t) }, [pesan])
 
   const idx = useMemo(() => {
@@ -167,17 +172,19 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
     return { barang: new Map(data.barang.map(b => [b.id, b])), media, lokasi: new Map(data.lokasi.map(l => [l.kode, l.nama])) }
   }, [data])
   const mediaDari = (tujuan: string, ref: number, peran?: string) => (idx?.media.get(tujuan + ':' + ref) || []).filter(m => !peran || m.peran === peran)
-  const gantiTab = (t: Tab) => { setTab(t); setBarangId(null); setKerjaId(null); setFormLapor(false); setLapBarang(null); setQ('') }
+  const gantiTab = (t: Tab) => { setTab(t); setBarangId(null); setKerjaId(null); setFormLapor(false); setFormTambah(false); setLapBarang(null); setQ('') }
 
   // badge tab: laporan aktif divisi & jadwal Terlambat+Segera (data yang sudah dimuat; tidak tampil bila 0)
   const badge: Record<Tab, number> = { inventaris: 0, riwayat: 0,
     laporan: data?.laporan.filter(laporanAktif).length || 0,
     maintenance: data?.jadwal.filter(j => j.status_jadwal === 'terlambat' || j.status_jadwal === 'segera').length || 0 }
-  const diDaftar = !barangId && !kerjaId && !formLapor   // bar tab hanya di halaman daftar; sub-halaman cukup tombol Kembali aplikasi
-  const judul = tab === 'inventaris' ? (barangId ? 'Detail barang' : 'Inventaris divisi saya') : tab === 'laporan' ? (formLapor ? 'Lapor kerusakan' : 'Laporan kerusakan') : tab === 'maintenance' ? 'Maintenance' : 'Riwayat'
+  const diDaftar = !barangId && !kerjaId && !formLapor && !formTambah   // bar tab hanya di halaman daftar; sub-halaman cukup tombol Kembali aplikasi
+  const judul = tab === 'inventaris' ? (formTambah ? 'Tambah barang' : barangId ? 'Detail barang' : 'Inventaris divisi saya') : tab === 'laporan' ? (formLapor ? 'Lapor kerusakan' : 'Laporan kerusakan') : tab === 'maintenance' ? 'Maintenance' : 'Riwayat'
   let isi: any
   if (!data || !idx) isi = galat ? <div className="err">{galat} <button className="btn" onClick={muat}>Coba lagi</button></div> : <div className="empty">Memuat…</div>
   else if (!data.lokasi.length) isi = <div className="empty">Divisi ini belum punya lokasi inventaris.</div>
+  else if (tab === 'inventaris' && formTambah) isi = <FormTambahBarang lokasi={data.lokasi} user={user}
+    onSelesai={async (m: string, id: number) => { setFormTambah(false); setPesan(m); await muat(); setBarangId(id) }} />
   else if (tab === 'inventaris') isi = barangId && idx.barang.get(barangId) ? detailBarang(idx.barang.get(barangId)!) : daftarBarang()
   else if (tab === 'laporan') isi = formLapor
     ? <FormLaporan barang={data.barang} awal={lapBarang} user={user} onSelesai={async (m: string) => { setFormLapor(false); setLapBarang(null); setPesan(m); await muat() }} />
@@ -227,7 +234,8 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
         <div className="hst">{([['att', 'Perlu perhatian', g.att.length], ['ok', 'Baik', g.ok.length], ['none', 'Belum dinilai', g.none.length]] as const).map(([k, l, n]) =>
           <button key={k} type="button" aria-pressed={fil === k} onClick={() => setFil(fil === k ? 'all' : k)}><b>{n}</b><span>{l}</span></button>)}</div>
       </div>
-      <input className="cari" type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Cari barang atau nomor…" />
+      <div className="carib"><input className="cari" type="text" value={q} onChange={e => setQ(e.target.value)} placeholder="Cari barang atau nomor…" />
+        <button className="btn pri" type="button" onClick={() => setFormTambah(true)}>+ Tambah</button></div>
       {sec('Perlu perhatian', g.att, 'att')}{sec('Berfungsi baik', g.ok, 'ok')}{sec('Belum dinilai', g.none, 'none')}
       {!bs.filter(cocok).length && <div className="empty">Tidak ada barang yang cocok.</div>}
     </>
@@ -236,12 +244,14 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   function detailBarang(b: Barang) {
     const lapAktif = data!.laporan.filter(l => l.barang_id === b.id && laporanAktif(l))
     const jadwal = data!.jadwal.filter(j => j.barang_id === b.id)
-    const ds = mediaDari('barang', b.id, 'datasheet')
+    const ds = mediaDari('barang', b.id, 'datasheet'), foto = mediaDari('barang', b.id, 'foto')
     return <>
       <div className="item">
         <div className="r"><div><div className="it" style={{ fontSize: 16 }}>{b.nama}</div><div className="mono mute">{b.nomor_inventaris || 'tanpa nomor'}{b.kode_lama ? ' · ' + b.kode_lama : ''}</div></div>{bdgKondisi(b.kondisi)}</div>
         <div className="mute">{idx!.lokasi.get(b.lokasi_kode) || b.lokasi_kode}{b.pengguna ? ' · ' + b.pengguna : ''}{b.merk_spesifikasi ? ' · ' + b.merk_spesifikasi : ''}</div>
         <div className="mute">{ds.length ? ds.map(m => <a key={m.id} href={m.url} target="_blank" rel="noreferrer" style={{ marginRight: 10 }}>Datasheet PDF</a>) : 'Datasheet belum diunggah'}</div>
+        {b.nomor_seri && <div className="mute">Nomor seri {b.nomor_seri}</div>}
+        {foto.length > 0 && <Thumbs media={foto} />}
       </div>
       <div className="item">
         <div className="lbl">Kondisi barang saat ini</div>
@@ -321,6 +331,46 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
 }
 
 // ── form (komponen tingkat atas: isian tidak hilang saat data dimuat ulang realtime/polling) ──
+// Tambah barang (30 Okt 2026): lokasi = lokasi divisi (terkunci di server); >1 lokasi -> pilih. Nama wajib. Kondisi 3 pilihan
+// operator (bukan Rusak - rusak lewat Lapor kerusakan). kunci tetap sampai berhasil: ketuk ulang setelah galat = barang yang sama.
+function FormTambahBarang({ lokasi, user, onSelesai }: { lokasi: { kode: string; nama: string }[]; user: any; onSelesai: (pesan: string, id: number) => Promise<void> }) {
+  const [f, setF] = useState({ nama: '', merk_spesifikasi: '', nomor_seri: '', kondisi: 'baik', detail_kondisi: '' })
+  const [lok, setLok] = useState(lokasi.length === 1 ? lokasi[0].kode : '')
+  const [files, setFiles] = useState<File[]>([])
+  const [kunci] = useState(() => buatKunci())
+  const [sibuk, setSibuk] = useState('')
+  const [galat, setGalat] = useState('')
+  const set = (k: keyof typeof f) => (e: { target: { value: string } }) => setF({ ...f, [k]: e.target.value })
+  const kirim = async () => {
+    if (!f.nama.trim()) { setGalat('Nama barang wajib diisi.'); return }
+    if (!lok) { setGalat('Pilih lokasi barang.'); return }
+    setSibuk('Menyimpan…'); setGalat('')
+    try {
+      const h = await tambahBarangOperator(supabase, user, { ...f, nama: f.nama.trim(), lokasi_kode: lok }, files, kunci, (s, t) => setSibuk(`Mengirim foto ${s}/${t}…`))
+      await onSelesai(`${h.barang.nama} tersimpan${h.barang.nomor_inventaris ? ' dengan nomor ' + h.barang.nomor_inventaris : ''}. Admin akan memeriksa datanya.`
+        + (files.length ? ' ' + teksHasil(h, 'Foto/video terkirim') : ''), h.barang.id)
+    } catch (e: any) { setGalat(pesanGalat(e) + ' - barang BELUM tersimpan, coba lagi.') } finally { setSibuk('') }
+  }
+  return <div className="item" style={{ gap: 9 }}>
+    <div className="lbl">Lokasi</div>
+    {lokasi.length === 1 ? <div className="mute">{lokasi[0].nama} (lokasi divisi Anda) · nomor inventaris dibuat otomatis</div>
+      : <div className="chips">{lokasi.map(l => <button key={l.kode} type="button" aria-pressed={lok === l.kode} onClick={() => setLok(l.kode)}>{l.nama}</button>)}</div>}
+    <div className="lbl" style={{ marginTop: 4 }}>Nama barang *</div>
+    <input className="isi" type="text" value={f.nama} onChange={set('nama')} placeholder="Contoh: Bor tangan Makita" />
+    <div className="lbl" style={{ marginTop: 4 }}>Merk / spesifikasi</div>
+    <input className="isi" type="text" value={f.merk_spesifikasi} onChange={set('merk_spesifikasi')} placeholder="Opsional" />
+    <div className="lbl" style={{ marginTop: 4 }}>Nomor seri</div>
+    <input className="isi" type="text" value={f.nomor_seri} onChange={set('nomor_seri')} placeholder="Opsional" />
+    <div className="lbl" style={{ marginTop: 4 }}>Kondisi</div>
+    <div>{PILIHAN_OPERATOR.map(k => { const i = KONDISI.find(x => x.kode === k)!
+      return <button key={k} type="button" className="ko" aria-pressed={f.kondisi === k} style={{ color: i.warna, background: i.latar }} onClick={() => setF({ ...f, kondisi: k })}>{i.label}</button> })}</div>
+    <textarea rows={2} value={f.detail_kondisi} onChange={set('detail_kondisi')} placeholder="Detail kondisi (opsional)" />
+    <PilihFile files={files} setFiles={setFiles} label="+ Foto barang (opsional)" />
+    {galat && <div className="hint">{galat}</div>}
+    <button className="btn pri full" type="button" disabled={!!sibuk} onClick={kirim}>{sibuk || 'Simpan barang'}</button>
+  </div>
+}
+
 function FormKondisi({ b, user, onSelesai }: { b: Barang; user: any; onSelesai: (pesan: string) => Promise<void> }) {
   const [pilih, setPilih] = useState(PILIHAN_OPERATOR.includes(b.kondisi) ? b.kondisi : '')
   const [detail, setDetail] = useState(b.detail_kondisi || '')
