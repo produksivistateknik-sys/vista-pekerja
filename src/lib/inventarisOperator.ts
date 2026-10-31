@@ -10,6 +10,22 @@ import { tempelAtauAntrekan, type TujuanFoto } from './antreanFoto'
 import type { Lokasi, Barang, Jadwal, Selesai, Laporan, UpdateLaporan, Media } from './inventarisAturan'
 
 export type DataDivisi = { lokasi: Lokasi[]; barang: Barang[]; jadwal: Jadwal[]; selesai: Selesai[]; laporan: Laporan[]; update: UpdateLaporan[]; media: Media[] }
+// Keputusan admin atas tindakan operator divisi ini (31 Okt 2026, inv_notifikasi): hanya yang DIKEMBALIKAN/DITOLAK, 14 hari
+// terakhir - ditampilkan di HP agar operator tahu perubahannya dikoreksi admin & alasannya.
+export type DariAdmin = { id: number; jenis: string; teks: string; oleh: string; keputusan: 'dikembalikan' | 'ditolak'; catatan_keputusan: string | null
+  diputuskan_oleh: string | null; diputuskan_pada: string; barang_id: number }
+export const DARI_ADMIN_HARI = 14
+export async function muatDariAdmin(db: any, divisi: string): Promise<DariAdmin[]> {
+  const sejak = new Date(Date.now() - DARI_ADMIN_HARI * 86400000).toISOString()
+  const { data, error } = await db.from('inv_notifikasi').select('id,jenis,teks,oleh,keputusan,catatan_keputusan,diputuskan_oleh,diputuskan_pada,barang_id')
+    .eq('divisi', divisi).in('keputusan', ['dikembalikan', 'ditolak']).gte('diputuskan_pada', sejak).order('id', { ascending: false }).range(0, 199)
+  if (error) {
+    // tabel belum ada di server (rilis aplikasi mendahului SQL) -> fitur ini diam, inventaris lain tetap jalan
+    if (error.code === 'PGRST205' || error.code === '42P01') { console.warn('[inventaris operator] inv_notifikasi belum tersedia:', error.message); return [] }
+    throw error
+  }
+  return data || []
+}
 export type Aktor = { pekerja_id: number; divisi: string }
 
 export function aktorOperator(user: any): Aktor {
