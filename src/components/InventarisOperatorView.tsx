@@ -13,7 +13,7 @@ import { pasangPemulihRealtime } from '../lib/pemulihRealtime'
 import { bacaAntreanFoto, dengarJumlahAntreanFoto } from '../lib/antreanFoto'
 import { KONDISI, infoKondisi, STATUS_JADWAL, STATUS_LAPORAN, labelFrekuensi, fmtTanggal, fmtWaktu, teksSisaHari, laporanAktif, isVideo, isPdf,
   type Barang, type Jadwal, type Laporan, type Media, type UpdateLaporan } from '../lib/inventarisAturan'
-import { muatInventarisDivisi, setKondisiOperator, kirimLaporan, selesaikanJadwal, tambahBarangOperator, simpanLaporanOperator, RIWAYAT_HARI, buatKunci, type DataDivisi, type HasilKirim } from '../lib/inventarisOperator'
+import { muatInventarisDivisi, muatDariAdmin, DARI_ADMIN_HARI, type DariAdmin, setKondisiOperator, kirimLaporan, selesaikanJadwal, tambahBarangOperator, simpanLaporanOperator, RIWAYAT_HARI, buatKunci, type DataDivisi, type HasilKirim } from '../lib/inventarisOperator'
 import { DIVISI_CONFIG } from '../lib/panelTypes'
 import { MediaPickerSheet } from './ui/MediaPickerSheet'
 import { ThumbMedia } from './ui/ThumbMedia'
@@ -141,6 +141,11 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   const [formLapor, setFormLapor] = useState(false)   // sub-halaman form Lapor kerusakan
   const [formTambah, setFormTambah] = useState(false) // sub-halaman form Tambah barang (tab Inventaris)
   const [lapId, setLapId] = useState<number | null>(null)   // sub-halaman detail laporan kerusakan
+  // koreksi admin (dikembalikan/ditolak) - kartu "Dari admin"; yang sudah ditutup operator disimpan per HP (localStorage)
+  const [dariAdmin, setDariAdmin] = useState<DariAdmin[]>([])
+  const kunciTutup = 'vp_inv_dari_admin_tutup_' + user.divisi
+  const [tertutup, setTertutup] = useState<number[]>(() => { try { return JSON.parse(localStorage.getItem(kunciTutup) || '[]') } catch { return [] } })
+  const tutupDariAdmin = (id: number) => { const v = [...tertutup, id].slice(-300); setTertutup(v); try { localStorage.setItem(kunciTutup, JSON.stringify(v)) } catch { /* storage penuh/diblokir: hanya sesi ini */ } }
   const [penampil, setPenampil] = useState<{ fotos: FotoViewerPekerja[]; mulai: number; label: string } | null>(null)
   const lihat: Lihat = (media, mulai, label) => setPenampil({ fotos: media.map(keViewer), mulai, label: `${label} · ${media.length} berkas` })
   // pindah halaman/sub-halaman -> area gulir kembali ke atas (yang menggulir = div overflowY:auto di App, bukan window)
@@ -156,13 +161,13 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   }, [tab, barangId, kerjaId, formLapor, formTambah, lapId])
 
   const muat = useCallback(async () => {
-    try { setData(await muatInventarisDivisi(db, user.divisi)); setGalat('') }
+    try { const [d, a] = await Promise.all([muatInventarisDivisi(db, user.divisi), muatDariAdmin(db, user.divisi)]); setData(d); setDariAdmin(a); setGalat('') }
     catch (e: any) { console.error('[InventarisOperatorView] gagal memuat:', e); setGalat('Gagal memuat inventaris: ' + pesanGalat(e)) }
   }, [user.divisi])
   useEffect(() => { const t = setTimeout(muat, 0); return () => clearTimeout(t) }, [muat])
   useEffect(() => pasangPemulihRealtime(db, {
     nama: 'inventaris-operator-' + Math.random().toString(36).slice(2), label: 'Inventaris operator', jedaMs: 800, muat,
-    tabel: ['inv_barang', 'inv_jadwal', 'inv_jadwal_selesai', 'inv_laporan', 'inv_laporan_update', 'inv_media'],
+    tabel: ['inv_barang', 'inv_jadwal', 'inv_jadwal_selesai', 'inv_laporan', 'inv_laporan_update', 'inv_media', 'inv_notifikasi'],
   }), [muat])
   // antrean HP: tandai jadwal yang penyelesaiannya belum sampai server
   useEffect(() => dengarJumlahAntreanFoto(() => {
@@ -238,7 +243,15 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
             <b>{b.nama}</b><small>{b.nomor_inventaris || 'tanpa nomor'}</small></button>)}</div>}</div>
     }
     const tot = bs.length || 1
+    const koreksi = dariAdmin.filter(n => !tertutup.includes(n.id))
     return <>
+      {koreksi.length > 0 && <div className="item" style={{ borderColor: '#f59e0b', background: '#fffbeb' }}>
+        <div className="lbl">Dari admin ({koreksi.length}) · {DARI_ADMIN_HARI} hari terakhir</div>
+        {koreksi.map(n => <div key={n.id} className="r" style={{ borderTop: '1px solid #fde68a', paddingTop: 6 }}>
+          <div><b>{n.keputusan === 'ditolak' ? 'Ditolak' : 'Dikembalikan'}:</b> {n.teks}
+            <div className="mute">{n.diputuskan_oleh} · {fmtWaktu(n.diputuskan_pada)}{n.catatan_keputusan ? ' · "' + n.catatan_keputusan + '"' : ''}{n.oleh ? ' · tindakan ' + n.oleh : ''}</div></div>
+          <button className="btn" type="button" style={{ padding: '4px 10px' }} onClick={() => tutupDariAdmin(n.id)} aria-label="Tutup">✕</button></div>)}
+      </div>}
       <div className="hero">
         <div className="hl"><div><div className="hn">{bs.length}</div><div className="hs">barang di {namaLok}</div></div><div className="hb">Inventaris saya</div></div>
         <div className="seg" aria-hidden="true"><i style={{ flex: g.ok.length / tot, background: '#4ade80' }} /><i style={{ flex: g.att.length / tot, background: '#fbbf24' }} /><i style={{ flex: g.none.length / tot, background: 'rgba(255,255,255,.55)' }} /></div>
