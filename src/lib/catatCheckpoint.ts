@@ -6,21 +6,39 @@
 // percobaan ulang yang bentrok (23505) = baris SUDAH masuk -> dianggap sukses.
 // Aman sebelum migration dijalankan: kalau kolom kunci_simpan belum ada, dikirim ulang tanpa kolom itu (perilaku lama).
 // Perilaku error ke pemanggil SAMA dgn sebelumnya: mengembalikan {error} dari server, dan melempar kalau retry habis.
+// (4 Nov 2026, investigasi riwayat FS.15 BENDING panel 580 "tanpa catatan operator") Kegagalan akhir kini JUGA dilaporkan ke
+// log_error_app (laporError 'gagal_simpan') DI SINI - satu titik utk 9 pemanggil yang dulu hanya console.error (tidak terlihat
+// siapa pun). Pelaporan tidak mengubah hasil/lemparan ke pemanggil; laporError tidak pernah melempar & sudah menggabungkan
+// kejadian sama (sidik + kunciKelompok panel|kode|proses) serta dibatasi 30/menit per perangkat.
 import { supabase } from './supabase'
 import { withRetry } from './koneksi'
+import { laporError } from './laporError'
 
 const buatKunci = () => {
   try { return crypto.randomUUID() } catch { return 'k' + Date.now().toString(36) + Math.random().toString(36).slice(2, 14) }
 }
 const sebutKunci = (e: any) => /kunci_simpan/.test(String(e?.message || '') + String(e?.details || '') + String(e?.hint || ''))
 
+// konteks laporan: jumlah baris + 3 contoh (panel|kode|proses=persen) + tanggal; kunciKelompok = baris pertama
+const konteksLaporan = (rows: Record<string, unknown>[], tambahan: Record<string, unknown> = {}) => ({
+  aksi: 'catat progress_checkpoint_log', jumlahBaris: rows.length, tanggal: rows[0]?.tanggal,
+  contoh: rows.slice(0, 3).map(r => `${r.panel_id}|${r.kode_komponen}|${r.proses}=${r.checkpoint}`).join(', '),
+  kunciKelompok: rows.length ? `${rows[0].panel_id}|${rows[0].kode_komponen}|${rows[0].proses}` : '', ...tambahan,
+})
+
 export async function catatCheckpoint(entri: Record<string, any> | Record<string, any>[]): Promise<{ error: any }> {
   const baris = (Array.isArray(entri) ? entri : [entri]).map(e => ({ ...e, kunci_simpan: e.kunci_simpan ?? buatKunci() }))
   const kirim = (rows: any[]) => withRetry(() => supabase.from('progress_checkpoint_log').insert(rows)) as Promise<{ error: any }>
-  let { error } = await kirim(baris)
-  if (error && error.code === '23505' && sebutKunci(error)) return { error: null } // percobaan sebelumnya sudah masuk
-  if (error && (error.code === 'PGRST204' || error.code === '42703') && sebutKunci(error)) {
-    ({ error } = await kirim(baris.map(({ kunci_simpan, ...r }) => r)))
+  try {
+    let { error } = await kirim(baris)
+    if (error && error.code === '23505' && sebutKunci(error)) return { error: null } // percobaan sebelumnya sudah masuk
+    if (error && (error.code === 'PGRST204' || error.code === '42703') && sebutKunci(error)) {
+      ({ error } = await kirim(baris.map(({ kunci_simpan, ...r }) => r)))
+    }
+    if (error) laporError('gagal_simpan', error, konteksLaporan(baris))
+    return { error }
+  } catch (e) {
+    laporError('gagal_simpan', e, konteksLaporan(baris, { retryHabis: true }))
+    throw e
   }
-  return { error }
 }
