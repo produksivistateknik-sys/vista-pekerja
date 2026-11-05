@@ -6,6 +6,9 @@ import { useDateRollover } from "./lib/dateRollover";
 import { useVersionCheck, muatUlangBersih } from "./lib/versionCheck";
 import { DIVISI_CONFIG } from "./lib/panelTypes";
 import { BerandaOperator, HeaderOperator } from "./components/BerandaOperator";
+import { BannerPengingat, LaciPengingat } from "./components/PengingatWiring";
+import { usePengingatWiring } from "./lib/usePengingatWiring";
+import type { KartuPengingat } from "./lib/pengingatWiring";
 import { GCss } from "./lib/globalCss";
 import { KoneksiBadge } from "./components/ui/Primitives";
 import { AntreanBadge } from "./components/ui/AntreanBadge";
@@ -334,6 +337,13 @@ export default function App(){
   // penyatuan ini), BBMB baca permintaan_item per-item. Sekarang BBMB & BBMU PERSIS SAMA
   // strukturnya, jadi 1 logic item-based generik buat keduanya (gak ada split bbmuIds/bbmbIds lagi).
   const [notifCount,setNotifCount]=useState(0);
+  // Pengingat Wiring (6 Nov 2026): operator Wiring saja; lonceng divisi lain tetap langsung ke Permintaan.
+  const pengingat=usePengingatWiring(user);
+  const [laciPengingat,setLaciPengingat]=useState(false);
+  const {tandai:tandaiPengingat}=pengingat;
+  const bukaLaciPengingat=useCallback(()=>setLaciPengingat(true),[]);
+  const tutupLaciPengingat=useCallback(()=>setLaciPengingat(false),[]);
+  const bukaKartuPengingat=useCallback((k:KartuPengingat)=>{setLaciPengingat(false);tandaiPengingat(k.ids);bukaMenuPermintaan();},[tandaiPengingat,bukaMenuPermintaan]);
   // Target navigasi spesifik (7 Sep 2026) - dulu tap kartu notifikasi cuma pindah tab Permintaan
   // secara umum, gak bawa info permintaan mana yang jadi alasan notifikasi. Sekarang sekalian
   // simpan {id,jenis,tanggal} tiap permintaan yang "butuh perhatian" (bukan cuma count-nya) - jenis
@@ -471,7 +481,7 @@ export default function App(){
             udah lebih dulu dikecualikan (lihat "user.divisi!=='gudang'" di bawah). Header global
             ini TETAP dipakai apa adanya buat semua divisi lain - gak diubah sama sekali. */}
         {user.divisi!=="gudang"&&(
-          <HeaderOperator jamText={jamText} tanggalText={tanggalText} notifCount={notifCount} onLonceng={bukaNotifPermintaan}>
+          <HeaderOperator jamText={jamText} tanggalText={tanggalText} notifCount={notifCount} pengingatBaru={pengingat.belumKartu.length} onLonceng={pengingat.aktif?bukaLaciPengingat:bukaNotifPermintaan}>
             {headerSubtitle&&<div className="bop-hal">{headerSubtitle}</div>}
             <KoneksiBadge/>
             <AntreanBadge/>
@@ -486,6 +496,9 @@ export default function App(){
             <button onClick={()=>{muatUlangBersih();}} className="bop-status-btn" title="Refresh">🔄</button>
           </HeaderOperator>
         )}
+        {pengingat.bannerKartu&&<BannerPengingat kartu={pengingat.bannerKartu} lebih={pengingat.belumKartu.length-1} onBuka={bukaKartuPengingat} onLihatSemua={bukaLaciPengingat} onTutup={pengingat.tutupBanner}/>}
+        {laciPengingat&&pengingat.aktif&&<LaciPengingat kartu={pengingat.kartu} notifCount={notifCount} onTutup={tutupLaciPengingat} onBuka={bukaKartuPengingat}
+          onBukaPermintaan={()=>{setLaciPengingat(false);bukaNotifPermintaan();}} onTandaiSemua={()=>tandaiPengingat(pengingat.belumKartu.flatMap(k=>k.ids))}/>}
         {showPushBanner&&(
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"#eff6ff",borderBottom:"1px solid #bfdbfe"}}>
             <div style={{fontSize:18}}>🔔</div>
