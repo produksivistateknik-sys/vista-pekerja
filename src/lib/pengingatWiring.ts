@@ -1,12 +1,12 @@
 // PENGINGAT WIRING (6 Nov 2026) - operator Wiring Control & Wiring Power diingatkan menyiapkan permintaan komponen ke gudang
-// saat groundplate/box control/pintu masuk painting (panel stainless: FINISHING 100%). Kejadiannya dibuat server (pg_cron
+// saat groundplate/box control/pintu masuk painting (stainless: FINISHING 100%, Groundplate FS_SS: RAKIT > 0). Kejadiannya dibuat server (pg_cron
 // wiring_pengingat_pindai, migration 20261106030000 di vista-teknik), aplikasi ini hanya membaca view wiring_pengingat_v dan
 // mencatat tanda baca per orang. Satu kartu = satu panel + jenis + hari, tidak pernah dirangkum antar-panel.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { bacaSemuaHalaman } from './bacaSemua'
 import { aktorOperator } from './inventarisOperator'
 
-export type Pengingat = { id: number; panel_id: number; kode_komponen: string; jenis: 'masuk_painting' | 'selesai_finishing'; label: string
+export type Pengingat = { id: number; panel_id: number; kode_komponen: string; jenis: 'masuk_painting' | 'selesai_finishing' | 'masuk_rakit'; label: string
   nama_panel: string; proyek: string | null; penanda: string | null; dibuat_pada: string }
 export type KartuPengingat = { kunci: string; ids: number[]; idTerbaru: number; waktu: string; pesan: string; belumDibaca: boolean }
 
@@ -20,7 +20,7 @@ const hariWib = (v: string) => new Date(v).toLocaleDateString('en-CA', { timeZon
 export function pesanPengingat(label: string[], p: Pick<Pengingat, 'jenis' | 'nama_panel' | 'proyek' | 'penanda'>): string {
   const nama = p.nama_panel.trim() + (p.penanda ? ` (${p.penanda})` : '')
   const proyek = p.proyek?.trim() ? ` (proyek ${p.proyek.trim()})` : ''
-  const tahap = p.jenis === 'selesai_finishing' ? 'sudah selesai finishing' : 'sudah masuk painting'
+  const tahap = p.jenis === 'selesai_finishing' ? 'sudah selesai finishing' : p.jenis === 'masuk_rakit' ? 'sudah masuk rakit' : 'sudah masuk painting'
   return `${gabungLabel(label)} panel ${nama}${proyek} ${tahap}. Siapkan permintaan komponen ke gudang.`
 }
 
