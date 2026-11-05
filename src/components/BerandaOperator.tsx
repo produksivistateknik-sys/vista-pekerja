@@ -67,8 +67,6 @@ const WARNA_MENU: Record<string, [string, string]> = {
   tambahan: ["#a66cf0", "#7b3fd6"], komponen: ["#2dbf86", "#13975f"],
 };
 const BIRU: [string, string] = ["#4aa0ff", "#1f78e8"];
-// Tahap B1 (keputusan user 6 Nov 2026): banner baru tampil setelah kerangka disetujui.
-const TAMPILKAN_BANNER = false;
 
 export type TileMenu = { key: string; label: string; icon: string };
 
@@ -117,7 +115,7 @@ export function BerandaOperator({ nama, divisiLabel, divisiIkon, menu, onPilihMe
           );
         })}
       </section>
-      {TAMPILKAN_BANNER && <BannerBeranda onBukaJadwal={onBukaJadwal} onBukaPermintaan={onBukaPermintaan} />}
+      <BannerBeranda onBukaJadwal={onBukaJadwal} onBukaPermintaan={onBukaPermintaan} />
     </main>
   );
 }
