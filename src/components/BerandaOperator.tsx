@@ -16,6 +16,7 @@ const CSS = `
 .bop-jam span{display:block;font-size:11px;opacity:.9;white-space:nowrap;text-transform:capitalize}
 .bop-bell{position:relative;flex:none;width:44px;height:44px;display:grid;place-items:center;border:0;border-radius:12px;background:none;color:#fff;cursor:pointer;font-size:25px}
 .bop-bell u{position:absolute;top:7px;right:8px;width:11px;height:11px;border-radius:50%;background:#ff4d4f;border:2px solid #2a7ae8}
+.bop-bell u.n{top:2px;right:0;width:auto;height:auto;min-width:20px;padding:0 4px;border-radius:10px;color:#fff;font-size:11px;font-weight:700;line-height:16px;text-decoration:none;text-align:center}
 .bop-status{display:flex;align-items:center;gap:6px;flex-wrap:wrap;row-gap:6px;margin-top:10px;position:relative}
 .bop-status-btn{width:44px;height:44px;flex-shrink:0;border:1px solid #ffffff40;border-radius:10px;background:#ffffff20;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:15px;color:#fff}
 .bop-chip-status{background:#ffffff25;color:#fff;border:1px solid #ffffff40;border-radius:20px;padding:2px 10px;font-size:11px;font-weight:700;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -70,7 +71,7 @@ const BIRU: [string, string] = ["#4aa0ff", "#1f78e8"];
 
 export type TileMenu = { key: string; label: string; icon: string };
 
-export function HeaderOperator({ jamText, tanggalText, notifCount, onLonceng, children }: { jamText: string; tanggalText: string; notifCount: number; onLonceng: () => void; children: React.ReactNode }) {
+export function HeaderOperator({ jamText, tanggalText, notifCount, pengingatBaru = 0, onLonceng, children }: { jamText: string; tanggalText: string; notifCount: number; pengingatBaru?: number; onLonceng: () => void; children: React.ReactNode }) {
   return (
     <>
       <style>{CSS}</style>
@@ -79,8 +80,8 @@ export function HeaderOperator({ jamText, tanggalText, notifCount, onLonceng, ch
           <img className="bop-logo" src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" />
           <div className="bop-kanan">
             <div className="bop-jam"><b>{jamText}</b><span>{tanggalText}</span></div>
-            <button type="button" className="bop-bell" onClick={onLonceng} aria-label={notifCount > 0 ? `Notifikasi, ${notifCount} permintaan perlu perhatian` : "Notifikasi"}>
-              <i className="ti ti-bell" aria-hidden="true" />{notifCount > 0 && <u />}
+            <button type="button" className="bop-bell" onClick={onLonceng} aria-label={[pengingatBaru > 0 ? `${pengingatBaru} pengingat belum dibaca` : "", notifCount > 0 ? `${notifCount} permintaan perlu perhatian` : ""].filter(Boolean).reduce((a, b) => `${a}, ${b}`, "Notifikasi")}>
+              <i className="ti ti-bell" aria-hidden="true" />{pengingatBaru > 0 ? <u className="n">{pengingatBaru > 99 ? "99+" : pengingatBaru}</u> : notifCount > 0 && <u />}
             </button>
           </div>
         </div>
