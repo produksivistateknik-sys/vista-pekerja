@@ -9,14 +9,14 @@ import { hariIniWib } from "../lib/tanggalWib";
 import { laporError } from "../lib/laporError";
 import { pasangPemulihRealtime } from "../lib/pemulihRealtime";
 import { labelSisaHari, labelTanggalDeadline, muatWoDeadline, pilihKartuDeadline, type WoDeadline } from "../lib/deadlineBanner";
-import logoVista from "../assets/kop/vista-logo-clean.png";
+import { VISTA_LOGO_DATA_URI } from "../lib/logoAsset";
 
 const JEDA_KARTU_MS = 5000;
 const JEDA_SETELAH_SENTUH_MS = 6000;
 type Kartu = { kunci: string; ilustrasi: "kalender" | "daftar" | "logo"; judul: string; sub: string; catatan?: string; tingkat?: "merah" | "amber"; aksi?: () => void };
 
 function Ilustrasi({ jenis }: { jenis: Kartu["ilustrasi"] }) {
-  if (jenis === "logo") return <span className="bop-lg"><img src={logoVista} alt="" /></span>;
+  if (jenis === "logo") return <span className="bop-lg"><img src={VISTA_LOGO_DATA_URI} alt="" /></span>;
   if (jenis === "kalender") return (
     <svg width="64" height="70" viewBox="0 0 64 70" aria-hidden="true"><rect x="10" y="12" width="44" height="50" rx="8" fill="#fff" stroke="#9cc2f5" strokeWidth="2" /><rect x="10" y="12" width="44" height="14" rx="8" fill="#2f7be8" /><rect x="10" y="20" width="44" height="6" fill="#2f7be8" /><rect x="20" y="6" width="4" height="12" rx="2" fill="#2f7be8" /><rect x="40" y="6" width="4" height="12" rx="2" fill="#2f7be8" /><g fill="#b9d4f7"><circle cx="22" cy="36" r="2.6" /><circle cx="32" cy="36" r="2.6" /><circle cx="42" cy="36" r="2.6" /><circle cx="22" cy="46" r="2.6" /><circle cx="32" cy="46" r="2.6" /></g><circle cx="44" cy="50" r="9" fill="#ef4b52" /><path d="M44 45v6M44 54.4v.1" stroke="#fff" strokeWidth="2.4" strokeLinecap="round" /></svg>
   );

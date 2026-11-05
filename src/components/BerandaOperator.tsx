@@ -1,7 +1,7 @@
 // BERANDA OPERATOR (6 Nov 2026) - tampilan saja: header (HeaderOperator), kartu sambutan, grid menu, banner. Acuan: pratinjau
 // beranda-operator.html. Daftar menu = menuTiles App.tsx, tidak diubah di sini. Satuan px eksplisit & color-scheme light (alasan
 // sama KendalaOperator: index.css sisa template Vite berukuran 18px dan "light dark"; aplikasi operator belum punya tema gelap).
-import logoVista from "../assets/kop/vista-logo-clean.png";
+import { VISTA_LOGO_DATA_URI } from "../lib/logoAsset";
 import { BannerBeranda } from "./BannerBeranda";
 
 const CSS = `
@@ -9,8 +9,7 @@ const CSS = `
 .bop-hdr::before{content:"";position:absolute;right:-60px;top:-90px;width:260px;height:260px;border-radius:50%;background:rgba(255,255,255,.08);pointer-events:none}
 .bop-hdr::after{content:"";position:absolute;left:0;right:0;bottom:-1px;height:22px;background:#f1f5f9;border-radius:22px 22px 0 0}
 .bop-top{display:flex;justify-content:space-between;align-items:center;gap:12px;position:relative}
-.bop-logo{flex:none;height:48px;padding:5px 9px;border-radius:14px;background:#fff;display:grid;place-items:center;box-shadow:0 4px 12px rgba(0,0,0,.18)}
-.bop-logo img{height:38px;width:auto;display:block}
+.bop-logo{flex:none;height:38px;width:auto;display:block}
 .bop-kanan{display:flex;align-items:center;gap:2px;min-width:0}
 .bop-jam{text-align:right;min-width:0}
 .bop-jam b{display:block;font-size:17px;line-height:1.2;white-space:nowrap;font-variant-numeric:tabular-nums;font-weight:700}
@@ -68,6 +67,8 @@ const WARNA_MENU: Record<string, [string, string]> = {
   tambahan: ["#a66cf0", "#7b3fd6"], komponen: ["#2dbf86", "#13975f"],
 };
 const BIRU: [string, string] = ["#4aa0ff", "#1f78e8"];
+// Tahap B1 (keputusan user 6 Nov 2026): banner baru tampil setelah kerangka disetujui.
+const TAMPILKAN_BANNER = false;
 
 export type TileMenu = { key: string; label: string; icon: string };
 
@@ -77,7 +78,7 @@ export function HeaderOperator({ jamText, tanggalText, notifCount, onLonceng, ch
       <style>{CSS}</style>
       <header className="bop-hdr" style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}>
         <div className="bop-top">
-          <span className="bop-logo"><img src={logoVista} alt="Vista Teknik" /></span>
+          <img className="bop-logo" src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" />
           <div className="bop-kanan">
             <div className="bop-jam"><b>{jamText}</b><span>{tanggalText}</span></div>
             <button type="button" className="bop-bell" onClick={onLonceng} aria-label={notifCount > 0 ? `Notifikasi, ${notifCount} permintaan perlu perhatian` : "Notifikasi"}>
@@ -116,7 +117,7 @@ export function BerandaOperator({ nama, divisiLabel, divisiIkon, menu, onPilihMe
           );
         })}
       </section>
-      <BannerBeranda onBukaJadwal={onBukaJadwal} onBukaPermintaan={onBukaPermintaan} />
+      {TAMPILKAN_BANNER && <BannerBeranda onBukaJadwal={onBukaJadwal} onBukaPermintaan={onBukaPermintaan} />}
     </main>
   );
 }
