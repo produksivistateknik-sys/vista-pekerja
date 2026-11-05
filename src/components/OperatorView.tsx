@@ -3650,7 +3650,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                         const anyTimerRunning=daftarK.entri.some(e=>e.status==="berjalan");
                         const anyLoading=timerKeys.some((k:string)=>timerLoading===k);
                         const jalan=daftarK.entri.filter(e=>e.status==="berjalan");
-                        const durasiLabel=jalan.length?labelDurasiTimer(Math.max(...jalan.map(e=>e.menit))):"";
+                        const durasiLabel=jalan.length?labelDurasiTimer(Math.max(...jalan.map(e=>e.menitTepat??e.menit))):"";
                         return(
                           <div style={{display:"flex",flexDirection:"column",gap:6}}>
                             <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
