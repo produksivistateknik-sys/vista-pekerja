@@ -7,6 +7,7 @@ import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateH
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai, hentikanTimerKomponenHari } from "../lib/tutupTimerKomponen";
 import { hariKerjaWib } from "../lib/tanggalWib";
+import { saringTimerKartu, timerMilikKartu } from "../lib/timerKartu";
 import { daftarOperatorHarian, LABEL_STATUS_OPERATOR, labelMenit } from "../lib/operatorHarian";
 import { catatCheckpoint } from "../lib/catatCheckpoint";
 import { bersihkanJadwalWiringSelesai } from "../lib/jadwalWiring";
@@ -503,7 +504,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     let from=0;
     const step=1000;
     while(true){
-      const{data,error}=await supabase.from("fcs_timer_kerja").select("*").or(`selesai.is.null,tanggal.eq.${viewDate}`).order("id").range(from,from+step-1);
+      const{data,error}=await supabase.from("fcs_timer_kerja").select("*").or(saringTimerKartu(viewDate)).order("id").range(from,from+step-1);
       if(error){console.error("[refreshTimerData] gagal muat timer:",error);laporError("supabase_error",error,{aksi:"muat timer"});return;}
       if(!data)break;
       all=all.concat(data);
@@ -517,11 +518,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // (23 Okt 2026, bug B) timer BERJALAN selalu dianggap aktif di kartu, apa pun kolom tanggal-nya: timer baru kini
     // bertanggal hari mulai (WIB), jadi timer yang dimulai dari kartu tanggal lain tetap tampil berjalan & bisa
     // dihentikan dari kartu itu. Sesi SELESAI tetap per tanggal kartu.
-    all.forEach((t:any)=>{
+    const milikKartu=all.filter((t:any)=>timerMilikKartu(t,viewDate));
+    milikKartu.forEach((t:any)=>{
       const key=timerKey(t.panel_id,t.kode_komponen,t.proses,t.pekerja_id,t.tahap);
       if(!t.selesai)mapAktif[key]=t;
       mapPernahMulai[key]=true;
-      if(t.tanggal===viewDate&&t.selesai){
+      if(t.selesai){
         mapSelesaiHariIni[key]=true;
         mapDurasiSelesai[key]=(mapDurasiSelesai[key]||0)+Number(t.durasi_menit||0);
       }
@@ -530,7 +532,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     setTimerPernahMulai(mapPernahMulai);
     setTimerSelesaiHariIni(mapSelesaiHariIni);
     setTimerDurasiSelesai(mapDurasiSelesai);
-    setTimerHariIni(all.filter((t:any)=>t.tanggal===viewDate||!t.selesai));
+    setTimerHariIni(milikKartu);
   };
 
   // Versi TARGETED refreshTimerData - cuma re-query 1 kombinasi panel+kode+proses+pekerja
@@ -545,18 +547,18 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const key=timerKey(panelId,kode,proses,pekerjaId,tahap);
     let q=supabase.from("fcs_timer_kerja").select("*")
       .eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses",proses).eq("pekerja_id",pekerjaId)
-      .or(`selesai.is.null,tanggal.eq.${viewDate}`);
+      .or(saringTimerKartu(viewDate));
     q=tahap?q.eq("tahap",tahap):q.is("tahap",null);
     const{data,error}=await q;
     if(error){console.error("[refreshTimerKey] gagal muat timer:",error);return;}
-    const rows=data||[];
+    const rows=(data||[]).filter((t:any)=>timerMilikKartu(t,viewDate));
     setTimerHariIni(prev=>[...prev.filter((t:any)=>!(t.panel_id===panelId&&t.kode_komponen===kode&&t.proses===proses&&t.pekerja_id===pekerjaId&&(t.tahap||null)===(tahap||null))),
-      ...rows.filter((t:any)=>t.tanggal===viewDate||!t.selesai)]);
+      ...rows]);
     let aktif:any=null,pernahMulai=false,selesaiHariIni=false,durasiSelesai=0;
     rows.forEach((t:any)=>{
       if(!t.selesai)aktif=t; // (23 Okt 2026) berjalan = aktif, apa pun tanggal-nya (lihat refreshTimerData)
       pernahMulai=true;
-      if(t.tanggal===viewDate&&t.selesai){
+      if(t.selesai){
         selesaiHariIni=true;
         durasiSelesai+=Number(t.durasi_menit||0);
       }
@@ -1099,7 +1101,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       if(data){
         setTimerAktif(prev=>({...prev,[key]:data}));
         setTimerPernahMulai(prev=>({...prev,[key]:true}));
-        setTimerHariIni(prev=>prev.some((t:any)=>t.id===data.id)||data.tanggal!==viewDate?prev:[...prev,data]);
+        setTimerHariIni(prev=>prev.some((t:any)=>t.id===data.id)||!timerMilikKartu(data,viewDate)?prev:[...prev,data]);
         // (22 Okt 2026, operator harian) memulai timer = otomatis masuk daftar operator komponen itu hari itu
         await pastikanDiDaftar(pekerjaId,panelId,kode,proses,tanggal,tahap);
       }
