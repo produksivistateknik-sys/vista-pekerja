@@ -1,10 +1,11 @@
-import { useState, useEffect, useLayoutEffect, useRef, lazy, Suspense } from "react";
+import { useState, useEffect, useLayoutEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { supabase } from "./lib/supabase";
 import { isPushSupported, getPushPermissionState, subscribeToPush } from "./lib/pushNotif";
 import { TODAY, addDays, tanggalLokalDari } from "./lib/dateHelpers";
 import { useDateRollover } from "./lib/dateRollover";
 import { useVersionCheck, muatUlangBersih } from "./lib/versionCheck";
 import { DIVISI_CONFIG } from "./lib/panelTypes";
+import { BerandaOperator, HeaderOperator } from "./components/BerandaOperator";
 import { GCss } from "./lib/globalCss";
 import { KoneksiBadge } from "./components/ui/Primitives";
 import { AntreanBadge } from "./components/ui/AntreanBadge";
@@ -317,6 +318,9 @@ export default function App(){
     setActiveBottomTab(tab);
     setSelectedMenu(null);
   };
+  // Target banner Beranda (stabil: BannerBeranda memakai memo, App dirender ulang tiap detik oleh jam header).
+  const bukaJadwalPengiriman=useCallback(()=>{setActiveBottomTab("jadwal");setSelectedMenu(null);},[]);
+  const bukaMenuPermintaan=useCallback(()=>{setActiveBottomTab("beranda");setSelectedMenu("permintaan");},[]);
 
   // Badge notif di header (17 Agu 2026) = jumlah permintaan (BBMB+BBMU) SE-DIVISI (bukan cuma
   // milik operator yang sedang login - Riwayat sekarang juga se-divisi, lihat PermintaanView.tsx)
@@ -386,7 +390,7 @@ export default function App(){
 
   // Ikon tile = NAMA ikon Tabler (sejak 4cc24bc, 29 Agu 2026), bukan emoji - dulu disambung sebagai teks sehingga header
   // mencetak "alert-triangle Kendala", "history Riwayat", dst. Sekarang ikon dirender sebagai <i className="ti ti-...">.
-  const headerSubtitle=selectedTile?<><i className={`ti ti-${selectedTile.icon}`} style={{fontSize:13,verticalAlign:"-2px",marginRight:4}} aria-hidden="true"/>{selectedTile.label}</>:"Pilih menu di bawah untuk mulai";
+  const headerSubtitle=selectedTile?<><i className={`ti ti-${selectedTile.icon}`} style={{fontSize:13,verticalAlign:"-2px",marginRight:4}} aria-hidden="true"/>{selectedTile.label}</>:null;
 
   // Banner ajakan aktifkan push notification pengingat Maintenance Rutin - subscribe di-key ke
   // `divisi` (bukan per-orang, device login pakai password bersama per sub-bagian). Cuma muncul
@@ -439,14 +443,13 @@ export default function App(){
 
   const doLogout=()=>{if(window.confirm("Keluar dari aplikasi?")){setUser(null);try{localStorage.removeItem("vista_pekerja_session");localStorage.removeItem("vista_pekerja_selected_menu");}catch{}setPage("landing");}};
 
-  // Restyle header profil (29 Agu 2026) - operator_users TIDAK punya kolom foto (dicek skema),
-  // jadi avatar pakai inisial nama, bukan placeholder foto. Warna avatar ikut cfg.color/bg per
-  // divisi (bukan hijau/warna baru) - konsisten sama sistem badge warna-per-divisi yang sudah
-  // dipakai di seluruh app (DIVISI_CONFIG), biar header gak jadi "pulau" visual sendiri.
   const namaOperator=user.nama||user.name||"Operator";
-  const inisialOperator=namaOperator.trim().split(/\s+/).slice(0,2).map((w:string)=>w[0]).join("").toUpperCase()||"OP";
   const jamText=jamSekarang.toLocaleTimeString("id-ID",{hour:"2-digit",minute:"2-digit",second:"2-digit"});
   const tanggalText=jamSekarang.toLocaleDateString("id-ID",{weekday:"long",day:"numeric",month:"long"});
+  const divisiText=user.sub_bagian||cfg?.label;
+  // Beranda (grid menu) menampilkan nama & divisi di kartu sambutan; halaman lain tetap di baris status header.
+  const diBeranda=activeBottomTab==="beranda"&&!selectedMenu&&!(isOperatorDivisi&&!gateShiftSet);
+  const bukaNotifPermintaan=()=>{setActiveBottomTab("beranda");setSelectedMenu("permintaan");setPermintaanNavTarget(notifTargets);};
 
   return(
     <div style={{minHeight:"100vh",background:"#f1f5f9"}}>
@@ -462,71 +465,26 @@ export default function App(){
         </div>
       )}
       <WoEngineeringBanner akun={user?.username?`pekerja:${user.username}`:null} topOffset={(hasNewVersion||hasDateRolled)?40:0}/>
-      <style>{`
-        .menu-tile-np:active{transform:translateY(-2px);box-shadow:0 8px 20px #00000022!important;}
-        @media(hover:hover){.menu-tile-np:hover{transform:translateY(-2px);box-shadow:0 8px 20px #00000022!important;}}
-      `}</style>
       <div style={{display:"flex",flexDirection:"column",minHeight:"100vh"}}>
         {/* Divisi "gudang" punya header sendiri (lihat GudangHeader di GudangHome.tsx) - header
             global di bawah ini SENGAJA dilewati buat gudang, sama persis pola bottom-nav yang
             udah lebih dulu dikecualikan (lihat "user.divisi!=='gudang'" di bawah). Header global
             ini TETAP dipakai apa adanya buat semua divisi lain - gak diubah sama sekali. */}
         {user.divisi!=="gudang"&&(
-        <div style={{background:"#f1f5f9",padding:"10px 16px 8px",
-          paddingTop:"max(10px, env(safe-area-inset-top))",position:"sticky",top:0,zIndex:100}}>
-          {/* Header digabung jadi 1 card (30 Agu 2026, sebelumnya 2 card terpisah: profil warna +
-              ringkasan putih). Notifikasi & Keluar DIPINDAH ke AkunView (lihat prop notifCount/
-              onLogout di situ) - dihapus dari sini biar gak dobel & header gak sesak. View-toggle
-              & refresh TETAP di sini. Badge/tombol ganti dari abu/tint-divisi ke putih-transparan
-              (background:#ffffff2x, color putih) - kontras aman di atas cfg.color manapun
-              (semua warna DIVISI_CONFIG cukup gelap, dicek manual pas restyle sebelumnya). */}
-          <div style={{background:cfg?.color||"#1d4ed8",backgroundImage:"linear-gradient(135deg, rgba(255,255,255,.10), rgba(0,0,0,.08))",
-            borderRadius:18,padding:"16px 18px",boxShadow:`0 4px 14px ${cfg?.color||"#1d4ed8"}40`,marginBottom:10}}>
-            <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-              <div style={{display:"flex",alignItems:"center",gap:12,minWidth:0}}>
-                <div style={{width:48,height:48,borderRadius:14,flexShrink:0,background:"#fff",color:cfg?.color||"#1d4ed8",
-                  display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,fontWeight:800}}>{inisialOperator}</div>
-                <div style={{minWidth:0}}>
-                  <div style={{fontWeight:800,fontSize:17,color:"#fff",letterSpacing:-.2,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>{namaOperator}</div>
-                  <div style={{fontSize:11.5,color:"#ffffffcc",marginTop:2}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</div>
-                </div>
-              </div>
-              <div style={{textAlign:"right",flexShrink:0}}>
-                <div style={{fontWeight:800,fontSize:16,color:"#fff",fontFamily:"'DM Mono',monospace",letterSpacing:-.3}}>{jamText}</div>
-                <div style={{fontSize:10,color:"#ffffffb3",marginTop:1,textTransform:"capitalize"}}>{tanggalText}</div>
-              </div>
-            </div>
-            <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap",rowGap:6,
-              marginTop:14,paddingTop:12,borderTop:"1px solid #ffffff25"}}>
-              <div style={{fontSize:11.5,color:"#ffffffb3",marginRight:2}}>{headerSubtitle}</div>
-              <KoneksiBadge/>
-              <AntreanBadge/>
-              <span style={{background:"#ffffff25",color:"#fff",border:"1px solid #ffffff40",
-                borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>{cfg?.icon} {user.sub_bagian||cfg?.label}</span>
-              {isOperatorDivisi&&gateShiftSet&&(
-                <span style={{background:"#ffffff25",color:"#fff",border:"1px solid #ffffff40",
-                  borderRadius:20,padding:"2px 10px",fontSize:11,fontWeight:700}}>
-                  🕐 Shift {gateShift}
-                </span>
-              )}
-              <div style={{flex:1}}/>
-              {isOperatorDivisi&&(
-                <button onClick={toggleViewMode} title={viewMode==="desktop"?"Ganti ke tampilan Mobile":"Ganti ke tampilan Desktop"}
-                  style={{width:36,height:36,flexShrink:0,border:"1px solid #ffffff40",borderRadius:10,
-                    background:"#ffffff20",display:"flex",alignItems:"center",justifyContent:"center",
-                    cursor:"pointer",fontSize:15,color:"#fff"}}>
-                  {viewMode==="desktop"?"📱":"🖥️"}
-                </button>
-              )}
-              <button onClick={()=>{muatUlangBersih();}} title="Refresh"
-                style={{width:36,height:36,flexShrink:0,border:"1px solid #ffffff40",borderRadius:10,
-                  background:"#ffffff20",display:"flex",alignItems:"center",justifyContent:"center",
-                  cursor:"pointer",fontSize:15,color:"#fff"}}>
-                🔄
+          <HeaderOperator jamText={jamText} tanggalText={tanggalText} notifCount={notifCount} onLonceng={bukaNotifPermintaan}>
+            {headerSubtitle&&<div className="bop-hal">{headerSubtitle}</div>}
+            <KoneksiBadge/>
+            <AntreanBadge/>
+            {!diBeranda&&<span className="bop-chip-status">{cfg?.icon} {namaOperator} · {divisiText}</span>}
+            {isOperatorDivisi&&gateShiftSet&&<span className="bop-chip-status">🕐 Shift {gateShift}</span>}
+            <div style={{flex:1}}/>
+            {isOperatorDivisi&&(
+              <button onClick={toggleViewMode} className="bop-status-btn" title={viewMode==="desktop"?"Ganti ke tampilan Mobile":"Ganti ke tampilan Desktop"}>
+                {viewMode==="desktop"?"📱":"🖥️"}
               </button>
-            </div>
-          </div>
-        </div>
+            )}
+            <button onClick={()=>{muatUlangBersih();}} className="bop-status-btn" title="Refresh">🔄</button>
+          </HeaderOperator>
         )}
         {showPushBanner&&(
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"#eff6ff",borderBottom:"1px solid #bfdbfe"}}>
@@ -544,7 +502,7 @@ export default function App(){
             :activeBottomTab==="proses"?<ProsesAktifView user={user} tahapPasangKomponen={komponenPasangTugas?.tahap||null}/>
             :activeBottomTab==="jadwal"?<JadwalPengirimanView/>
             :activeBottomTab==="akun"?<AkunView user={user} isTimerDivisi={!!isOperatorDivisi} proses={prosesRiwayat} onLogout={doLogout}
-              notifCount={notifCount} onBukaPermintaan={()=>{setActiveBottomTab("beranda");setSelectedMenu("permintaan");setPermintaanNavTarget(notifTargets);}}/>
+              notifCount={notifCount} onBukaPermintaan={bukaNotifPermintaan}/>
             :isOperatorDivisi&&!gateShiftSet?(
               <div style={{padding:20,maxWidth:420,margin:"0 auto"}} className="fi">
                 <div style={{background:"#fff",borderRadius:18,padding:20,boxShadow:"0 4px 14px #00000014"}}>
@@ -568,20 +526,8 @@ export default function App(){
               </div>
             )
             :!selectedMenu?(
-              <div style={{padding:"14px 16px",display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:14}}>
-                {menuTiles.map(t=>(
-                  <button key={t.key} onClick={()=>setSelectedMenu(t.key)} className="menu-tile-np" style={{
-                    background:"#fff",borderRadius:18,padding:"24px 14px",border:"none",
-                    boxShadow:"0 4px 14px #00000014",display:"flex",flexDirection:"column",
-                    alignItems:"center",gap:12,cursor:"pointer",fontFamily:"inherit",transition:"transform .12s, box-shadow .12s"}}>
-                    <div style={{width:52,height:52,borderRadius:14,background:cfg?.color||"#1d4ed8",
-                      display:"flex",alignItems:"center",justifyContent:"center"}}>
-                      <i className={`ti ti-${t.icon}`} style={{fontSize:24,color:"#fff"}}/>
-                    </div>
-                    <span style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>{t.label}</span>
-                  </button>
-                ))}
-              </div>
+              <BerandaOperator nama={namaOperator} divisiLabel={divisiText} divisiIkon={cfg?.icon} menu={menuTiles} onPilihMenu={setSelectedMenu}
+                onBukaJadwal={bukaJadwalPengiriman} onBukaPermintaan={bukaMenuPermintaan}/>
             ):(
               <>
                 <div style={{padding:"12px 16px 0"}}>
@@ -619,26 +565,19 @@ export default function App(){
             (punya bottom-nav 5-tab sendiri di GudangHome.tsx, sama pola pengecualian di seluruh
             file ini). "Proses Aktif" cuma muncul buat divisi timer (isOperatorDivisi). */}
         {user.divisi!=="gudang"&&(
-          <div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1px solid #f1f5f9",
-            display:"flex",paddingBottom:"env(safe-area-inset-bottom)",zIndex:100,boxShadow:"0 -4px 14px #00000010"}}>
+          <nav className="bop-nav" aria-label="Navigasi utama">
             {[
               {key:"beranda",label:"Beranda",icon:"home"},
               ...(isOperatorDivisi?[{key:"proses",label:"Proses Aktif",icon:"activity"}]:[]),
               {key:"jadwal",label:"Jadwal Pengiriman",icon:"truck"},
               {key:"akun",label:"Akun",icon:"user"},
-            ].map(tab=>{
-              const isActive=activeBottomTab===tab.key;
-              return(
-                <button key={tab.key} onClick={()=>gantiBottomTab(tab.key as any)}
-                  style={{flex:1,border:"none",background:"none",cursor:"pointer",
-                  display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",
-                  gap:3,padding:"10px 4px",color:isActive?(cfg?.color||"#1d4ed8"):"#94a3b8",fontFamily:"inherit"}}>
-                  <i className={`ti ti-${tab.icon}`} style={{fontSize:19}}/>
-                  <span style={{fontSize:9,fontWeight:700,letterSpacing:.2,textAlign:"center"}}>{tab.label}</span>
-                </button>
-              );
-            })}
-          </div>
+            ].map(tab=>(
+              <button key={tab.key} type="button" className="bop-nv" aria-current={activeBottomTab===tab.key?"page":undefined} onClick={()=>gantiBottomTab(tab.key as any)}>
+                <i className={`ti ti-${tab.icon}`} aria-hidden="true"/>
+                {tab.label}
+              </button>
+            ))}
+          </nav>
         )}
       </div>
     </div>
