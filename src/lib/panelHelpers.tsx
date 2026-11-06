@@ -202,14 +202,13 @@ export function getProgressFromHistory(cl:any, proses:string):number{
   }
   return -1;
 }
-// Ambil progress terbaik: history > progressByDate > progress. Cermin dari
-// vista-teknik/src/lib/panelHelpers.ts getBestProgress/getBestProgressMap.
+// Ambil progress terbaik: nilai TERBESAR dari history dan progressByDate/progress (6 Nov 2026, menyusul perbaikan vista-teknik
+// cf040de 14 Sep): klik persen tidak menulis history, jadi history bisa tertinggal dan operator keliru terkunci Not Yet.
+// Cermin vista-teknik/src/lib/panelHelpers.ts, dijaga npm run cek:cermin.
 export function getBestProgress(cl:any, proses:string):number{
-  const fromHist=getProgressFromHistory(cl,proses);
-  if(fromHist>=0)return fromHist;
-  const fromDate=getLatestProgress(cl,proses);
-  if(fromDate>0)return fromDate;
-  return cl?.progress?.[proses]||0;
+  const fromHist=getProgressFromHistory(cl,proses); // -1 kalau history kosong/gak ada
+  const fromDate=getLatestProgress(cl,proses); // sudah fallback sendiri ke cl.progress kalau progressByDate kosong
+  return Math.max(fromHist,fromDate);
 }
 // BUG FIX (7 Agu 2026): computeProsesStatus dulu dikasih cl.progress mentah - field itu
 // diupdate lewat updatePctManual/updateQtyProses yang salah satunya (updateQtyProses) NULIS
@@ -256,6 +255,17 @@ export const PROSES_STATUS_GATE_PCT=25;
 // UNBLOCK QC TEST (7 Agu 2026): QC TEST sengaja dikeluarin dari gating juga - selalu TO DO
 // begitu progress masih 0, gak nunggu WIRING POWER/CONTROL nyampe 25% dulu. PACKING TETAP kena
 // gating normal (gak diubah) - masih ngecek progress QC TEST komponen itu via chain di bawah.
+// Proses relevan sebelum `proses` dalam rantai status (BUSBAR dilompati); null = tidak digating. Dipakai computeProsesStatus &
+// alasanNotYet supaya aturannya satu.
+export function prosesGerbangStatus(proses:string,relevantProses?:string[]):string|null{
+  const chain=(relevantProses&&relevantProses.length>0)?ALL_PROSES.filter(p=>relevantProses.includes(p)):ALL_PROSES;
+  const prosesIdx=chain.indexOf(proses);
+  if(prosesIdx<=0)return null;
+  let prevIdx=prosesIdx-1;
+  while(prevIdx>=0&&chain[prevIdx]==="BUSBAR")prevIdx--;
+  if(prevIdx<0)return null;
+  return chain[prevIdx];
+}
 export function computeProsesStatus(progressMap:Record<string,number>|undefined|null,proses:string,relevantProses?:string[]):ProsesStatus{
   const progress=progressMap?.[proses]||0;
   if(progress>=100)return "DONE";
@@ -274,16 +284,21 @@ export function computeProsesStatus(progressMap:Record<string,number>|undefined|
       return(progressMap?.["RAKIT"]||0)>0?"TO DO":"NOT YET";
     }
   }
-  const chain=(relevantProses&&relevantProses.length>0)?ALL_PROSES.filter(p=>relevantProses.includes(p)):ALL_PROSES;
-  const prosesIdx=chain.indexOf(proses);
-  if(prosesIdx<=0)return "TO DO";
-  let prevIdx=prosesIdx-1;
-  while(prevIdx>=0&&chain[prevIdx]==="BUSBAR")prevIdx--;
-  if(prevIdx<0)return "TO DO";
-  const prosesSebelumnya=chain[prevIdx];
+  const prosesSebelumnya=prosesGerbangStatus(proses,relevantProses);
+  if(!prosesSebelumnya)return "TO DO";
   const progressSebelumnya=progressMap?.[prosesSebelumnya]||0;
   if(progressSebelumnya<PROSES_STATUS_GATE_PCT)return "NOT YET";
   return "TO DO";
+}
+
+// Alasan singkat status NOT YET utk ditampilkan (6 Nov 2026); status lain -> null. Admin & operator memakai fungsi yang sama
+// (dijaga npm run cek:cermin).
+export function alasanNotYet(progressMap:Record<string,number>|undefined|null,proses:string,relevantProses?:string[]):string|null{
+  if(computeProsesStatus(progressMap,proses,relevantProses)!=="NOT YET")return null;
+  if((proses==="WIRING CONTROL"||proses==="WIRING POWER")&&(!relevantProses||relevantProses.includes("RAKIT")))return "Tunggu RAKIT mulai dikerjakan";
+  const sebelum=prosesGerbangStatus(proses,relevantProses);
+  if(!sebelum)return null;
+  return `Tunggu ${sebelum} minimal ${PROSES_STATUS_GATE_PCT}% (sekarang ${Math.round(progressMap?.[sebelum]||0)}%)`;
 }
 // Status cascading ANTAR TAHAP di dalam BUSBAR sendiri (Fabrikasi->Plating->Heat-Shrink->Pasang) -
 // LEVEL BEDA dari computeProsesStatus() di atas (yang gating antar PROSES, dan BUSBAR di situ
