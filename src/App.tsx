@@ -10,6 +10,7 @@ import { BannerPengingat, LaciPengingat } from "./components/PengingatWiring";
 import { usePengingatWiring } from "./lib/usePengingatWiring";
 import type { KartuPengingat } from "./lib/pengingatWiring";
 import { GCss } from "./lib/globalCss";
+import { WARNA } from "./lib/warnaTema";
 import { KoneksiBadge } from "./components/ui/Primitives";
 import { AntreanBadge } from "./components/ui/AntreanBadge";
 import { mulaiPengirimOtomatis } from "./lib/antreanSimpan";
@@ -506,7 +507,7 @@ export default function App(){
               <div style={{fontWeight:700,marginBottom:1}}>Aktifkan notifikasi maintenance?</div>
               <div style={{color:"#475569"}}>Dapat pengingat langsung ke device ini kalau ada mesin di divisi {cfg?.label||"ini"} yang jadwal maintenance-nya jatuh tempo.</div>
             </div>
-            <button onClick={aktifkanPush} disabled={pushLoading} style={{padding:"7px 14px",borderRadius:8,border:"none",background:"#1d4ed8",color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{pushLoading?"...":"Aktifkan"}</button>
+            <button onClick={aktifkanPush} disabled={pushLoading} style={{padding:"7px 14px",borderRadius:8,border:"none",background:WARNA.aksen,color:"#fff",fontSize:11,fontWeight:700,cursor:"pointer",whiteSpace:"nowrap"}}>{pushLoading?"...":"Aktifkan"}</button>
             <button onClick={tutupPushBanner} style={{padding:"7px 12px",borderRadius:8,border:"1px solid #cbd5e1",background:"#fff",color:"#64748b",fontSize:11,fontWeight:600,cursor:"pointer",whiteSpace:"nowrap"}}>Nanti</button>
           </div>
         )}
@@ -524,15 +525,15 @@ export default function App(){
                   <div style={{display:"flex",gap:10,marginBottom:16}}>
                     {["1","2"].map(s=>(
                       <button key={s} onClick={()=>setGateShift(s)}
-                        style={{flex:1,padding:"14px",borderRadius:12,border:`2px solid ${gateShift===s?(cfg?.color||"#1d4ed8"):"#e2e8f0"}`,
-                          background:gateShift===s?(cfg?.color||"#1d4ed8")+"18":"#f8fafc",color:gateShift===s?(cfg?.color||"#1d4ed8"):"#64748b",
+                        style={{flex:1,padding:"14px",borderRadius:12,border:`2px solid ${gateShift===s?WARNA.aksen:"#e2e8f0"}`,
+                          background:gateShift===s?WARNA.aksen+"18":"#f8fafc",color:gateShift===s?WARNA.aksenTeks:"#64748b",
                           cursor:"pointer",fontWeight:800,fontSize:16,transition:"all .15s",fontFamily:"inherit"}}>
                         Shift {s}
                       </button>
                     ))}
                   </div>
                   <button onClick={mulaiKerja} style={{width:"100%",padding:13,fontSize:15,fontWeight:700,color:"#fff",
-                    background:cfg?.color||"#1d4ed8",border:"none",borderRadius:10,cursor:"pointer",fontFamily:"inherit"}}>
+                    background:WARNA.aksen,border:"none",borderRadius:10,cursor:"pointer",fontFamily:"inherit"}}>
                     Mulai Kerja →
                   </button>
                 </div>
@@ -548,8 +549,8 @@ export default function App(){
                     const handled=backHandlerRef.current?.();
                     if(!handled)setSelectedMenu(null);
                   }} style={{display:"flex",alignItems:"center",gap:6,
-                    background:"#fff",border:`1px solid ${cfg?.color||"#1d4ed8"}30`,borderRadius:10,padding:"8px 14px",
-                    fontSize:12,fontWeight:700,color:cfg?.color||"#1d4ed8",cursor:"pointer",boxShadow:"0 2px 8px #0000000f",fontFamily:"inherit"}}>
+                    background:"#fff",border:`1px solid ${WARNA.aksen}30`,borderRadius:10,padding:"8px 14px",
+                    fontSize:12,fontWeight:700,color:WARNA.aksen,cursor:"pointer",boxShadow:"0 2px 8px #0000000f",fontFamily:"inherit"}}>
                     <i className="ti ti-arrow-left" style={{fontSize:14}}/> Kembali
                   </button>
                 </div>

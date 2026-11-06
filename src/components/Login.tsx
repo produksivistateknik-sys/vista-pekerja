@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { supabase } from "../lib/supabase";
 import { DIVISI_CONFIG } from "../lib/panelTypes";
 import { GCss } from "../lib/globalCss";
+import { FOKUS_AKSEN, GRADASI_AKSEN, WARNA } from "../lib/warnaTema";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN - dipisah dari App.tsx (Sprint 7)
@@ -132,11 +133,11 @@ export function Login({onLogin}:any){
     @keyframes lgSpin{to{transform:rotate(360deg)}}
     .lg-card{animation:lgFadeIn .5s cubic-bezier(.22,1,.36,1) forwards}
     .lg-inp{width:100%;height:48px;padding:0 16px 0 46px;border-radius:10px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#0f172a;font-size:16px;font-family:inherit;outline:none;transition:border .2s,box-shadow .2s}
-    .lg-inp:focus{border-color:#2563eb;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
+    .lg-inp:focus{border-color:${WARNA.aksen};background:#fff;box-shadow:0 0 0 3px ${FOKUS_AKSEN}}
     .lg-inp.err{border-color:#f87171}
     .lg-sel{width:100%;height:48px;padding:0 16px 0 46px;border-radius:10px;border:1.5px solid #e2e8f0;background:#f8fafc;color:#0f172a;font-size:16px;font-family:inherit;outline:none;cursor:pointer;appearance:none}
-    .lg-sel:focus{border-color:#2563eb;background:#fff;box-shadow:0 0 0 3px rgba(37,99,235,.12)}
-    .lg-btn{width:100%;height:50px;border-radius:10px;border:none;background:linear-gradient(135deg,#2563eb,#1d4ed8);color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(37,99,235,.3)}
+    .lg-sel:focus{border-color:${WARNA.aksen};background:#fff;box-shadow:0 0 0 3px ${FOKUS_AKSEN}}
+    .lg-btn{width:100%;height:50px;border-radius:10px;border:none;background:${GRADASI_AKSEN};color:#fff;font-size:15px;font-weight:700;cursor:pointer;font-family:inherit;transition:all .2s;display:flex;align-items:center;justify-content:center;gap:8px;box-shadow:0 4px 14px rgba(37,99,235,.3)}
     .lg-btn:hover:not(:disabled){transform:translateY(-2px);box-shadow:0 8px 24px rgba(37,99,235,.4)}
     .lg-btn:disabled{opacity:.75;cursor:not-allowed}
     .lg-btn.success{background:linear-gradient(135deg,#16a34a,#15803d)}
@@ -170,7 +171,7 @@ export function Login({onLogin}:any){
         </div>
       )}
       {/* Left panel */}
-      <div className="lg-left" style={{width:"45%",background:"linear-gradient(145deg,#0f172a,#1e3a8a 45%,#1d4ed8 100%)",
+      <div className="lg-left" style={{width:"45%",background:`linear-gradient(145deg,#0f172a,${WARNA.tinta} 45%,${WARNA.aksen} 100%)`,
         display:"flex",flexDirection:"column",padding:"44px 48px",color:"#fff",position:"relative",overflow:"hidden",flexShrink:0}}>
         <div style={{position:"absolute",top:-80,right:-80,width:320,height:320,borderRadius:"50%",background:"rgba(255,255,255,.04)"}}/>
         <div style={{position:"absolute",bottom:-60,left:-60,width:240,height:240,borderRadius:"50%",background:"rgba(255,255,255,.03)"}}/>
@@ -216,9 +217,9 @@ export function Login({onLogin}:any){
             <div style={{display:"flex",gap:6,flexWrap:"wrap" as const}}>
               {operatorDivisi.map((d:any)=>(
                 <button key={d.key} className="div-tab" onClick={()=>setDiv(d.key)}
-                  style={{background:div===d.key?d.color+"18":"#f8fafc",
-                    border:`1.5px solid ${div===d.key?d.color:"#e2e8f0"}`,
-                    color:div===d.key?d.color:"#64748b"}}>
+                  style={{background:div===d.key?WARNA.aksen+"18":"#f8fafc",
+                    border:`1.5px solid ${div===d.key?WARNA.aksen:"#e2e8f0"}`,
+                    color:div===d.key?WARNA.aksenTeks:"#64748b"}}>
                   <span style={{fontSize:16}}>{d.icon}</span>
                   <span style={{fontSize:10}}>{d.label}</span>
                 </button>
@@ -233,9 +234,9 @@ export function Login({onLogin}:any){
                 {Object.keys(subBagianOptions).map((sb:string)=>(
                   <button key={sb} type="button" className="subbagian-btn" onClick={()=>{setSubBagianTerpilih(sb);setErr("");setNamaManualTeks("");setPekerjaTerpilihId("");}}
                     style={{
-                      border:`1.5px solid ${subBagianTerpilih===sb?"#0d9488":"#e2e8f0"}`,
-                      background:subBagianTerpilih===sb?"#0d948818":"#f8fafc",
-                      color:subBagianTerpilih===sb?"#0d9488":"#64748b"}}>
+                      border:`1.5px solid ${subBagianTerpilih===sb?WARNA.aksen:"#e2e8f0"}`,
+                      background:subBagianTerpilih===sb?WARNA.aksen+"18":"#f8fafc",
+                      color:subBagianTerpilih===sb?WARNA.aksenTeks:"#64748b"}}>
                     {sb}
                   </button>
                 ))}

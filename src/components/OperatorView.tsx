@@ -7,6 +7,7 @@ import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateH
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai, hentikanTimerKomponenHari } from "../lib/tutupTimerKomponen";
 import { hariKerjaWib } from "../lib/tanggalWib";
+import { WARNA } from "../lib/warnaTema";
 import { catatPersenTimerBusbar } from "../lib/persenTimerBusbar";
 import { saringTimerKartu, timerMilikKartu } from "../lib/timerKartu";
 import { daftarOperatorHarian, LABEL_STATUS_OPERATOR, labelMenit } from "../lib/operatorHarian";
@@ -2237,15 +2238,15 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
             <div style={{display:"flex",gap:10}}>
               {["1","2"].map(s=>(
                 <button key={s} onClick={()=>setShift(s)}
-                  style={{flex:1,padding:"12px",borderRadius:10,border:`2px solid ${shift===s?cfg.color:"#e2e8f0"}`,
-                    background:shift===s?cfg.color+"18":"#f8fafc",color:shift===s?cfg.color:"#64748b",
+                  style={{flex:1,padding:"12px",borderRadius:10,border:`2px solid ${shift===s?WARNA.aksen:"#e2e8f0"}`,
+                    background:shift===s?WARNA.aksen+"18":"#f8fafc",color:shift===s?WARNA.aksenTeks:"#64748b",
                     cursor:"pointer",fontWeight:800,fontSize:16,transition:"all .15s"}}>
                   Shift {s}
                 </button>
               ))}
             </div>
           </div>
-          <Btn color={cfg.color} style={{width:"100%",padding:13,fontSize:15}} onClick={()=>setShiftSet(true)}>
+          <Btn style={{width:"100%",padding:13,fontSize:15}} onClick={()=>setShiftSet(true)}>
             Mulai Kerja →
           </Btn>
         </Card>
