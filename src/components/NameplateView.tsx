@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, ringkasAlasanGagal, klasifikasiErrorSimpan } from "../lib/koneksi";
@@ -344,12 +345,12 @@ export function NameplateView({user,registerBackHandler}:any){
         <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="🔍 Cari proyek atau WO..."
           style={{width:"100%",height:36,padding:"0 12px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,marginBottom:12,outline:"none"}}/>
         {loading?(
-          <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{textAlign:"center",padding:40,color:WARNA.redup}}>
             <i className="ti ti-loader-2" style={{fontSize:26,display:"block",marginBottom:8}}/>
             Memuat data...
           </div>
         ):filteredProjects.length===0?(
-          <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{textAlign:"center",padding:40,color:WARNA.redup}}>
             <i className="ti ti-folder-x" style={{fontSize:32,display:"block",marginBottom:8}}/>
             Tidak ada proyek
           </div>
@@ -459,7 +460,7 @@ export function NameplateView({user,registerBackHandler}:any){
                         <div style={{padding:"2px 12px 14px",borderTop:"1px solid #f1f5f9"}}>
                           <div style={{marginBottom:14,marginTop:12}}>
                             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
-                              <span style={{fontSize:10.5,fontWeight:700,color:"#94a3b8",letterSpacing:.3}}>FABRIKASI</span>
+                              <span style={{fontSize:10.5,fontWeight:700,color:WARNA.redup,letterSpacing:.3}}>FABRIKASI</span>
                               <span style={{fontSize:11,fontWeight:800,color:pct>=100?"#16a34a":t.color}}>{pct}%</span>
                             </div>
                             <div style={{display:"flex",gap:4}}>
@@ -471,7 +472,7 @@ export function NameplateView({user,registerBackHandler}:any){
                             </div>
                           </div>
                           <div>
-                            <div style={{fontSize:10.5,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:.3}}>PEMASANGAN (FOTO)</div>
+                            <div style={{fontSize:10.5,fontWeight:700,color:WARNA.redup,marginBottom:8,letterSpacing:.3}}>PEMASANGAN (FOTO)</div>
                             {fotoArr.length===0&&staged.length===0?(
                               <div style={{fontSize:11.5,color:"#cbd5e1",padding:"6px 0 10px",fontStyle:"italic" as const}}>Belum ada foto</div>
                             ):(
@@ -486,7 +487,7 @@ export function NameplateView({user,registerBackHandler}:any){
                                       style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                       <i className="ti ti-trash" style={{fontSize:10}}/>
                                     </button>
-                                    <div style={{fontSize:8,color:"#94a3b8",marginTop:3,textAlign:"center" as const}}>{f.uploaded_at?new Date(f.uploaded_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):""}</div>
+                                    <div style={{fontSize:8,color:WARNA.redup,marginTop:3,textAlign:"center" as const}}>{f.uploaded_at?new Date(f.uploaded_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):""}</div>
                                   </div>
                                 ))}
                                 {staged.map((s,si)=>(

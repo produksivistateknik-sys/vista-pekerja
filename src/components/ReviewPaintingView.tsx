@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { WARNA, GRADASI_AKSEN } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { PROSES_COLOR } from "../lib/panelTypes";
 import { fetchKomponenNamaMap, getNamaKomponen } from "../lib/komponenNama";
@@ -129,7 +130,7 @@ export function ReviewPaintingView(){
   return(
     <div style={{padding:16,maxWidth:560,margin:"0 auto"}} className="fi">
       <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:14}}>
-        <div style={{width:40,height:40,borderRadius:10,background:"linear-gradient(135deg,#8b5cf6,#0ea5e9)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:"0 3px 10px #8b5cf644"}}>🗂</div>
+        <div style={{width:40,height:40,borderRadius:10,background:GRADASI_AKSEN,display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,boxShadow:`0 3px 10px ${WARNA.aksen}44`}}>🗂</div>
         <div>
           <div style={{fontWeight:800,fontSize:15,color:"#1e293b"}}>Review Painting</div>
           <div style={{fontSize:11,color:"#64748b"}}>Riwayat Section Rendam &amp; Painting</div>
@@ -140,18 +141,18 @@ export function ReviewPaintingView(){
         <button onClick={()=>setViewDate(addDays(viewDate,-1))} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:"#f8fafc",cursor:"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:"#475569"}}>‹</button>
         <div style={{flex:1,textAlign:"center" as const}}>
           <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>📅 {fmtDate(viewDate)}</div>
-          {viewDate===TODAY&&<div style={{fontSize:9,color:"#fff",fontWeight:700,marginTop:3,background:"linear-gradient(135deg,#8b5cf6,#0ea5e9)",borderRadius:20,padding:"1px 8px",display:"inline-block"}}>Hari Ini</div>}
+          {viewDate===TODAY&&<div style={{fontSize:9,color:"#fff",fontWeight:700,marginTop:3,background:GRADASI_AKSEN,borderRadius:20,padding:"1px 8px",display:"inline-block"}}>Hari Ini</div>}
         </div>
         <button onClick={()=>setViewDate(addDays(viewDate,1))} disabled={viewDate>=TODAY} style={{width:34,height:34,borderRadius:8,border:"1px solid #e2e8f0",background:viewDate>=TODAY?"#f1f5f9":"#f8fafc",cursor:viewDate>=TODAY?"not-allowed":"pointer",fontSize:16,display:"flex",alignItems:"center",justifyContent:"center",color:viewDate>=TODAY?"#cbd5e1":"#475569"}}>›</button>
       </div>
 
       {loading?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+        <div style={{textAlign:"center",padding:40,color:WARNA.redup}}>
           <div style={{fontSize:24,marginBottom:8}}>⏳</div>
           Memuat riwayat...
         </div>
       ):groupedProses.length===0?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+        <div style={{textAlign:"center",padding:40,color:WARNA.redup}}>
           <div style={{fontSize:32,marginBottom:8}}>📭</div>
           <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>Belum ada riwayat</div>
           <div style={{fontSize:12,marginTop:4}}>Belum ada section yang disimpan di tanggal ini</div>
@@ -192,7 +193,7 @@ export function ReviewPaintingView(){
                     </div>
                     <div style={{textAlign:"right" as const,flexShrink:0}}>
                       <div style={{fontWeight:800,fontSize:15,color:pc,lineHeight:1}}>{totalQty}</div>
-                      <div style={{fontSize:8.5,fontWeight:700,color:"#94a3b8"}}>pcs</div>
+                      <div style={{fontSize:8.5,fontWeight:700,color:WARNA.redup}}>pcs</div>
                     </div>
                     <span style={{fontSize:11,color:"#cbd5e1"}}>{isOpen?"▾":"▸"}</span>
                   </div>
@@ -200,7 +201,7 @@ export function ReviewPaintingView(){
                     <div style={{display:"flex",flexDirection:"column" as const,gap:8,padding:"2px 13px 12px"}}>
                       {sec.panels.map((pnl:any,pi:number)=>(
                         <div key={pi}>
-                          <div style={{fontSize:10.5,fontWeight:800,color:"#334155",marginBottom:4,paddingTop:6}}>{pnl.panelNama} <span style={{fontWeight:600,color:"#94a3b8"}}>· {pnl.proyek}</span></div>
+                          <div style={{fontSize:10.5,fontWeight:800,color:"#334155",marginBottom:4,paddingTop:6}}>{pnl.panelNama} <span style={{fontWeight:600,color:WARNA.redup}}>· {pnl.proyek}</span></div>
                           <div style={{display:"flex",flexDirection:"column" as const,gap:4}}>
                             {pnl.items.map((r:any,i:number)=>(
                               <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>

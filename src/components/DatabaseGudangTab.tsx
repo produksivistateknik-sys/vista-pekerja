@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { WARNA } from "../lib/warnaTema";
 import * as XLSX from "xlsx";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, SegmentedControl } from "./gudang/GudangUI";
@@ -143,16 +144,16 @@ function KomponenTabelView({rows,totalRows,sortCol,sortDir,onSort,columnFilters,
                             <div key={v} onClick={()=>onToggleFilterValue(c.key,v)}
                               style={{padding:"5px 8px",borderRadius:6,cursor:"pointer",fontSize:11,
                                 display:"flex",alignItems:"center",gap:7,
-                                background:isSel?"#eff6ff":"transparent",color:isSel?"#1d4ed8":"#1e293b"}}>
-                              <span style={{width:13,height:13,borderRadius:3,border:`1.5px solid ${isSel?"#1d4ed8":"#cbd5e1"}`,
-                                background:isSel?"#1d4ed8":"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
+                                background:isSel?"#eff6ff":"transparent",color:isSel?WARNA.aksenTeks:"#1e293b"}}>
+                              <span style={{width:13,height:13,borderRadius:3,border:`1.5px solid ${isSel?WARNA.aksen:"#cbd5e1"}`,
+                                background:isSel?WARNA.aksen:"transparent",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
                                 {isSel&&<i className="ti ti-check" style={{fontSize:9,color:"#fff"}}/>}
                               </span>
                               <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap" as const}}>{v}</span>
                             </div>
                           );
                         })}
-                        {getUniqueColValues(c.key).length===0&&<div style={{padding:"5px 8px",fontSize:11,color:"#94a3b8"}}>Tidak ada nilai</div>}
+                        {getUniqueColValues(c.key).length===0&&<div style={{padding:"5px 8px",fontSize:11,color:WARNA.redup}}>Tidak ada nilai</div>}
                       </div>
                     )}
                   </div>
@@ -537,11 +538,11 @@ export function DatabaseGudangTab(){
         onDragLeave={()=>setDragOver(false)}
         onDrop={(e:any)=>{e.preventDefault();setDragOver(false);onFile(e.dataTransfer.files?.[0]||null);}}
         onClick={()=>fileInputRef.current?.click()}
-        style={{border:`2px dashed ${dragOver?"#0369a1":"#cbd5e1"}`,borderRadius:14,padding:"24px 16px",
+        style={{border:`2px dashed ${dragOver?WARNA.aksen:"#cbd5e1"}`,borderRadius:14,padding:"24px 16px",
           textAlign:"center" as const,background:dragOver?"#eff6ff":"#f8fafc",cursor:"pointer",marginBottom:14}}>
         <div style={{fontSize:28,marginBottom:6}}>📤</div>
         <div style={{fontSize:13,fontWeight:700,color:"#334155"}}>Tap buat pilih file, atau drag & drop</div>
-        <div style={{fontSize:11,color:"#94a3b8",marginTop:4,lineHeight:1.6}}>Excel (.xlsx) atau CSV - kolom: Nama (wajib) · Kode Barang · Tipe · Merk · Satuan · Satuan Alternatif (pisah "ATAU" kalau lebih dari 1)</div>
+        <div style={{fontSize:11,color:WARNA.redup,marginTop:4,lineHeight:1.6}}>Excel (.xlsx) atau CSV - kolom: Nama (wajib) · Kode Barang · Tipe · Merk · Satuan · Satuan Alternatif (pisah "ATAU" kalau lebih dari 1)</div>
         <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" onChange={(e:any)=>onFile(e.target.files?.[0]||null)} style={{display:"none"}}/>
       </div>
 
@@ -577,7 +578,7 @@ export function DatabaseGudangTab(){
       <SectionCard icon="🗄️" title="Komponen Terdaftar" subtitle={`Cari & kelola daftar komponen ${kategoriAktif}`}
         right={
           <div style={{display:"flex",alignItems:"center",gap:6,flexShrink:0,flexWrap:"wrap" as const}}>
-            <span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>{masterList.length} total</span>
+            <span style={{background:"#eff6ff",color:WARNA.aksenTeks,borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>{masterList.length} total</span>
             {/* Toggle Card/Tabel (7 Sep 2026) - Tabel ditujukan buat layar lebar (tablet/laptop),
                 card TETAP default & satu-satunya yang nyaman di HP sempit (lihat komentar di
                 render list card di bawah). */}
@@ -632,7 +633,7 @@ export function DatabaseGudangTab(){
       <input value={search} onChange={(e:any)=>setSearch(e.target.value)} placeholder="🔍 Cari nama atau kode barang..."
         style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontFamily:"inherit",marginBottom:10}}/>
       {loadingList?(
-        <div style={{textAlign:"center",padding:24,color:"#94a3b8",fontSize:13}}>Memuat...</div>
+        <div style={{textAlign:"center",padding:24,color:WARNA.redup,fontSize:13}}>Memuat...</div>
       ):(viewMode==="card"?filteredList:tableRows).length===0?(
         <EmptyState title={search||Object.values(columnFilters).some(v=>v.length>0)?"Tidak ditemukan":"Belum ada komponen"}
           description={search||Object.values(columnFilters).some(v=>v.length>0)?"Gak ada komponen yang cocok dengan pencarian/filter.":`Upload file Excel/CSV di atas buat mulai isi daftar komponen ${kategoriAktif}.`}/>
@@ -680,7 +681,7 @@ export function DatabaseGudangTab(){
                   <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"6px 10px"}}>
                     {kolom.map(k=>(
                       <div key={k.label}>
-                        <div style={{fontSize:9,fontWeight:700,color:"#94a3b8",letterSpacing:.3,marginBottom:1}}>{k.label}</div>
+                        <div style={{fontSize:9,fontWeight:700,color:WARNA.redup,letterSpacing:.3,marginBottom:1}}>{k.label}</div>
                         <div style={{fontSize:12,fontWeight:600,color:"#334155"}}>{k.value}</div>
                       </div>
                     ))}
@@ -721,7 +722,7 @@ export function DatabaseGudangTab(){
                       submitEditKomponen) - cuma memindahkan komponen ini ke daftar kategori lain
                       buat transaksi BARU ke depannya. */}
                   <div>
-                    <div style={{fontSize:10,fontWeight:700,color:"#94a3b8",letterSpacing:.3,marginBottom:4}}>KATEGORI</div>
+                    <div style={{fontSize:10,fontWeight:700,color:WARNA.redup,letterSpacing:.3,marginBottom:4}}>KATEGORI</div>
                     <SegmentedControl options={[{key:"BBMB",label:"BBMB (Bantu)",icon:"🧰"},{key:"BBMU",label:"BBMU (Utama)",icon:"⚙️"}]}
                       value={editKategori} onChange={(k:any)=>{setEditKategori(k);setEditError("");}}/>
                     {editKategori!==editTarget.kategori&&(
@@ -780,7 +781,7 @@ export function DatabaseGudangTab(){
             <div style={{fontSize:13,color:"#334155",marginBottom:4,lineHeight:1.6}}>
               <strong>{deleteTarget.nama}</strong>{deleteTarget.kode_barang?` (${deleteTarget.kode_barang})`:""} - kategori {deleteTarget.kategori}
             </div>
-            <div style={{fontSize:12,color:"#94a3b8",marginBottom:14,lineHeight:1.6}}>
+            <div style={{fontSize:12,color:WARNA.redup,marginBottom:14,lineHeight:1.6}}>
               Item cuma bisa dihapus kalau BELUM PERNAH dipakai di permintaan barang manapun.
               Kalau sudah pernah dipakai, penghapusan akan ditolak otomatis. Tindakan ini TIDAK
               BISA dibatalkan kalau berhasil.

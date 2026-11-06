@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { WARNA } from "../../lib/warnaTema";
 import { supabase } from "../../lib/supabase";
 import { KoneksiBadge } from "../ui/Primitives";
 
@@ -27,7 +28,7 @@ export function GudangHeader({subtitle,notifCount,onBellClick,onLogout,adminName
             <span style={{fontSize:19}}>⚡</span>
             <span style={{fontWeight:800,fontSize:17,color:"#0f172a",letterSpacing:-.2}}>PROSES PRODUKSI</span>
           </div>
-          <div style={{fontSize:12,color:"#94a3b8",marginTop:2,marginLeft:27}}>{subtitle}</div>
+          <div style={{fontSize:12,color:WARNA.redup,marginTop:2,marginLeft:27}}>{subtitle}</div>
         </div>
         <button onClick={onBellClick} title="Notifikasi" style={{position:"relative",flexShrink:0,width:38,height:38,
           border:"1px solid #e2e8f0",borderRadius:10,background:"#f8fafc",display:"flex",
@@ -39,7 +40,7 @@ export function GudangHeader({subtitle,notifCount,onBellClick,onLogout,adminName
       </div>
       <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" as const,rowGap:6,marginTop:10}}>
         <KoneksiBadge/>
-        <span style={{display:"inline-flex",alignItems:"center",gap:4,background:"#eff6ff",color:"#0369a1",
+        <span style={{display:"inline-flex",alignItems:"center",gap:4,background:"#eff6ff",color:WARNA.aksenTeks,
           border:"1px solid #0369a130",borderRadius:20,padding:"3px 10px",fontSize:11,fontWeight:700}}>🚚 Gudang</span>
         <div style={{flex:1}}/>
         <LockIconButton adminName={adminName}/>
@@ -72,9 +73,9 @@ export function SegmentedControl<T extends string>({options,value,onChange}:{
         return(
           <button key={o.key} onClick={()=>onChange(o.key)} style={{flex:1,display:"flex",alignItems:"center",
             justifyContent:"center",gap:7,padding:"8px 6px",border:"none",
-            borderBottom:active?"3px solid #0369a1":"3px solid transparent",borderRadius:"10px 10px 0 0",
+            borderBottom:active?`3px solid ${WARNA.aksen}`:"3px solid transparent",borderRadius:"10px 10px 0 0",
             cursor:"pointer",fontFamily:"inherit",background:active?"#eff6ff":"transparent",
-            color:active?"#0369a1":"#64748b",transition:"all .15s"}}>
+            color:active?WARNA.aksenTeks:"#64748b",transition:"all .15s"}}>
             <span style={{width:22,height:22,borderRadius:"50%",background:"#fff",display:"flex",
               alignItems:"center",justifyContent:"center",fontSize:12,flexShrink:0,position:"relative",
               boxShadow:active?"0 1px 3px rgba(0,0,0,0.1)":"none"}}>

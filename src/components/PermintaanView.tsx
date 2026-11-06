@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { Lbl, Card, SectionCard, EmptyState, CardToggle, SearchableSelect } from "./ui/Primitives";
 import { DIVISI_CONFIG } from "../lib/panelTypes";
@@ -67,7 +68,7 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
   const divisi:string=user?.divisi||"";
   const subBagian:string|null=user?.sub_bagian||null;
   const cfg=(DIVISI_CONFIG as any)[divisi];
-  const accent:string=cfg?.color||"#0d9488";
+  const accent:string=WARNA.aksen;
 
   const[jenisTab,setJenisTab]=useState<Jenis>("BBMB");
 
@@ -420,14 +421,14 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
       </SectionCard>
 
       <div style={{marginBottom:14,display:"flex",alignItems:"center",gap:12,background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:12,padding:"12px 16px"}}>
-        <div style={{width:40,height:40,borderRadius:10,background:accent,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:17,color:"#fff",fontWeight:800}}>
+        <div style={{width:40,height:40,borderRadius:10,background:cfg?.color||"#0d9488",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:17,color:"#fff",fontWeight:800}}>
           {namaOperator.charAt(0).toUpperCase()}
         </div>
         <div style={{flex:1,minWidth:0}}>
           <Lbl>Operator · Divisi</Lbl>
           <div style={{fontSize:14,fontWeight:800,color:"#0f172a"}}>{namaOperator} · {divisi}</div>
         </div>
-        <span style={{background:cfg?.bg,color:accent,border:`1px solid ${accent}30`,borderRadius:20,
+        <span style={{background:accent+"18",color:WARNA.aksenTeks,border:`1px solid ${accent}30`,borderRadius:20,
           padding:"3px 10px",fontSize:11,fontWeight:700,whiteSpace:"nowrap" as const,flexShrink:0}}>
           {cfg?.icon} {subBagian||cfg?.label||divisi}
         </span>
@@ -464,7 +465,7 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
             <option value="">Pilih Panel...</option>
             {panelList.map((p:any)=><option key={p.id} value={p.id}>#{p.no_pnl} {p.nama} ({p.tipe})</option>)}
           </select>
-          {panelList.length===0&&<div style={{fontSize:12,color:"#94a3b8",marginTop:6}}>Belum ada panel untuk WO ini</div>}
+          {panelList.length===0&&<div style={{fontSize:12,color:WARNA.redup,marginTop:6}}>Belum ada panel untuk WO ini</div>}
         </div>
       )}
 
@@ -529,7 +530,7 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
         <>
           <div style={{height:1,background:"#f1f5f9",margin:"4px 0 16px"}}/>
           <Lbl>Hutang Divisi ({divisi})</Lbl>
-          <div style={{fontSize:11.5,color:"#94a3b8",marginBottom:12}}>Sisa permintaan yang belum sepenuhnya dipenuhi Gudang - dicicil otomatis sampai lunas.</div>
+          <div style={{fontSize:11.5,color:WARNA.redup,marginBottom:12}}>Sisa permintaan yang belum sepenuhnya dipenuhi Gudang - dicicil otomatis sampai lunas.</div>
           {errHutang&&<div style={{fontSize:11.5,color:"#b91c1c",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 10px",marginBottom:10}}>Gagal memuat hutang ({errHutang}). {hutangList.length?"Yang tampil mungkin belum terbaru.":""} Buka ulang tab ini; kalau tetap gagal, laporkan ke admin.</div>}
           {!(errHutang&&hutangList.length===0)&&<HutangBlock hutangList={hutangList} loading={loadingHutang} accent={accent} confirmingId={confirmingId} konfirmasiDiambil={konfirmasiDiambil} fmtDateTime={fmtDateTime}/>}
         </>
@@ -542,7 +543,7 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
         style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #cbd5e1",fontSize:14,fontWeight:600,color:"#0f172a",background:"#fff",fontFamily:"inherit",marginBottom:12}}/>
       {errRiwayat&&<div style={{fontSize:11.5,color:"#b91c1c",background:"#fef2f2",border:"1px solid #fecaca",borderRadius:8,padding:"8px 10px",marginBottom:10}}>Gagal memuat riwayat ({errRiwayat}). {riwayat.length?"Yang tampil mungkin belum terbaru.":""} Ganti tanggal/tab atau buka ulang; kalau tetap gagal, laporkan ke admin.</div>}
       {loadingRiwayat?(
-        <div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Memuat...</div>
+        <div style={{textAlign:"center" as const,padding:30,color:WARNA.redup,fontSize:13}}>Memuat...</div>
       ):riwayat.length===0?(errRiwayat?null:
         <EmptyState variant="box-paper" title={`Belum ada permintaan ${jenisTab}`}
           description="Permintaan dari divisi ini akan muncul di sini."/>
@@ -554,9 +555,9 @@ export function PermintaanView({user,registerBackHandler,navTarget,onNavTargetCo
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
                 <div>
                   <div style={{fontWeight:800,fontSize:13,color:"#0f172a"}}>{r.proyek||"-"} · {r.panel_nama||"-"}</div>
-                  <div style={{fontSize:10.5,color:"#94a3b8"}}>{r.wo_number||"-"}</div>
+                  <div style={{fontSize:10.5,color:WARNA.redup}}>{r.wo_number||"-"}</div>
                 </div>
-                <span style={{fontSize:10.5,fontWeight:600,color:"#94a3b8",whiteSpace:"nowrap" as const}}>{fmtDateTime(r.created_at)}</span>
+                <span style={{fontSize:10.5,fontWeight:600,color:WARNA.redup,whiteSpace:"nowrap" as const}}>{fmtDateTime(r.created_at)}</span>
               </div>
               {/* PENYATUAN PENUH (3 Sep 2026) - dulu 2 blok terpisah (BBMB ada tombol konfirmasi
                   diambil, BBMU cuma badge status). Sekarang 1 blok yang sama buat keduanya -
@@ -626,7 +627,7 @@ function HutangBlock({hutangList,loading,accent,confirmingId,konfirmasiDiambil,f
   hutangList:any[];loading:boolean;accent:string;confirmingId:number|null;
   konfirmasiDiambil:(id:number)=>void;fmtDateTime:(d:string)=>string;
 }){
-  if(loading)return<div style={{textAlign:"center" as const,padding:30,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
+  if(loading)return<div style={{textAlign:"center" as const,padding:30,color:WARNA.redup,fontSize:13}}>Memuat...</div>;
   if(hutangList.length===0)return<EmptyState variant="box-paper" title="Tidak ada Hutang"
     description="Hutang muncul otomatis kalau Gudang cuma bisa penuhi sebagian permintaan. Belum ada untuk divisi ini."/>;
   return(
@@ -639,15 +640,15 @@ function HutangBlock({hutangList,loading,accent,confirmingId,konfirmasiDiambil,f
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8}}>
               <div style={{minWidth:0}}>
                 <div style={{fontWeight:800,fontSize:13,color:"#0f172a"}}>{it.perm?.proyek||"-"} · {it.perm?.panel_nama||"-"}</div>
-                <div style={{fontSize:10.5,color:"#94a3b8"}}>{it.perm?.wo_number||"-"} · diminta oleh {it.perm?.operator_nama||"-"}</div>
+                <div style={{fontSize:10.5,color:WARNA.redup}}>{it.perm?.wo_number||"-"} · diminta oleh {it.perm?.operator_nama||"-"}</div>
               </div>
-              <span style={{fontSize:10.5,fontWeight:600,color:"#94a3b8",whiteSpace:"nowrap" as const}}>{fmtDateTime(it.updated_at||it.perm?.created_at)}</span>
+              <span style={{fontSize:10.5,fontWeight:600,color:WARNA.redup,whiteSpace:"nowrap" as const}}>{fmtDateTime(it.updated_at||it.perm?.created_at)}</span>
             </div>
             <div style={{background:"#fef2f2",borderRadius:8,padding:"6px 10px"}}>
               <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                 <span style={{fontSize:12.5,fontWeight:600,color:"#334155",flex:1,minWidth:0}}>
                   {it.nama_komponen} <span style={{color:"#dc2626",fontWeight:700}}>Hutang ×{it.qty}{it.satuan?` ${it.satuan}`:""}</span>
-                  {it.qty_diminta_awal&&<span style={{color:"#94a3b8",fontWeight:500}}> (dari {it.qty_diminta_awal})</span>}
+                  {it.qty_diminta_awal&&<span style={{color:WARNA.redup,fontWeight:500}}> (dari {it.qty_diminta_awal})</span>}
                 </span>
                 <span style={{background:badgeColor+"18",color:badgeColor,borderRadius:20,padding:"2px 9px",fontSize:10,fontWeight:700,whiteSpace:"nowrap" as const}}>{badgeLabel}</span>
               </div>

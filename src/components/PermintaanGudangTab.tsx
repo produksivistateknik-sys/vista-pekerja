@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { alertGagalSimpan } from "../lib/koneksi";
 import { SectionCard, SegmentedControl, EmptyState, DatePickerField } from "./gudang/GudangUI";
@@ -338,7 +339,7 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
   });
   const divisiKeys=Object.keys(grouped).sort();
 
-  if(loading)return<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
+  if(loading)return<div style={{textAlign:"center",padding:40,color:WARNA.redup,fontSize:13}}>Memuat...</div>;
   if(divisiKeys.length===0)return<EmptyState title={`Tidak ada permintaan ${jenis}`}
     description={`Semua permintaan ${jenis==="BBMB"?"bantu":"utama"} sudah diproses. Permintaan baru dari operator akan muncul di sini.`}
     tip="Pastikan stok tersedia sebelum memproses permintaan baru."/>;
@@ -348,8 +349,8 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
       {divisiKeys.map(divisi=>(
         <div key={divisi}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-            <span style={{background:"#eff6ff",color:"#1d4ed8",border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:700}}>{DIVISI_LABEL[divisi]||divisi}</span>
-            <span style={{color:"#94a3b8",fontWeight:600,fontSize:11}}>{grouped[divisi].length} permintaan</span>
+            <span style={{background:"#eff6ff",color:WARNA.aksenTeks,border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:700}}>{DIVISI_LABEL[divisi]||divisi}</span>
+            <span style={{color:WARNA.redup,fontWeight:600,fontSize:11}}>{grouped[divisi].length} permintaan</span>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {grouped[divisi].map(permId=>{
@@ -368,7 +369,7 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
                       <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.operator_nama}</div>
                       <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.proyek||"-"} · {p.panel_nama||"-"}</div>
                     </div>
-                    <div style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap",flexShrink:0}}>{fmtDateTime(p.created_at)}</div>
+                    <div style={{fontSize:10,color:WARNA.redup,whiteSpace:"nowrap",flexShrink:0}}>{fmtDateTime(p.created_at)}</div>
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     {items.map((it:any)=>(
@@ -500,7 +501,7 @@ function HutangList({adminName}:{adminName:string}){
   });
   const divisiKeys=Object.keys(grouped).sort();
 
-  if(loading)return<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>;
+  if(loading)return<div style={{textAlign:"center",padding:40,color:WARNA.redup,fontSize:13}}>Memuat...</div>;
   if(divisiKeys.length===0)return<EmptyState title="Tidak ada Hutang"
     description="Semua permintaan sudah dipenuhi penuh. Hutang muncul otomatis kalau qty yang dikeluarkan kurang dari yang diminta."
     tip="Hutang bisa dicicil bertahap sampai benar-benar lunas."/>;
@@ -511,7 +512,7 @@ function HutangList({adminName}:{adminName:string}){
         <div key={divisi}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
             <span style={{background:"#fef2f2",color:"#dc2626",border:"1px solid #fecaca",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:700}}>{DIVISI_LABEL[divisi]||divisi}</span>
-            <span style={{color:"#94a3b8",fontWeight:600,fontSize:11}}>{grouped[divisi].length} hutang</span>
+            <span style={{color:WARNA.redup,fontWeight:600,fontSize:11}}>{grouped[divisi].length} hutang</span>
           </div>
           <div style={{display:"flex",flexDirection:"column",gap:10}}>
             {grouped[divisi].map(permId=>{
@@ -524,14 +525,14 @@ function HutangList({adminName}:{adminName:string}){
                       <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.operator_nama}</div>
                       <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{p.proyek||"-"} · {p.panel_nama||"-"}</div>
                     </div>
-                    <div style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap",flexShrink:0}}>{fmtDateTime(p.created_at)}</div>
+                    <div style={{fontSize:10,color:WARNA.redup,whiteSpace:"nowrap",flexShrink:0}}>{fmtDateTime(p.created_at)}</div>
                   </div>
                   <div style={{display:"flex",flexDirection:"column",gap:6}}>
                     {items.map((it:any)=>(
                       <div key={it.id} style={{display:"flex",alignItems:"center",gap:8,background:"#fef2f2",borderRadius:9,padding:"8px 10px"}}>
                         <span style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#334155",overflow:"hidden",textOverflow:"ellipsis"}}>
                           {it.nama_komponen} <span style={{color:"#dc2626",fontWeight:700}}>Hutang ×{it.qty}{it.satuan?` ${it.satuan}`:""}</span>
-                          {it.qty_diminta_awal&&<span style={{color:"#94a3b8",fontWeight:500}}> (dari {it.qty_diminta_awal})</span>}
+                          {it.qty_diminta_awal&&<span style={{color:WARNA.redup,fontWeight:500}}> (dari {it.qty_diminta_awal})</span>}
                         </span>
                         <div style={{display:"flex",gap:6,flexShrink:0}}>
                           <button onClick={()=>setQtyTarget(it)} disabled={submittingId===it.id}

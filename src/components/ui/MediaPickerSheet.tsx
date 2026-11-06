@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { WARNA } from "../../lib/warnaTema";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // MEDIA PICKER SHEET - bottom sheet pilihan (Ambil Foto / Rekam Video* / Galeri / Tambahkan File*)
@@ -54,7 +55,7 @@ export function MediaPickerSheet({onFiles,disabled,allowVideo=false,allowAnyFile
           <div onClick={(e:any)=>e.stopPropagation()}
             style={{width:"100%",background:"#fff",borderRadius:"18px 18px 0 0",padding:"8px 14px calc(14px + env(safe-area-inset-bottom))",boxShadow:"0 -8px 30px rgba(0,0,0,0.18)"}}>
             <div style={{width:36,height:4,borderRadius:99,background:"#e2e8f0",margin:"6px auto 12px"}}/>
-            <div style={{fontSize:12,fontWeight:700,color:"#94a3b8",padding:"0 6px 10px"}}>Tambah {allowVideo?"Foto/Video":"Foto"}</div>
+            <div style={{fontSize:12,fontWeight:700,color:WARNA.redup,padding:"0 6px 10px"}}>Tambah {allowVideo?"Foto/Video":"Foto"}</div>
             <button onClick={()=>{setOpen(false);cameraRef.current?.click();}}
               style={{width:"100%",display:"flex",alignItems:"center",gap:12,padding:"13px 10px",background:"none",border:"none",borderRadius:10,cursor:"pointer",fontSize:14,fontWeight:600,color:"#1e293b",textAlign:"left" as const}}>
               <span style={{width:36,height:36,borderRadius:10,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:17,flexShrink:0}}>📷</span>

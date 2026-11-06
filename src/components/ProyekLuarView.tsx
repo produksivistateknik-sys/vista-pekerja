@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { PESAN_DIANTREKAN, unggahBanyak, MAKS_FOTO_PER_SIMPAN, pesanMelebihiBatasFoto } from "../lib/siapkanMedia";
 import { tempelAtauAntrekan } from "../lib/antreanFoto";
@@ -246,16 +247,16 @@ export function ProyekLuarView({user}:{user:any}){
       <div key={e.id} style={{border:"1px solid #e2e8f0",borderRadius:10,padding:10,marginBottom:10,background:bisaUbah?"#fff":"#f8fafc"}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"baseline",gap:8,marginBottom:6}}>
           <span style={{fontWeight:700,fontSize:12.5,color:"#1e293b"}}>📅 {e.tanggal}{e.tanggal===hk&&<span style={{marginLeft:6,fontSize:10,fontWeight:800,color:"#16a34a"}}>HARI INI</span>}</span>
-          <span style={{fontSize:10.5,color:"#94a3b8",textAlign:"right"}}>{milik?"Anda":e.operator_nama} · diperbarui {labelWaktuPL(e.aktivitas_pada)}</span>
+          <span style={{fontSize:10.5,color:WARNA.redup,textAlign:"right"}}>{milik?"Anda":e.operator_nama} · diperbarui {labelWaktuPL(e.aktivitas_pada)}</span>
         </div>
         {bisaUbah?(
           <CatatanProyekLuarOtomatis key={e.id} entri={e} user={user}
             onTersimpan={(data:any)=>setEntriList(prev=>prev.map((x:any)=>x.id===e.id?{...x,...data}:x))}/>
         ):(
           e.catatan?<div style={{fontSize:12.5,color:"#475569",marginBottom:6,lineHeight:1.5,whiteSpace:"pre-wrap"}}>{e.catatan}</div>
-            :<div style={{fontSize:12,color:"#94a3b8",marginBottom:6}}>Belum ada catatan.</div>
+            :<div style={{fontSize:12,color:WARNA.redup,marginBottom:6}}>Belum ada catatan.</div>
         )}
-        {jejak&&<div style={{fontSize:11,color:"#94a3b8",marginBottom:8}}>Diubah oleh {jejak.oleh} · {labelWaktuPL(jejak.pada)}</div>}
+        {jejak&&<div style={{fontSize:11,color:WARNA.redup,marginBottom:8}}>Diubah oleh {jejak.oleh} · {labelWaktuPL(jejak.pada)}</div>}
         {fotoList.length>0&&(
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:6,marginBottom:8}}>
             {fotoList.map((f:any,fi:number)=>(
@@ -276,7 +277,7 @@ export function ProyekLuarView({user}:{user:any}){
             <MediaPickerSheet allowVideo onFiles={(files)=>{
                 const dipilih=Array.from(files).map(file=>({file,previewUrl:URL.createObjectURL(file)}));
                 unggahFotoKeEntri(p,e,dipilih);
-              }} triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:11.5,fontWeight:700}}>
+              }} triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:WARNA.aksenTeks,fontSize:11.5,fontWeight:700}}>
               <i className="ti ti-camera-plus" style={{fontSize:13}}/> {mengunggahId===e.id?(progresFoto?`Mengunggah ${progresFoto}`:"Mengunggah..."):"Tambah Foto"}
             </MediaPickerSheet>
             <button onClick={()=>hapusEntri(e)} style={{border:0,background:"none",padding:0,color:"#b91c1c",fontSize:11.5,fontWeight:700,cursor:"pointer"}}>Hapus pekerjaan ini</button>
@@ -286,7 +287,7 @@ export function ProyekLuarView({user}:{user:any}){
           <div style={{display:"flex",gap:8,alignItems:"center",marginTop:8}}>
             <span style={{fontSize:11,color:"#b91c1c"}}>{gagalIni.length} foto gagal diunggah</span>
             <button onClick={()=>unggahFotoKeEntri(p,e,gagalIni)} disabled={mengunggahId!=null}
-              style={{fontSize:11,fontWeight:700,color:"#fff",background:"#1d4ed8",border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>
+              style={{fontSize:11,fontWeight:700,color:"#fff",background:WARNA.aksen,border:"none",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>
               {mengunggahId===e.id?(progresFoto?`Mengunggah ${progresFoto}`:"Mengunggah..."):"Ulangi unggah"}
             </button>
           </div>
@@ -299,15 +300,15 @@ export function ProyekLuarView({user}:{user:any}){
     <div style={{padding:16}}>
       <div style={{display:"flex",gap:8,marginBottom:14}}>
         <button onClick={()=>setMode("list")} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
-          fontSize:12.5,fontWeight:700,background:mode==="list"?"#1d4ed8":"#e2e8f0",color:mode==="list"?"#fff":"#64748b"}}>
+          fontSize:12.5,fontWeight:700,background:mode==="list"?WARNA.aksen:"#e2e8f0",color:mode==="list"?"#fff":"#64748b"}}>
           📋 Daftar Proyek
         </button>
         <button onClick={()=>{setFormBaru(f=>({...f,tanggal:f.nama?f.tanggal:hariKerjaWib()}));setMode("form");}} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
-          fontSize:12.5,fontWeight:700,background:mode==="form"?"#1d4ed8":"#e2e8f0",color:mode==="form"?"#fff":"#64748b"}}>
+          fontSize:12.5,fontWeight:700,background:mode==="form"?WARNA.aksen:"#e2e8f0",color:mode==="form"?"#fff":"#64748b"}}>
           ➕ Proyek Baru
         </button>
         <button onClick={()=>setMode("arsip")} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
-          fontSize:12.5,fontWeight:700,background:mode==="arsip"?"#1d4ed8":"#e2e8f0",color:mode==="arsip"?"#fff":"#64748b"}}>
+          fontSize:12.5,fontWeight:700,background:mode==="arsip"?WARNA.aksen:"#e2e8f0",color:mode==="arsip"?"#fff":"#64748b"}}>
           🗄️ Arsip
         </button>
       </div>
@@ -339,10 +340,10 @@ export function ProyekLuarView({user}:{user:any}){
               <label style={{fontSize:11,fontWeight:700,color:"#64748b",display:"block",marginBottom:4}}>Tanggal Pekerjaan Pertama</label>
               <input type="date" value={formBaru.tanggal} max={hk} onChange={e=>setFormBaru({...formBaru,tanggal:e.target.value})}
                 style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box"}}/>
-              <div style={{fontSize:10.5,color:"#94a3b8",marginTop:4}}>Hari kerja: pukul 00.00-06.59 masih dihitung tanggal kemarin.</div>
+              <div style={{fontSize:10.5,color:WARNA.redup,marginTop:4}}>Hari kerja: pukul 00.00-06.59 masih dihitung tanggal kemarin.</div>
             </div>
             <button onClick={buatProyek} disabled={memulai}
-              style={{width:"100%",padding:13,fontSize:14,fontWeight:700,color:"#fff",background:"#1d4ed8",
+              style={{width:"100%",padding:13,fontSize:14,fontWeight:700,color:"#fff",background:WARNA.aksen,
                 border:"none",borderRadius:10,cursor:memulai?"default":"pointer",fontFamily:"inherit",opacity:memulai?.7:1}}>
               {memulai?"Membuat...":"Buat Proyek"}
             </button>
@@ -367,7 +368,7 @@ export function ProyekLuarView({user}:{user:any}){
             </div>
           )}
           {loading?(
-            <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
+            <div style={{textAlign:"center",padding:20,color:WARNA.redup,fontSize:12}}>Memuat...</div>
           ):daftar.length===0?(galatMuat?null:
             <EmptyState title={isArsip?"Belum ada proyek diarsip":"Belum ada proyek"} description={isArsip?"Proyek yang diarsipkan akan muncul di sini.":(q?"Tidak ada proyek yang cocok.":'Buat proyek pertama lewat tab "Proyek Baru".')} variant="box-paper"/>
           ):daftar.map(p=>{
@@ -385,7 +386,7 @@ export function ProyekLuarView({user}:{user:any}){
                   display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                   <div style={{minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{p.nama_lokasi}</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>📍 {p.lokasi||p.nama_lokasi} · {es.length} hari{es[0]?` · terakhir ${es[0].tanggal}`:""}{aktivitasPL(p)?` · diperbarui ${labelWaktuPL(aktivitasPL(p))}`:""}</div>
+                    <div style={{fontSize:11,color:WARNA.redup,marginTop:2}}>📍 {p.lokasi||p.nama_lokasi} · {es.length} hari{es[0]?` · terakhir ${es[0].tanggal}`:""}{aktivitasPL(p)?` · diperbarui ${labelWaktuPL(aktivitasPL(p))}`:""}</div>
                     {tertunda&&<div style={{fontSize:10.5,color:"#b45309",fontWeight:700,marginTop:2}}>⏳ catatan belum terkirim</div>}
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:8,flexShrink:0}}>
@@ -396,20 +397,20 @@ export function ProyekLuarView({user}:{user:any}){
                 </div>
                 {isExp&&(
                   <div style={{padding:"12px 14px",borderTop:"1px solid #f1f5f9"}}>
-                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:10}}>Dibuat oleh {pembuat?"Anda":(p.dibuat_oleh||p.operator_nama)}{p.status==="selesai"&&p.selesai_oleh?` · Selesai oleh ${p.selesai_oleh}`:""}</div>
+                    <div style={{fontSize:11,color:WARNA.redup,marginBottom:10}}>Dibuat oleh {pembuat?"Anda":(p.dibuat_oleh||p.operator_nama)}{p.status==="selesai"&&p.selesai_oleh?` · Selesai oleh ${p.selesai_oleh}`:""}</div>
                     {p.status==="berlangsung"?(
                       <div style={{display:"flex",gap:8,alignItems:"center",marginBottom:12}}>
                         <input type="date" value={tgl} max={hk} onChange={e=>setTglTambah(t=>({...t,[p.id]:e.target.value}))}
                           style={{flex:"0 0 auto",padding:"8px 10px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:12.5,fontFamily:"inherit"}}/>
                         <button onClick={()=>tambahPekerjaan(p)} disabled={membukaEntri!=null||sudahAda}
-                          style={{flex:1,padding:"9px 10px",borderRadius:10,border:0,background:sudahAda?"#e2e8f0":"#1d4ed8",color:sudahAda?"#64748b":"#fff",fontSize:12.5,fontWeight:700,cursor:sudahAda?"default":"pointer",fontFamily:"inherit"}}>
+                          style={{flex:1,padding:"9px 10px",borderRadius:10,border:0,background:sudahAda?"#e2e8f0":WARNA.aksen,color:sudahAda?"#64748b":"#fff",fontSize:12.5,fontWeight:700,cursor:sudahAda?"default":"pointer",fontFamily:"inherit"}}>
                           {membukaEntri===p.id?"Membuka...":sudahAda?"Sudah ada - isi di bawah":tgl===hk?"+ Tambah pekerjaan hari ini":`+ Tambah pekerjaan ${tgl}`}
                         </button>
                       </div>
                     ):(
                       <div style={{fontSize:11.5,color:"#16a34a",background:"#f0fdf4",border:"1px solid #bbf7d0",borderRadius:8,padding:"6px 10px",marginBottom:12}}>Proyek Selesai - pekerjaan tidak bisa ditambah. Hanya admin yang bisa membuka kembali.</div>
                     )}
-                    {es.length===0&&<div style={{fontSize:12,color:"#94a3b8",marginBottom:10}}>Belum ada pekerjaan.</div>}
+                    {es.length===0&&<div style={{fontSize:12,color:WARNA.redup,marginBottom:10}}>Belum ada pekerjaan.</div>}
                     {es.map(e=>blokEntri(p,e))}
                     <div style={{display:"flex",gap:8,justifyContent:"flex-end",flexWrap:"wrap"}}>
                       {p.status==="berlangsung"&&pembuat&&(
@@ -422,7 +423,7 @@ export function ProyekLuarView({user}:{user:any}){
                         <button onClick={()=>hapusProyek(p)} style={{fontSize:11,fontWeight:700,color:"#b91c1c",background:"#fff",border:"1px solid #fecaca",borderRadius:8,padding:"6px 12px",cursor:"pointer"}}>Hapus proyek</button>
                       )}
                     </div>
-                    {p.status==="berlangsung"&&!pembuat&&<div style={{fontSize:10.5,color:"#94a3b8",marginTop:6,textAlign:"right"}}>Tandai Selesai hanya oleh pembuat proyek ({p.dibuat_oleh||p.operator_nama}) atau admin.</div>}
+                    {p.status==="berlangsung"&&!pembuat&&<div style={{fontSize:10.5,color:WARNA.redup,marginTop:6,textAlign:"right"}}>Tandai Selesai hanya oleh pembuat proyek ({p.dibuat_oleh||p.operator_nama}) atau admin.</div>}
                   </div>
                 )}
               </div>

@@ -3,22 +3,23 @@
 // memo: App dirender ulang tiap detik (jam header).
 import { memo, useEffect } from "react";
 import type { KartuPengingat } from "../lib/pengingatWiring";
+import { WARNA } from "../lib/warnaTema";
 
 const CSS = `
 .pw{color-scheme:light}
 .pw button{font-family:inherit;cursor:pointer}
-.pw button:focus-visible{outline:2px solid #1d4ed8;outline-offset:2px}
+.pw button:focus-visible{outline:2px solid ${WARNA.aksen};outline-offset:2px}
 .pw-ban{display:flex;align-items:stretch;gap:6px;padding:8px 12px;background:#eff6ff;border-bottom:1px solid #bfdbfe}
-.pw-ban-isi{flex:1;min-width:0;display:flex;gap:8px;align-items:flex-start;text-align:left;border:0;background:none;color:#1e3a5f;padding:4px 0;min-height:44px}
-.pw-ban-isi i{font-size:18px;color:#1d4ed8;margin-top:1px}
+.pw-ban-isi{flex:1;min-width:0;display:flex;gap:8px;align-items:flex-start;text-align:left;border:0;background:none;color:${WARNA.tinta};padding:4px 0;min-height:44px}
+.pw-ban-isi i{font-size:18px;color:${WARNA.aksen};margin-top:1px}
 .pw-ban-isi span{font-size:12.5px;line-height:1.35;overflow-wrap:anywhere;display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}
-.pw-lagi{flex:none;align-self:center;min-height:44px;padding:0 10px;border:1px solid #bfdbfe;border-radius:10px;background:#fff;color:#1d4ed8;font-size:12px;font-weight:700}
+.pw-lagi{flex:none;align-self:center;min-height:44px;padding:0 10px;border:1px solid #bfdbfe;border-radius:10px;background:#fff;color:${WARNA.aksenTeks};font-size:12px;font-weight:700}
 .pw-tutup{flex:none;align-self:center;width:44px;height:44px;border:0;border-radius:10px;background:none;color:#475569;font-size:17px}
 .pw-lapis{position:fixed;inset:0;z-index:400;background:#0f172a80;display:flex;align-items:flex-end;justify-content:center}
 .pw-laci{width:100%;max-width:560px;max-height:85vh;display:flex;flex-direction:column;background:#fff;color:#1e293b;border-radius:18px 18px 0 0;padding-bottom:env(safe-area-inset-bottom)}
 .pw-kep{display:flex;align-items:center;gap:8px;padding:12px 8px 12px 16px;border-bottom:1px solid #e2e8f0}
 .pw-kep b{flex:1;font-size:15px}
-.pw-semua{min-height:44px;padding:0 10px;border:0;background:none;color:#1d4ed8;font-size:12.5px;font-weight:700}
+.pw-semua{min-height:44px;padding:0 10px;border:0;background:none;color:${WARNA.aksenTeks};font-size:12.5px;font-weight:700}
 .pw-daftar{overflow-y:auto;overscroll-behavior:contain;padding:8px 12px 14px}
 .pw-kartu{display:block;width:100%;text-align:left;border:1px solid #e2e8f0;border-radius:12px;background:#fff;color:#334155;padding:11px 12px;margin-top:8px;font-size:13px;line-height:1.4;overflow-wrap:anywhere}
 .pw-kartu.baru{background:#eff6ff;border-color:#93c5fd;color:#1e293b;font-weight:600}

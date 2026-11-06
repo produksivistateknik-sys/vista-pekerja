@@ -1,6 +1,9 @@
 // CSS global - dipisah dari App.tsx (Sprint 7), dipakai Login & App (root)
 // ─────────────────────────────────────────────────────────────────────────────
+import { varTema } from "./warnaTema";
+
 export const GCss=`
+${varTema}
 @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=DM+Mono:wght@400;500&display=swap');
 *{box-sizing:border-box;margin:0;padding:0}html,body,#root{width:100%;height:100%;overflow-x:hidden;overflow-y:auto}
 body{background:#f1f5f9;color:#1e293b;font-family:'Plus Jakarta Sans',sans-serif}

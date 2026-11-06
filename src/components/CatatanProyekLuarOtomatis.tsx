@@ -4,6 +4,7 @@
 // "Belum terkirim" / bentrok). Tidak ada tombol simpan.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useEffect, useRef, useState } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { alertGagalSimpan } from "../lib/koneksi";
 import { labelWaktuPL } from "../lib/proyekLuarPantau";
@@ -112,8 +113,8 @@ export function CatatanProyekLuarOtomatis({ entri, user, onTersimpan }: { entri:
         style={{ width: "100%", boxSizing: "border-box", padding: 10, borderRadius: 8, border: `1.5px solid ${status === "tertunda" ? "#fbbf24" : "#e2e8f0"}`,
           fontSize: 13, lineHeight: 1.5, fontFamily: "inherit", resize: "vertical" }} />
       {status === "tersimpan" && <div style={{ fontSize: 11, color: "#16a34a" }}>✓ Tersimpan otomatis{waktu ? " " + labelWaktuPL(waktu) : ""}</div>}
-      {status === "mengetik" && <div style={{ fontSize: 11, color: "#94a3b8" }}>Menyimpan sebentar lagi…</div>}
-      {status === "mengirim" && <div style={{ fontSize: 11, color: "#94a3b8" }}>Menyimpan…</div>}
+      {status === "mengetik" && <div style={{ fontSize: 11, color:WARNA.redup }}>Menyimpan sebentar lagi…</div>}
+      {status === "mengirim" && <div style={{ fontSize: 11, color:WARNA.redup }}>Menyimpan…</div>}
       {status === "tertunda" && (
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, fontSize: 11, color: "#b45309", background: "#fffbeb", border: "1px solid #fde68a", borderRadius: 8, padding: "6px 8px" }}>
           <span>⏳ Belum terkirim - tulisan aman di HP ini, dikirim otomatis saat sinyal kembali.</span>
@@ -126,7 +127,7 @@ export function CatatanProyekLuarOtomatis({ entri, user, onTersimpan }: { entri:
           {server && <span style={{ whiteSpace: "pre-wrap", color: "#475569", background: "#fff", borderRadius: 6, padding: 6 }}>Versi terbaru: {server.catatan || "(kosong)"}</span>}
           <div style={{ display: "flex", gap: 6, justifyContent: "flex-end" }}>
             <button onClick={pakaiTerbaru} style={{ border: "1px solid #e2e8f0", background: "#fff", color: "#475569", borderRadius: 6, padding: "5px 10px", fontSize: 11.5, fontWeight: 600, cursor: "pointer" }}>Pakai versi terbaru</button>
-            <button onClick={pakaiPunyaSaya} style={{ border: 0, background: "#1d4ed8", color: "#fff", borderRadius: 6, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Pakai tulisan saya</button>
+            <button onClick={pakaiPunyaSaya} style={{ border: 0, background: WARNA.aksen, color: "#fff", borderRadius: 6, padding: "5px 10px", fontSize: 11.5, fontWeight: 700, cursor: "pointer" }}>Pakai tulisan saya</button>
           </div>
         </div>
       )}

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { QC_ITEMS } from "../lib/panelTypes";
 import { downloadFotoNp } from "../lib/fotoHelpers";
@@ -228,22 +229,22 @@ export function ArsipQCView({registerBackHandler}:{registerBackHandler?:(fn:(()=
             </div>
 
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
-              <span style={{fontSize:11,color:"#94a3b8"}}>{woTersaring.length} WO{kata.length?` cocok dari ${grupWo.length}`:""} · {cards.length} panel diarsip</span>
-              <span style={{fontSize:11,color:"#94a3b8",display:"flex",alignItems:"center",gap:4}}>
+              <span style={{fontSize:11,color:WARNA.redup}}>{woTersaring.length} WO{kata.length?` cocok dari ${grupWo.length}`:""} · {cards.length} panel diarsip</span>
+              <span style={{fontSize:11,color:WARNA.redup,display:"flex",alignItems:"center",gap:4}}>
                 <i className="ti ti-sort-descending" style={{fontSize:13}}/>Terbaru
               </span>
             </div>
 
             {loading?(
-              <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12}}>Memuat arsip...</div>
+              <div style={{textAlign:"center",padding:40,color:WARNA.redup,fontSize:12}}>Memuat arsip...</div>
             ):grupWo.length===0?(
-              !gagalMuat&&<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
+              !gagalMuat&&<div style={{textAlign:"center",padding:40,color:WARNA.redup,fontSize:12,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
                 Belum ada arsip QC.
               </div>
             ):woTersaring.length===0?(
               <div style={{textAlign:"center",padding:"28px 16px",color:"#64748b",fontSize:12.5,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
                 <div style={{fontWeight:700,color:"#0f172a"}}>Tidak ada WO, proyek, atau panel yang cocok dengan “{search.trim()}”.</div>
-                <button onClick={()=>setSearch("")} style={{marginTop:12,border:"1.5px solid #e2e8f0",background:"#fff",color:"#1d4ed8",borderRadius:9,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Hapus pencarian</button>
+                <button onClick={()=>setSearch("")} style={{marginTop:12,border:"1.5px solid #e2e8f0",background:"#fff",color:WARNA.aksenTeks,borderRadius:9,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Hapus pencarian</button>
               </div>
             ):(
               <div style={{border:"1px solid #e2e8f0",borderRadius:12,overflow:"hidden"}}>
@@ -251,13 +252,13 @@ export function ArsipQCView({registerBackHandler}:{registerBackHandler?:(fn:(()=
                   <div key={g.key} onClick={()=>pilihWo(g)}
                     style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer",borderTop:i===0?"none":"1px solid #f1f5f9",background:"#fff"}}>
                     <div style={{width:34,height:34,borderRadius:9,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                      <i className="ti ti-folder" style={{fontSize:16,color:"#1d4ed8"}}/>
+                      <i className="ti ti-folder" style={{fontSize:16,color:WARNA.aksenTeks}}/>
                     </div>
                     <div style={{flex:1,minWidth:0}}>
                       <div style={{fontSize:13,fontWeight:700,color:"#0f172a",overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>WO {g.woNumber} · {g.proyek}</div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginTop:2,overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>
+                      <div style={{fontSize:11,color:WARNA.redup,marginTop:2,overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>
                         {!cocokWo
-                          ?<span style={{color:"#1d4ed8",fontWeight:600}}>{panelCocok.length} panel cocok: {panelCocok.map(c=>c.panelNama).join(", ")}</span>
+                          ?<span style={{color:WARNA.aksenTeks,fontWeight:600}}>{panelCocok.length} panel cocok: {panelCocok.map(c=>c.panelNama).join(", ")}</span>
                           :`${g.cards.length} panel · terakhir ${fmtTgl(g.waktuTerbaru)}`}
                       </div>
                     </div>
@@ -277,7 +278,7 @@ export function ArsipQCView({registerBackHandler}:{registerBackHandler?:(fn:(()=
               </button>
               <div style={{minWidth:0}}>
                 <div style={{fontSize:14,fontWeight:800,color:"#0f172a",overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>WO {grupAktif.woNumber} · {grupAktif.proyek}</div>
-                <div style={{fontSize:11,color:"#94a3b8"}}>{grupAktif.cards.length} panel diarsip</div>
+                <div style={{fontSize:11,color:WARNA.redup}}>{grupAktif.cards.length} panel diarsip</div>
               </div>
             </div>
 
@@ -308,7 +309,7 @@ export function ArsipQCView({registerBackHandler}:{registerBackHandler?:(fn:(()=
                     <i className="ti ti-folders" style={{marginRight:6}}/>Ganti proyek
                   </button>
                   <button onClick={()=>{setSearch(cariPanel.trim());setWoKey(null);}}
-                    style={{border:"none",background:"#1d4ed8",color:"#fff",borderRadius:10,padding:"10px",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>
+                    style={{border:"none",background:WARNA.aksen,color:"#fff",borderRadius:10,padding:"10px",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>
                     <i className="ti ti-search" style={{marginRight:6}}/>Cari “{cariPanel.trim()}” di semua WO
                   </button>
                 </div>
@@ -338,8 +339,8 @@ export function ArsipQCView({registerBackHandler}:{registerBackHandler?:(fn:(()=
                       <div style={{fontWeight:800,fontSize:13,color:"#0f172a",overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{card.panelNama}</div>
                       <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const,marginTop:2}}>{card.proyek} · WO {card.woNumber}</div>
                       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:4}}>
-                        <span style={{fontSize:10,color:"#94a3b8"}}>{fmtTgl(card.waktuTerbaru)}</span>
-                        <span style={{fontSize:10,color:"#94a3b8",flexShrink:0}}>{card.fotos.length} foto</span>
+                        <span style={{fontSize:10,color:WARNA.redup}}>{fmtTgl(card.waktuTerbaru)}</span>
+                        <span style={{fontSize:10,color:WARNA.redup,flexShrink:0}}>{card.fotos.length} foto</span>
                       </div>
                     </div>
                   </div>

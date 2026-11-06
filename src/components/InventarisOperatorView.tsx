@@ -8,13 +8,13 @@
 // UKURAN px EKSPLISIT & color-scheme light (alasan sama KendalaOperator: index.css sisa template Vite).
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { WARNA, GRADASI_AKSEN } from '../lib/warnaTema'
 import { supabase } from '../lib/supabase'
 import { pasangPemulihRealtime } from '../lib/pemulihRealtime'
 import { bacaAntreanFoto, dengarJumlahAntreanFoto } from '../lib/antreanFoto'
 import { KONDISI, infoKondisi, STATUS_JADWAL, STATUS_LAPORAN, labelFrekuensi, fmtTanggal, fmtWaktu, teksSisaHari, laporanAktif, isVideo, isPdf,
   type Barang, type Jadwal, type Laporan, type Media, type UpdateLaporan } from '../lib/inventarisAturan'
 import { muatInventarisDivisi, muatDariAdmin, DARI_ADMIN_HARI, type DariAdmin, setKondisiOperator, kirimLaporan, selesaikanJadwal, tambahBarangOperator, simpanLaporanOperator, RIWAYAT_HARI, buatKunci, type DataDivisi, type HasilKirim } from '../lib/inventarisOperator'
-import { DIVISI_CONFIG } from '../lib/panelTypes'
 import { MediaPickerSheet } from './ui/MediaPickerSheet'
 import { ThumbMedia } from './ui/ThumbMedia'
 import { FotoZoomViewerPekerja, type FotoViewerPekerja } from './FotoZoomViewerPekerja'
@@ -25,12 +25,12 @@ const TABS: [Tab, string][] = [['inventaris', 'Inventaris'], ['laporan', 'Lapora
 const PILIHAN_OPERATOR = ['baik', 'tidak_maksimal', 'perlu_maintenance']
 
 const CSS = `
-.ivo{--card:#fff;--fg:#16202e;--mute:#5d6b7e;--line:#dfe4ec;--bg:#f3f5f8;--acc:#1d4ed8;--acc-bg:#e3ebff;
+.ivo{--card:#fff;--fg:#16202e;--mute:#5d6b7e;--line:#dfe4ec;--bg:#f3f5f8;--acc:${WARNA.aksen};--acc-bg:#e3ebff;
   color-scheme:light;color:var(--fg);text-align:left;font-size:14px;line-height:1.4;letter-spacing:0;padding:12px 16px calc(72px + env(safe-area-inset-bottom,0px));width:100%;box-sizing:border-box;overflow-x:hidden}
 .ivo *{box-sizing:border-box;letter-spacing:inherit}
 .ivo button,.ivo select,.ivo textarea,.ivo input{font-family:inherit}
 .ivo .t{margin:0 0 10px;font-size:18px;font-weight:700;line-height:1.3}
-.ivo .hero{background:linear-gradient(135deg,#1d4ed8 0%,#4f46e5 100%);color:#fff;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:12px}
+.ivo .hero{background:${GRADASI_AKSEN};color:#fff;border-radius:16px;padding:14px;display:flex;flex-direction:column;gap:12px}
 .ivo .hl{display:flex;justify-content:space-between;align-items:flex-end;gap:8px}
 .ivo .hn{font-size:34px;font-weight:700;line-height:1}
 .ivo .hs{font-size:12px;opacity:.88;margin-top:3px}
@@ -137,7 +137,7 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   const [q, setQ] = useState('')
   const [pesan, setPesan] = useState('')
   const [tertunda, setTertunda] = useState<Set<number>>(new Set())   // jadwal yang "Selesai"-nya masih di antrean HP
-  const aksen: string = DIVISI_CONFIG[user.divisi]?.color || '#1d4ed8'   // warna divisi = warna header aplikasi
+  const aksen: string = WARNA.aksen
   const [formLapor, setFormLapor] = useState(false)   // sub-halaman form Lapor kerusakan
   const [formTambah, setFormTambah] = useState(false) // sub-halaman form Tambah barang (tab Inventaris)
   const [lapId, setLapId] = useState<number | null>(null)   // sub-halaman detail laporan kerusakan
@@ -293,7 +293,7 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
     const st = STATUS_JADWAL[j.status_jadwal]
     const nunggu = tertunda.has(j.id)
     return <div className="item" style={j.status_jadwal === 'terlambat' && !j.selesai_hari_ini ? { borderColor: '#dc2626' } : undefined}>
-      <div className="r"><div className="it">{j.jenis}</div>{j.selesai_hari_ini ? bdg('#15803d', '#dcf5e5', 'Selesai') : nunggu ? bdg('#1d4ed8', '#e3ebff', 'Menunggu sinyal') : bdg(st.warna, st.latar, st.label)}</div>
+      <div className="r"><div className="it">{j.jenis}</div>{j.selesai_hari_ini ? bdg('#15803d', '#dcf5e5', 'Selesai') : nunggu ? bdg(WARNA.aksenTeks, WARNA.aksenLembut, 'Menunggu sinyal') : bdg(st.warna, st.latar, st.label)}</div>
       <div className="mute">{b?.nama} · <span className="mono">{b?.nomor_inventaris || ''}</span> · {labelFrekuensi(j.frekuensi)}{j.teknisi ? ' · ' + j.teknisi : ''}</div>
       <div className="mute">Jatuh tempo {fmtTanggal(j.jatuh_tempo) || '-'}{j.jatuh_tempo ? ` (${teksSisaHari(j.jatuh_tempo)})` : ''}</div>
       {!j.selesai_hari_ini && !nunggu && <button className="btn pri" type="button" onClick={() => { setTab('maintenance'); setBarangId(null); setKerjaId(j.id) }}>Kerjakan</button>}

@@ -1,4 +1,5 @@
 import { Component, type ReactNode } from "react";
+import { WARNA } from "../../lib/warnaTema";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // ERROR BOUNDARY (30 Agu 2026) - dipasang di sekitar route lazy-loaded (MomFatView, dst).
@@ -28,7 +29,7 @@ export class ErrorBoundary extends Component<Props,State>{
           <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:6}}>
             Gagal memuat {this.props.label||"halaman ini"}
           </div>
-          <div style={{fontSize:11.5,color:"#94a3b8",marginBottom:14,lineHeight:1.5}}>
+          <div style={{fontSize:11.5,color:WARNA.redup,marginBottom:14,lineHeight:1.5}}>
             Coba tekan tombol di bawah. Kalau masih gagal, screenshot pesan teknis ini dan kirim ke admin:
           </div>
           <div style={{fontSize:10,color:"#dc2626",background:"#fef2f2",borderRadius:8,padding:"10px 12px",
@@ -36,7 +37,7 @@ export class ErrorBoundary extends Component<Props,State>{
             {this.state.error.message||String(this.state.error)}
           </div>
           <button onClick={()=>this.setState({error:null})}
-            style={{padding:"10px 20px",borderRadius:10,border:"none",background:"#1d4ed8",color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
+            style={{padding:"10px 20px",borderRadius:10,border:"none",background:WARNA.aksen,color:"#fff",fontWeight:700,fontSize:13,cursor:"pointer"}}>
             Coba Lagi
           </button>
         </div>

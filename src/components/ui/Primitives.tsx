@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import { useKoneksiStatus } from "../../lib/koneksi";
 import { isPushSupported, subscribeToPush, unsubscribeFromPush, getPushStatus, type PushStatus } from "../../lib/pushNotif";
 import { getLocalDateStr } from "../../lib/dateHelpers";
+import { WARNA } from "../../lib/warnaTema";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // SHARED UI COMPONENTS - dipisah dari App.tsx (Sprint 5, 5 Agu 2026)
@@ -33,7 +34,7 @@ export function Inp({style={},...p}:any){
   return <input style={{width:"100%",padding:"9px 12px",borderRadius:8,border:"1.5px solid #e2e8f0",
     background:"#f8fafc",color:"#1e293b",fontSize:13,...style}} {...p}/>;
 }
-export function Btn({children,color="#2563eb",outline=false,style={},...p}:any){
+export function Btn({children,color=WARNA.aksen,outline=false,style={},...p}:any){
   return <button style={{padding:"8px 18px",borderRadius:8,
     border:outline?`1.5px solid ${color}`:"none",cursor:"pointer",
     background:outline?"transparent":color,color:outline?color:"#fff",
@@ -63,7 +64,7 @@ export function SectionCard({icon,title,subtitle,right,iconBg,children}:{
           <div style={{minWidth:0}}>
             <div style={{fontWeight:800,fontSize:13.5,color:"#0f172a",textTransform:"uppercase" as const,
               letterSpacing:.3}}>{title}</div>
-            {subtitle&&<div style={{fontSize:11.5,color:"#94a3b8",marginTop:1}}>{subtitle}</div>}
+            {subtitle&&<div style={{fontSize:11.5,color:WARNA.redup,marginTop:1}}>{subtitle}</div>}
           </div>
         </div>
         {right}
@@ -110,7 +111,7 @@ export function EmptyState({title,description,tip,variant="box-check"}:{
         {variant==="box-paper"?<BoxPaperIllustration/>:<BoxCheckIllustration/>}
       </div>
       <div style={{fontWeight:800,fontSize:15,color:"#334155",marginBottom:4}}>{title}</div>
-      <div style={{fontSize:12.5,color:"#94a3b8",lineHeight:1.5,maxWidth:280,margin:"0 auto"}}>{description}</div>
+      <div style={{fontSize:12.5,color:WARNA.redup,lineHeight:1.5,maxWidth:280,margin:"0 auto"}}>{description}</div>
       {tip&&(
         <div style={{display:"flex",alignItems:"flex-start",gap:8,textAlign:"left" as const,marginTop:18,
           border:"1.5px dashed #cbd5e1",borderRadius:12,padding:"10px 12px",background:"#f8fafc"}}>
@@ -191,7 +192,7 @@ export function SearchableSelect({options,value,onChange,placeholder,disabled,st
           background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:10,boxShadow:"0 8px 20px rgba(15,23,42,0.12)",
           maxHeight:240,overflowY:"auto" as const}}>
           {filtered.length===0?(
-            <div style={{padding:"10px 12px",fontSize:12,color:"#94a3b8"}}>Komponen tidak ditemukan</div>
+            <div style={{padding:"10px 12px",fontSize:12,color:WARNA.redup}}>Komponen tidak ditemukan</div>
           ):filtered.map((o,i)=>(
             <button key={o.id} type="button" onMouseDown={(e:any)=>e.preventDefault()} onClick={()=>pick(o)}
               style={{display:"block",width:"100%",textAlign:"left" as const,padding:"9px 12px",border:"none",
@@ -273,7 +274,7 @@ export function NotifikasiPushToggle({divisi}:{divisi:string}){
         background:active?"#16a34a":"#e2e8f0",color:active?"#fff":"#94a3b8",fontSize:15}}>🔔</div>
       <div style={{flex:1,minWidth:0}}>
         <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>Notifikasi Push {status==="checking"?"...":PUSH_STATUS_LABEL[status]}</div>
-        <div style={{fontSize:10.5,color:"#94a3b8"}}>
+        <div style={{fontSize:10.5,color:WARNA.redup}}>
           {denied?"Diblokir di setting browser/HP - aktifkan manual, gak bisa lewat tombol ini":"Perangkat ini akan/tidak akan dapat notifikasi permintaan barang, dll"}
         </div>
       </div>
@@ -359,7 +360,7 @@ export function DatePickerField({value,onChange,style={},markedDates,onVisibleMo
               style={{width:28,height:28,border:"1px solid #e2e8f0",borderRadius:8,background:"#f8fafc",cursor:"pointer",color:"#64748b",fontWeight:700}}>›</button>
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2,marginBottom:4}}>
-            {WEEKDAYS_ID.map(w=><div key={w} style={{textAlign:"center" as const,fontSize:10,fontWeight:700,color:"#94a3b8",padding:"4px 0"}}>{w}</div>)}
+            {WEEKDAYS_ID.map(w=><div key={w} style={{textAlign:"center" as const,fontSize:10,fontWeight:700,color:WARNA.redup,padding:"4px 0"}}>{w}</div>)}
           </div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(7,1fr)",gap:2}}>
             {cells.map((day,i)=>{
@@ -370,9 +371,9 @@ export function DatePickerField({value,onChange,style={},markedDates,onVisibleMo
               const isMarked=markedSet.has(dateStr);
               return(
                 <button key={i} type="button" onClick={()=>pick(day)}
-                  style={{position:"relative" as const,aspectRatio:"1",border:isToday&&!isSelected?"1.5px solid #0369a1":"1.5px solid transparent",
+                  style={{position:"relative" as const,aspectRatio:"1",border:isToday&&!isSelected?`1.5px solid ${WARNA.aksen}`:"1.5px solid transparent",
                     borderRadius:8,cursor:"pointer",fontSize:12.5,fontWeight:isSelected?800:600,fontFamily:"inherit",
-                    background:isSelected?"#0369a1":"transparent",color:isSelected?"#fff":"#334155"}}>
+                    background:isSelected?WARNA.aksen:"transparent",color:isSelected?"#fff":"#334155"}}>
                   {day}
                   {isMarked&&<span style={{position:"absolute" as const,bottom:3,left:"50%",transform:"translateX(-50%)",
                     width:4,height:4,borderRadius:"50%",background:isSelected?"#fff":"#dc2626"}}/>}

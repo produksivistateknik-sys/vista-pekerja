@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, ringkasAlasanGagal, klasifikasiErrorSimpan } from "../lib/koneksi";
@@ -341,12 +342,12 @@ export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,
         </div>
 
         {loading?(
-          <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{textAlign:"center",padding:40,color:WARNA.redup}}>
             <i className="ti ti-loader-2" style={{fontSize:26,display:"block",marginBottom:8}}/>
             Memuat data...
           </div>
         ):filteredProjects.length===0?(
-          <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{textAlign:"center",padding:40,color:WARNA.redup}}>
             <i className="ti ti-folder-x" style={{fontSize:32,display:"block",marginBottom:8}}/>
             Tidak ada proyek
           </div>
@@ -398,7 +399,7 @@ export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,
   return(
     <div style={{padding:"14px 14px 28px",background:"#f8fafc",minHeight:"100%"}}>
       <button onClick={()=>setSelectedWoId(null)}
-        style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:tugas.color,fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12,padding:0}}>
+        style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:WARNA.aksenTeks,fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12,padding:0}}>
         <i className="ti ti-arrow-left" style={{fontSize:16}}/> Kembali ke Daftar Proyek
       </button>
 
@@ -411,9 +412,9 @@ export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,
           </div>
         </div>
         <button onClick={()=>kunciProgress(selectedProject?.panels||[])} disabled={lockLoading}
-          style={{display:"flex",alignItems:"center",gap:6,background:lockLoading?"#cbd5e1":tugas.color,color:"#fff",border:"none",borderRadius:10,padding:"9px 14px",
+          style={{display:"flex",alignItems:"center",gap:6,background:lockLoading?"#cbd5e1":WARNA.aksen,color:"#fff",border:"none",borderRadius:10,padding:"9px 14px",
             fontSize:12,fontWeight:700,cursor:lockLoading?"not-allowed":"pointer",whiteSpace:"nowrap" as const,flexShrink:0,
-            boxShadow:lockLoading?"none":`0 3px 10px ${tugas.color}40`}}>
+            boxShadow:lockLoading?"none":`0 3px 10px ${WARNA.aksen}40`}}>
           <i className={lockLoading?"ti ti-loader-2":"ti ti-lock"} style={{fontSize:14}}/>
           {lockLoading?"Mengunci...":"Kunci"}
         </button>
@@ -445,7 +446,7 @@ export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,
               {expanded&&(
                 <div style={{padding:"2px 15px 16px",borderTop:"1px solid #f1f5f9"}}>
                   <div style={{marginBottom:16,marginTop:14}}>
-                    <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10.5,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:0.3}}>
+                    <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10.5,fontWeight:700,color:WARNA.redup,marginBottom:8,letterSpacing:0.3}}>
                       <i className="ti ti-tool" style={{fontSize:12}}/> FABRIKASI
                     </div>
                     <div style={{display:"flex",gap:6}}>
@@ -455,7 +456,7 @@ export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,
                           <button key={s.key} onClick={()=>updateProgress(p.id,s.pct)}
                             style={{flex:1,display:"flex",flexDirection:"column" as const,alignItems:"center",gap:4,padding:"10px 4px",borderRadius:11,
                               border:active?"none":"1.5px solid #eef0f3",cursor:"pointer",
-                              background:active?tugas.color:"#fff",boxShadow:active?`0 4px 12px ${tugas.color}40`:"none",transition:"all .15s"}}>
+                              background:active?WARNA.aksen:"#fff",boxShadow:active?`0 4px 12px ${WARNA.aksen}40`:"none",transition:"all .15s"}}>
                             <i className={`ti ${STATUS_3_ICON[s.key]}`} style={{fontSize:16,color:active?"#fff":"#94a3b8"}}/>
                             <span style={{fontSize:10,fontWeight:700,color:active?"#fff":"#64748b"}}>{s.label}</span>
                           </button>
@@ -464,7 +465,7 @@ export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,
                     </div>
                   </div>
                   <div>
-                    <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10.5,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:0.3}}>
+                    <div style={{display:"flex",alignItems:"center",gap:5,fontSize:10.5,fontWeight:700,color:WARNA.redup,marginBottom:8,letterSpacing:0.3}}>
                       <i className="ti ti-camera" style={{fontSize:12}}/> PEMASANGAN (FOTO)
                     </div>
                     {fotoArr.length===0&&staged.length===0?(
@@ -481,33 +482,33 @@ export function KomponenProgressView({user,tugas,registerBackHandler}:{user:any,
                               style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                               <i className="ti ti-trash" style={{fontSize:10}}/>
                             </button>
-                            <div style={{fontSize:8,color:"#94a3b8",marginTop:3,textAlign:"center" as const}}>{f.uploaded_at?new Date(f.uploaded_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):""}</div>
+                            <div style={{fontSize:8,color:WARNA.redup,marginTop:3,textAlign:"center" as const}}>{f.uploaded_at?new Date(f.uploaded_at).toLocaleDateString("id-ID",{day:"numeric",month:"short"}):""}</div>
                           </div>
                         ))}
                         {staged.map((s,si)=>(
                           <div key={`staged_${si}`} style={{position:"relative" as const}}>
-                            <div style={{width:62,height:62,borderRadius:10,overflow:"hidden",border:`1.5px dashed ${tugas.color}`}}>
+                            <div style={{width:62,height:62,borderRadius:10,overflow:"hidden",border:`1.5px dashed ${WARNA.aksen}`}}>
                               <ThumbMedia url={s.previewUrl} video={isFileVideo(s.file)}/>
                             </div>
                             <button onClick={()=>batalkanFotoStaged(p.id,si)}
                               style={{position:"absolute" as const,top:-6,right:-6,width:19,height:19,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",boxShadow:"0 1px 3px rgba(0,0,0,0.2)"}}>
                               <i className="ti ti-x" style={{fontSize:10}}/>
                             </button>
-                            <div style={{fontSize:8,color:tugas.color,marginTop:3,textAlign:"center" as const,fontWeight:700}}>belum disimpan</div>
+                            <div style={{fontSize:8,color:WARNA.aksenTeks,marginTop:3,textAlign:"center" as const,fontWeight:700}}>belum disimpan</div>
                           </div>
                         ))}
                       </div>
                     )}
                     <MediaPickerSheet allowVideo disabled={saving}
-                      triggerStyle={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:tugas.color,background:`${tugas.color}0f`,border:`1.5px dashed ${tugas.color}55`,borderRadius:10,padding:"9px 13px",
+                      triggerStyle={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:WARNA.aksen,background:`${WARNA.aksen}0f`,border:`1.5px dashed ${WARNA.aksen}55`,borderRadius:10,padding:"9px 13px",
                         cursor:saving?"not-allowed":"pointer",opacity:saving?0.5:1,pointerEvents:saving?"none" as const:"auto" as const}}
                       onFiles={(files)=>pilihFotoStaged(p.id,files)}>
                       <i className="ti ti-camera-plus" style={{fontSize:14}}/> Tambah Foto
                     </MediaPickerSheet>
                     <button onClick={()=>simpanProgressPanel(p)} disabled={saving}
                       style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12,width:"100%",
-                        background:saving?"#cbd5e1":tugas.color,color:"#fff",border:"none",borderRadius:11,padding:"11px 10px",fontSize:12.5,fontWeight:700,
-                        cursor:saving?"not-allowed":"pointer",boxShadow:saving?"none":`0 4px 12px ${tugas.color}40`}}>
+                        background:saving?"#cbd5e1":WARNA.aksen,color:"#fff",border:"none",borderRadius:11,padding:"11px 10px",fontSize:12.5,fontWeight:700,
+                        cursor:saving?"not-allowed":"pointer",boxShadow:saving?"none":`0 4px 12px ${WARNA.aksen}40`}}>
                       <i className={saving?"ti ti-loader-2":"ti ti-device-floppy"} style={{fontSize:15}}/>
                       {saving?(uploadProgress?`Upload foto ${uploadProgress.current}/${uploadProgress.total}...`:"Menyimpan..."):"Simpan Progress"}
                     </button>
