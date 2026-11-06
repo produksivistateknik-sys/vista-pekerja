@@ -21,7 +21,7 @@ import {
   timerKey, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_ICON, BUSBAR_URUTAN_TAHAP_LENGKAP,
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate, selesaiSebelumTanggal,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
-  computeProsesStatus, computeBusbarTahapStatus, getBusbarCapTahap, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
+  computeProsesStatus, alasanNotYet, computeBusbarTahapStatus, getBusbarCapTahap, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
   isKomponenTahapPasang, getUrutanCap, maxQtyUntukPct, getUrutanFloor, minQtyUntukPct, muatAturanUrutan,
 } from "../lib/panelHelpers";
 import { STATUS_TUGAS_NP } from "../lib/progressHelpers";
@@ -42,13 +42,14 @@ const STATUS_PIPELINE_LABEL:Record<ProsesStatus,string>={
 };
 // Badge baris terkunci (isRowLocked) di popup pilih komponen/panel - sama gaya dgn badge status
 // pipeline di kartu, biar operator lihat SEBELUM collect kalau komponen ini belum boleh dikerjakan.
-function BadgeNotYetPopup({terkumpul}:{terkumpul:boolean}){
+function BadgeNotYetPopup({terkumpul,alasan}:{terkumpul:boolean,alasan?:string|null}){
   const st=STATUS_PIPELINE_STYLE["NOT YET"];
   return(
     <>
       <span style={{fontSize:9,fontWeight:700,background:st.bg,color:st.color,border:`1px solid ${st.border}`,borderRadius:6,padding:"1px 6px"}}>
         {STATUS_PIPELINE_LABEL["NOT YET"]}
       </span>
+      {alasan&&<span style={{fontSize:9.5,color:WARNA.redup,fontWeight:600}}>{alasan}</span>}
       {terkumpul&&<span style={{fontSize:9,color:"#dc2626",fontWeight:600}}>hapus centang untuk mengeluarkan</span>}
     </>
   );
@@ -2501,10 +2502,12 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
             const idsKompRow=getFlatOperatorIds(task,kode);
             const sudahPernahMulai=idsKompRow.some((pid:number)=>!!timerPernahMulai[`${panelId}_${kode}_${proses}_${pid}`]);
             const relevantProsesKode=getRelevantProsesForKode(kode,panel.tipe,prosesRelevanSet,prosesRelevanHasMapping);
-            const pipelineStatus=computeProsesStatus(getBestProgressMap(cl),proses,relevantProsesKode);
+            const petaPipeline=getBestProgressMap(cl);
+            const pipelineStatus=computeProsesStatus(petaPipeline,proses,relevantProsesKode);
+            const alasanStatus=isBusbarKomp?null:alasanNotYet(petaPipeline,proses,relevantProsesKode);
             rows.push({task,panel,panelId,item:item||busbarItem,kode,qtyKomp,qtyProses,pct,priColor,ki,wpDef,
               isFirst:ki===0,rowCount:(task.komponen||[]).length,isBusbar:isBusbarKomp,
-              aktualSelesai:getFirstCompletionDate(cl,proses),sudahDisimpan100,sudahPernahMulai,pipelineStatus});
+              aktualSelesai:getFirstCompletionDate(cl,proses),sudahDisimpan100,sudahPernahMulai,pipelineStatus,alasanStatus});
           });
         });
 
@@ -2952,7 +2955,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                             <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                                 <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{renderNamaKomponen(r.item.nama)}</span>
-                                {locked?<BadgeNotYetPopup terkumpul={alreadyConfirmed}/>:isDisabled&&(()=>{
+                                {locked?<BadgeNotYetPopup terkumpul={alreadyConfirmed} alasan={r.alasanStatus}/>:isDisabled&&(()=>{
                                   const pct=r.pct||0;
                                   const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
                                   const statusBadgeKey=pct>=100?"selesai":pct>0?"proses":"belum";
@@ -3061,7 +3064,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                             <div style={{display:"flex",flexDirection:"column",gap:2,flex:1}}>
                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                                 <span style={{fontSize:13,fontWeight:600,color:"#374151"}}>{r.panel.nama}</span>
-                                {locked?<BadgeNotYetPopup terkumpul={alreadyConfirmed}/>:isDisabled&&(()=>{
+                                {locked?<BadgeNotYetPopup terkumpul={alreadyConfirmed} alasan={r.alasanStatus}/>:isDisabled&&(()=>{
                                   const pct=r.pct||0;
                                   const statusBadgeLabel=pct>=100?"Selesai":pct>0?`Dikerjakan${r.qtyProses?` ${r.qtyProses}pcs`:""}`:"Belum";
                                   const statusBadgeKey=pct>=100?"selesai":pct>0?"proses":"belum";
@@ -3701,10 +3704,11 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                       <div style={{display:"flex",flexDirection:"column",gap:3}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
-                          <span style={{background:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].bg,color:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].border}`,borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>{STATUS_PIPELINE_LABEL[r.pipelineStatus as ProsesStatus]}</span>
+                          <span title={r.alasanStatus||undefined} style={{background:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].bg,color:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].border}`,borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>{STATUS_PIPELINE_LABEL[r.pipelineStatus as ProsesStatus]}</span>
                           <span style={{fontWeight:700,fontSize:13,color:"#374151"}}>{renderNamaKomponen(r.item.nama)}</span>
                         </div>
                         <div style={{fontSize:11,fontWeight:600,color:"#64748b"}}>{r.task.proyek} · <span style={{color:"#334155",fontWeight:700}}>{r.panel.nama}</span></div>
+                        {r.pipelineStatus==="NOT YET"&&r.alasanStatus&&<div style={{fontSize:11,fontWeight:600,color:WARNA.redup}}>{r.alasanStatus}</div>}
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
                           <span style={{fontSize:10,color:WARNA.redup,fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
                           <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>
@@ -3895,7 +3899,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                             <td style={{...td,textAlign:"center"}}>
                               <div style={{display:"flex",flexDirection:"column",gap:2,alignItems:"center"}}>
                                 {r.wpDef&&<span style={{background:r.wpDef.color+"18",color:r.wpDef.color,border:`1px solid ${r.wpDef.color}33`,borderRadius:4,padding:"1px 6px",fontSize:10,fontWeight:700}}>{r.wpDef.wp}</span>}
-                                <span style={{background:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].bg,color:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].border}`,borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700,whiteSpace:"nowrap" as const}}>{STATUS_PIPELINE_LABEL[r.pipelineStatus as ProsesStatus]}</span>
+                                <span title={r.alasanStatus||undefined} style={{background:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].bg,color:STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].color,border:`1px solid ${STATUS_PIPELINE_STYLE[r.pipelineStatus as ProsesStatus].border}`,borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700,whiteSpace:"nowrap" as const}}>{STATUS_PIPELINE_LABEL[r.pipelineStatus as ProsesStatus]}</span>
                               </div>
                             </td>
                             <td style={{...td,fontWeight:600,color:"#374151",whiteSpace:"nowrap"}}>
