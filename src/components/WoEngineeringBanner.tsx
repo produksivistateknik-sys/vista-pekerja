@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react'
 import { useWoEngineeringBroadcast, type WoEngineeringEvent } from '../lib/useWoEngineeringBroadcast'
+import { WARNA } from '../lib/warnaTema'
 
 // Banner broadcast "WO diubah Engineering" (17 Sep 2026, REDESAIN VISUAL) - lihat komentar
 // lengkap di vista-teknik/src/components/WoEngineeringBanner.tsx (komponen ini duplikasi kecil,
@@ -45,10 +46,10 @@ function WoEngineeringCard({event,onRead}:{event:WoEngineeringEvent,onRead:(id:n
       transition:closing
         ?"transform 250ms cubic-bezier(0.4,0,1,1), opacity 250ms cubic-bezier(0.4,0,1,1)"
         :"transform 320ms cubic-bezier(0.16,1,0.3,1), opacity 320ms ease-out",
-      background:"rgba(67,56,202,0.85)",backdropFilter:"blur(14px) saturate(160%)",
+      background:WARNA.aksenGelap+"eb",backdropFilter:"blur(14px) saturate(160%)",
       WebkitBackdropFilter:"blur(14px) saturate(160%)",
       border:"1px solid rgba(255,255,255,0.2)",borderRadius:16,
-      boxShadow:"0 16px 40px rgba(67,56,202,0.35), 0 4px 14px rgba(15,23,42,0.14)",
+      boxShadow:`0 16px 40px ${WARNA.aksenGelap}59, 0 4px 14px rgba(15,23,42,0.14)`,
       color:"#fff",padding:"14px 16px",fontFamily:"inherit"}}>
       <div style={{display:"flex",alignItems:"flex-start",gap:12}}>
         <div style={{flexShrink:0,width:38,height:38,borderRadius:11,background:"rgba(255,255,255,0.16)",
@@ -57,14 +58,14 @@ function WoEngineeringCard({event,onRead}:{event:WoEngineeringEvent,onRead:(id:n
           <div style={{fontSize:14.5,fontWeight:800,lineHeight:1.35}}>WO {event.wo_number} - {event.proyek}</div>
           <div style={{marginTop:4,display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" as const}}>
             <span style={{background:"rgba(255,255,255,0.18)",borderRadius:6,padding:"2px 8px",fontSize:11,fontWeight:700}}>{jenisLabel}</span>
-            <span style={{fontSize:12.5,color:"#e0e7ff"}}>oleh <strong style={{color:"#fff"}}>{event.dilakukan_oleh}</strong></span>
+            <span style={{fontSize:12.5,color:WARNA.aksenLembut}}>oleh <strong style={{color:"#fff"}}>{event.dilakukan_oleh}</strong></span>
           </div>
         </div>
       </div>
       <div style={{marginTop:12,display:"flex",alignItems:"center",justifyContent:"space-between",gap:10}}>
-        <span style={{fontSize:11.5,color:"#c7d2fe"}}>{waktuRelatif}</span>
+        <span style={{fontSize:11.5,color:WARNA.aksenLembut}}>{waktuRelatif}</span>
         <button onClick={handleRead}
-          style={{padding:"7px 16px",borderRadius:9,border:"none",background:"#fff",color:"#4338ca",
+          style={{padding:"7px 16px",borderRadius:9,border:"none",background:"#fff",color:WARNA.aksenGelap,
             fontWeight:800,fontSize:12.5,cursor:"pointer",fontFamily:"inherit",flexShrink:0}}>
           ✓ Sudah Dibaca
         </button>
