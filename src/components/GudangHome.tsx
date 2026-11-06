@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { PermintaanGudangTab } from "./PermintaanGudangTab";
 import { TarikGudangTab } from "./TarikGudangTab";
@@ -109,10 +110,10 @@ export function GudangHome({user,onLogout}:{user:any;onLogout:()=>void}){
               <div style={{display:"flex",flexDirection:"column",alignItems:"center",gap:2,padding:"4px 6px",
                 borderRadius:12,background:active?"#eff6ff":"transparent",maxWidth:"100%",boxSizing:"border-box" as const}}>
                 <span style={{fontSize:18,opacity:active?1:.65}}>{t.icon}</span>
-                <span style={{fontSize:8.5,fontWeight:800,letterSpacing:.2,color:active?"#0369a1":"#94a3b8",
+                <span style={{fontSize:8.5,fontWeight:800,letterSpacing:.2,color:active?WARNA.aksenTeks:"#94a3b8",
                   whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis",maxWidth:"100%"}}>{t.label}</span>
               </div>
-              <span style={{width:4,height:4,borderRadius:"50%",background:active?"#0369a1":"transparent"}}/>
+              <span style={{width:4,height:4,borderRadius:"50%",background:active?WARNA.aksen:"transparent"}}/>
             </button>
           );
         })}

@@ -55,7 +55,7 @@ button.bop-sl{cursor:pointer}
 .bop button:focus-visible,.bop-hdr button:focus-visible{outline:2px solid var(--ac);outline-offset:2px}
 .bop-hdr button:focus-visible{outline-color:#fff}
 .bop-nav{position:sticky;bottom:0;background:#fff;border-top:1px solid #e3eaf6;display:flex;padding-bottom:env(safe-area-inset-bottom);z-index:100;box-shadow:0 -4px 14px #00000010;color-scheme:light}
-.bop-nv{flex:1;min-width:0;min-height:56px;border:0;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:8px 2px 9px;color:#6f7d99;font:inherit;font-size:11px;font-weight:600;line-height:1.15;text-align:center;position:relative}
+.bop-nv{flex:1;min-width:0;min-height:56px;border:0;background:none;cursor:pointer;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;padding:8px 2px 9px;color:#5a6a89;font:inherit;font-size:11px;font-weight:600;line-height:1.15;text-align:center;position:relative}
 .bop-nv i{font-size:24px}
 .bop-nv[aria-current="page"]{color:#1f6fe5;font-weight:700}
 .bop-nv[aria-current="page"]::after{content:"";position:absolute;bottom:2px;width:34px;height:3px;border-radius:3px;background:#1f6fe5}

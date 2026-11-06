@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, Badge } from "./ui/Primitives";
 import { fmtDate } from "../lib/dateHelpers";
@@ -54,7 +55,7 @@ export function JadwalPengirimanView(){
           style={{width:"100%",padding:"10px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",
             fontSize:13,marginBottom:12,fontFamily:"inherit",boxSizing:"border-box"}}/>
         {loading?(
-          <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
+          <div style={{textAlign:"center",padding:20,color:WARNA.redup,fontSize:12}}>Memuat...</div>
         ):filtered.length===0?(
           <EmptyState title="Tidak ada jadwal" description="Belum ada work order yang cocok."/>
         ):filtered.map(wo=>{
@@ -67,20 +68,20 @@ export function JadwalPengirimanView(){
                   cursor:"pointer",background:isExp?"#f8fafc":"#fff"}}>
                 <div style={{minWidth:0}}>
                   <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-                    <span style={{fontWeight:800,fontSize:13,fontFamily:"'DM Mono',monospace",color:"#1d4ed8"}}>WO {wo.wo}</span>
+                    <span style={{fontWeight:800,fontSize:13,fontFamily:"'DM Mono',monospace",color:WARNA.aksenTeks}}>WO {wo.wo}</span>
                     <span style={{fontWeight:700,fontSize:12.5,color:"#1e293b"}}>{wo.proyek}</span>
                   </div>
-                  <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>📅 Target: {fmtDate(wo.target)} · {panels.length} panel</div>
+                  <div style={{fontSize:11,color:WARNA.redup,marginTop:2}}>📅 Target: {fmtDate(wo.target)} · {panels.length} panel</div>
                 </div>
                 <span style={{fontSize:12,color:"#94a3b8",flexShrink:0}}>{isExp?"▼":"▶"}</span>
               </div>
               {isExp&&(
                 <div style={{borderTop:"1px solid #f1f5f9"}}>
                   {panels.length===0?(
-                    <div style={{padding:"10px 14px",fontSize:11.5,color:"#94a3b8"}}>Belum ada panel di WO ini</div>
+                    <div style={{padding:"10px 14px",fontSize:11.5,color:WARNA.redup}}>Belum ada panel di WO ini</div>
                   ):[...panels].sort((a:any,b:any)=>(Number(a.no_pnl)||0)-(Number(b.no_pnl)||0)).map((p:any)=>(
                     <div key={p.id} style={{padding:"9px 14px",borderBottom:"1px solid #f8fafc",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
-                      <span style={{fontSize:11,fontWeight:700,color:"#94a3b8",minWidth:24}}>#{p.no_pnl}</span>
+                      <span style={{fontSize:11,fontWeight:700,color:WARNA.redup,minWidth:24}}>#{p.no_pnl}</span>
                       <span style={{fontSize:12.5,fontWeight:600,color:"#1e293b",flex:1,minWidth:100}}>{p.nama}</span>
                       <Badge label={p.tipe} color="#64748b"/>
                       <Badge label={`Qty ${p.qty}`} color="#0891b2"/>

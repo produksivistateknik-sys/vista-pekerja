@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { DIVISI_CONFIG } from "../lib/panelTypes";
 import { fetchKomponenNamaMap, getNamaKomponen } from "../lib/komponenNama";
@@ -116,7 +117,7 @@ export function AkunView({user,isTimerDivisi,proses,notifCount,onBukaPermintaan,
 
   const selectedWo=woList.find((w:any)=>w.id===selectedWoId);
 
-  const fieldLabel:any={fontSize:10.5,color:"#94a3b8",fontWeight:700,textTransform:"uppercase",letterSpacing:.3};
+  const fieldLabel:any={fontSize:10.5,color:WARNA.redup,fontWeight:700,textTransform:"uppercase",letterSpacing:.3};
   const fieldValue:any={fontSize:14,fontWeight:700,color:"#1e293b",marginTop:2};
 
   return(
@@ -142,7 +143,7 @@ export function AkunView({user,isTimerDivisi,proses,notifCount,onBukaPermintaan,
             </button>
           </div>
         ):(
-          <div style={{fontSize:12,color:"#94a3b8"}}>Memuat...</div>
+          <div style={{fontSize:12,color:WARNA.redup}}>Memuat...</div>
         )}
       </SectionCard>
 
@@ -158,7 +159,7 @@ export function AkunView({user,isTimerDivisi,proses,notifCount,onBukaPermintaan,
             <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>
               {notifCount>0?`${notifCount} permintaan butuh perhatian`:"Tidak ada notifikasi baru"}
             </div>
-            <div style={{fontSize:10.5,color:"#94a3b8"}}>Ketuk untuk buka Permintaan</div>
+            <div style={{fontSize:10.5,color:WARNA.redup}}>Ketuk untuk buka Permintaan</div>
           </div>
           <i className="ti ti-chevron-right" style={{fontSize:16,color:"#94a3b8"}}/>
         </div>
@@ -195,7 +196,7 @@ export function AkunView({user,isTimerDivisi,proses,notifCount,onBukaPermintaan,
           {selectedPanelId&&(
             <div style={{marginTop:10}}>
               {loadingCari?(
-                <div style={{textAlign:"center",padding:14,color:"#94a3b8",fontSize:12}}>Mencari...</div>
+                <div style={{textAlign:"center",padding:14,color:WARNA.redup,fontSize:12}}>Mencari...</div>
               ):hasilCari.length===0?(
                 <EmptyState title="Belum ada riwayat" description="Belum ada komponen di panel ini yang tercatat dikerjakan."/>
               ):hasilCari.map(r=>(
@@ -203,7 +204,7 @@ export function AkunView({user,isTimerDivisi,proses,notifCount,onBukaPermintaan,
                   padding:"8px 0",borderBottom:"1px solid #f1f5f9"}}>
                   <div style={{minWidth:0}}>
                     <div style={{fontSize:12.5,fontWeight:700,color:"#1e293b"}}>{r.kode_komponen} — {getNamaKomponen(kodeNamaMap,panelList.find((p:any)=>p.id===selectedPanelId)?.tipe,r.kode_komponen)||"?"}</div>
-                    <div style={{fontSize:10.5,color:"#94a3b8"}}>{r.proses} · {r.pekerjaNama} · {fmtShort(r.tanggal)}</div>
+                    <div style={{fontSize:10.5,color:WARNA.redup}}>{r.proses} · {r.pekerjaNama} · {fmtShort(r.tanggal)}</div>
                   </div>
                   <div style={{fontSize:11,fontWeight:700,color:"#64748b",flexShrink:0}}>{r.selesai?`${r.durasi_menit||0} mnt`:"berjalan"}</div>
                 </div>

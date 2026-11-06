@@ -503,7 +503,7 @@ export default function App(){
         {showPushBanner&&(
           <div style={{display:"flex",alignItems:"center",gap:10,padding:"10px 14px",background:"#eff6ff",borderBottom:"1px solid #bfdbfe"}}>
             <div style={{fontSize:18}}>🔔</div>
-            <div style={{flex:1,fontSize:11,color:"#1e3a5f"}}>
+            <div style={{flex:1,fontSize:11,color:WARNA.tinta}}>
               <div style={{fontWeight:700,marginBottom:1}}>Aktifkan notifikasi maintenance?</div>
               <div style={{color:"#475569"}}>Dapat pengingat langsung ke device ini kalau ada mesin di divisi {cfg?.label||"ini"} yang jadwal maintenance-nya jatuh tempo.</div>
             </div>
@@ -565,7 +565,7 @@ export default function App(){
                   :selectedMenu==="tambahan"?<KomponenTambahanView user={user} registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="proyekluar"?<ProyekLuarView user={user}/>
                   :selectedMenu==="inventaris"?<InventarisOperatorView user={user} registerBackHandler={registerBackHandler}/>
-                  :selectedMenu==="momfat"?<ErrorBoundary label="MOM FAT"><Suspense fallback={<div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>Memuat...</div>}><MomFatView user={user} registerBackHandler={registerBackHandler}/></Suspense></ErrorBoundary>
+                  :selectedMenu==="momfat"?<ErrorBoundary label="MOM FAT"><Suspense fallback={<div style={{textAlign:"center",padding:40,color:WARNA.redup}}>Memuat...</div>}><MomFatView user={user} registerBackHandler={registerBackHandler}/></Suspense></ErrorBoundary>
                   :selectedMenu==="wodigital"?<WoDigitalView registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="produksistok"?<ProduksiStokView user={user} registerBackHandler={registerBackHandler}/>
                   :user.divisi==="nameplate"?<NameplateView user={user} registerBackHandler={registerBackHandler}/>

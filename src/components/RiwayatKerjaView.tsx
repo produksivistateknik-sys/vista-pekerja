@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { fetchKomponenNamaMap, getNamaKomponen } from "../lib/komponenNama";
 import { fmtShort } from "../lib/dateHelpers";
@@ -133,13 +134,13 @@ export function RiwayatKerjaView({proses,label,icon,color,registerBackHandler}:{
         {!selectedWoId&&searchProyek.trim()!==""&&(
           <div style={{marginTop:6,maxHeight:220,overflowY:"auto",background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:10}}>
             {loading?(
-              <div style={{padding:12,fontSize:12,color:"#94a3b8"}}>Memuat...</div>
+              <div style={{padding:12,fontSize:12,color:WARNA.redup}}>Memuat...</div>
             ):filteredWoList.length===0?(
-              <div style={{padding:12,fontSize:12,color:"#94a3b8"}}>Proyek tidak ditemukan</div>
+              <div style={{padding:12,fontSize:12,color:WARNA.redup}}>Proyek tidak ditemukan</div>
             ):filteredWoList.slice(0,30).map((w:any)=>(
               <div key={w.id} onClick={()=>{setSelectedWoId(w.id);setSearchProyek("");}}
                 style={{padding:"9px 12px",fontSize:12.5,color:"#1e293b",fontWeight:600,cursor:"pointer",borderBottom:"1px solid #f1f5f9"}}>
-                {w.proyek} <span style={{color:"#94a3b8",fontWeight:500}}>· {w.wo}</span>
+                {w.proyek} <span style={{color:WARNA.redup,fontWeight:500}}>· {w.wo}</span>
               </div>
             ))}
           </div>
@@ -155,13 +156,13 @@ export function RiwayatKerjaView({proses,label,icon,color,registerBackHandler}:{
           {!selectedPanelId&&(
             <div style={{marginTop:6,maxHeight:220,overflowY:"auto",background:"#fff",border:"1.5px solid #e2e8f0",borderRadius:10}}>
               {loadingPanel?(
-                <div style={{padding:12,fontSize:12,color:"#94a3b8"}}>Memuat...</div>
+                <div style={{padding:12,fontSize:12,color:WARNA.redup}}>Memuat...</div>
               ):filteredPanelList.length===0?(
-                <div style={{padding:12,fontSize:12,color:"#94a3b8"}}>Panel tidak ditemukan</div>
+                <div style={{padding:12,fontSize:12,color:WARNA.redup}}>Panel tidak ditemukan</div>
               ):filteredPanelList.map((p:any)=>(
                 <div key={p.id} onClick={()=>setSelectedPanelId(p.id)}
                   style={{padding:"9px 12px",fontSize:12.5,color:"#1e293b",fontWeight:600,cursor:"pointer",borderBottom:"1px solid #f1f5f9"}}>
-                  #{p.no_pnl} {p.nama} <span style={{color:"#94a3b8",fontWeight:500}}>({p.tipe})</span>
+                  #{p.no_pnl} {p.nama} <span style={{color:WARNA.redup,fontWeight:500}}>({p.tipe})</span>
                 </div>
               ))}
             </div>
@@ -171,7 +172,7 @@ export function RiwayatKerjaView({proses,label,icon,color,registerBackHandler}:{
 
       {selectedPanel&&(
         rows.length===0?(
-          <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{textAlign:"center",padding:40,color:WARNA.redup}}>
             <div style={{fontSize:32,marginBottom:8}}>📭</div>
             <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>Belum ada riwayat</div>
             <div style={{fontSize:12,marginTop:4}}>Belum ada komponen {label} yang dikerjakan di panel ini</div>
@@ -180,7 +181,7 @@ export function RiwayatKerjaView({proses,label,icon,color,registerBackHandler}:{
           <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
             {rows.map((r:any)=>(
               <div key={r.kode} style={{background:"#fff",borderRadius:12,border:"1.5px solid #e2e8f0",borderLeft:`3px solid ${color}`,padding:"11px 13px",boxShadow:"0 1px 3px #00000008"}}>
-                <div style={{fontWeight:800,fontSize:12.5,color:"#1e293b",marginBottom:isBusbar?6:8}}>{r.nama}{r.nama!==r.kode&&<span style={{fontWeight:600,color:"#94a3b8"}}> ({r.kode})</span>}</div>
+                <div style={{fontWeight:800,fontSize:12.5,color:"#1e293b",marginBottom:isBusbar?6:8}}>{r.nama}{r.nama!==r.kode&&<span style={{fontWeight:600,color:WARNA.redup}}> ({r.kode})</span>}</div>
                 <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
                   {r.perProses.map((pp:any)=>(
                     <div key={pp.proses}>
@@ -195,7 +196,7 @@ export function RiwayatKerjaView({proses,label,icon,color,registerBackHandler}:{
                       <div style={{display:"flex",gap:5,flexWrap:"wrap" as const}}>
                         {pp.dates.map((d:any)=>(
                           <span key={d.tanggal} title={d.tanggal} style={{fontSize:10,fontWeight:600,color:"#475569",background:"#f8fafc",border:"1px solid #e2e8f0",borderRadius:20,padding:"2px 8px"}}>
-                            📅 {fmtShort(d.tanggal)} <span style={{color:"#94a3b8"}}>{d.label}</span>
+                            📅 {fmtShort(d.tanggal)} <span style={{color:WARNA.redup}}>{d.label}</span>
                           </span>
                         ))}
                       </div>

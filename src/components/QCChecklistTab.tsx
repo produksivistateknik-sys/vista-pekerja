@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { WARNA, GRADASI_AKSEN } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { QC_ITEMS } from "../lib/panelTypes";
 import { getUrgensiPanel } from "../lib/progressHelpers";
@@ -287,9 +288,9 @@ export function QCChecklistTab({user,registerBackHandler}:any){
             style={{width:"100%",height:38,padding:"0 12px 0 34px",border:"1px solid #e2e8f0",borderRadius:8,fontSize:13,outline:"none",background:"#fff",color:"#1e293b",boxSizing:"border-box" as const}}/>
         </div>
         {loading?(
-          <div style={{textAlign:"center",padding:32,color:"#94a3b8",fontSize:13}}>Memuat data…</div>
+          <div style={{textAlign:"center",padding:32,color:WARNA.redup,fontSize:13}}>Memuat data…</div>
         ):filteredProjects.length===0?(
-          <div style={{textAlign:"center",padding:32,color:"#94a3b8",fontSize:13}}>Tidak ada proyek</div>
+          <div style={{textAlign:"center",padding:32,color:WARNA.redup,fontSize:13}}>Tidak ada proyek</div>
         ):(
           <div style={{display:"flex",flexDirection:"column" as const,gap:1,background:"#fff",borderRadius:10,border:"1.5px solid #e2e8f0",overflow:"hidden"}}>
             {filteredProjects.map((g:any,gi:number)=>{
@@ -301,7 +302,7 @@ export function QCChecklistTab({user,registerBackHandler}:any){
                   style={{padding:"13px 14px",cursor:"pointer",display:"flex",justifyContent:"space-between",alignItems:"center",
                     borderTop:gi>0?"1px solid #f1f5f9":"none",background:"#fff"}}>
                   <div style={{display:"flex",alignItems:"center",gap:10,minWidth:0,flex:1}}>
-                    <div style={{width:38,height:38,borderRadius:10,background:allDone?"linear-gradient(135deg,#4ade80,#16a34a)":"linear-gradient(135deg,#60a5fa,#2563eb)",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:allDone?"0 3px 8px #16a34a33":"0 3px 8px #2563eb33"}}>
+                    <div style={{width:38,height:38,borderRadius:10,background:allDone?"linear-gradient(135deg,#4ade80,#16a34a)":GRADASI_AKSEN,display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0,boxShadow:allDone?"0 3px 8px #16a34a33":"0 3px 8px #2563eb33"}}>
                       <i className={allDone?"ti ti-check":"ti ti-package"} style={{fontSize:17,color:"#fff"}}/>
                     </div>
                     <div style={{minWidth:0}}>
@@ -327,7 +328,7 @@ export function QCChecklistTab({user,registerBackHandler}:any){
   return(
     <div style={{padding:"16px",background:"#f8fafc",minHeight:"100%"}}>
       <button onClick={()=>{setSelectedWoId(null);setSearchPanel("");}}
-        style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:"#2563eb",fontWeight:600,fontSize:12.5,cursor:"pointer",marginBottom:14,padding:0}}>
+        style={{display:"flex",alignItems:"center",gap:5,background:"none",border:"none",color:WARNA.aksenTeks,fontWeight:600,fontSize:12.5,cursor:"pointer",marginBottom:14,padding:0}}>
         <i className="ti ti-chevron-left" style={{fontSize:15}}/> Daftar proyek
       </button>
       <div style={{fontWeight:800,fontSize:16,color:"#0f172a",marginBottom:2}}>{selectedProject?.wo?.proyek}</div>
@@ -351,7 +352,7 @@ export function QCChecklistTab({user,registerBackHandler}:any){
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10}}>
                   <span style={{fontWeight:800,fontSize:16,color:"#0f172a"}}>{p.nama}</span>
                   {(globalData.todo_at||globalData.complete_at)&&(
-                    <span style={{fontSize:9.5,color:"#94a3b8"}}>
+                    <span style={{fontSize:9.5,color:WARNA.redup}}>
                       {globalData.complete_at?("Selesai "+fmtTglQc(globalData.complete_at)):("Mulai "+fmtTglQc(globalData.todo_at))}
                     </span>
                   )}
@@ -395,7 +396,7 @@ export function QCChecklistTab({user,registerBackHandler}:any){
                         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:6}}>
                           <span style={{fontSize:10.5,fontWeight:600,color:"#64748b"}}>Foto {fotoSeksi.length}</span>
                           <MediaPickerSheet allowVideo allowAnyFile
-                            triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:10.5,fontWeight:600}}
+                            triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:WARNA.aksenTeks,fontSize:10.5,fontWeight:600}}
                             onFiles={(files)=>{unggahBanyakSeksi(p.id,item.key,Array.from(files));}}>
                             <i className={uploadingId===uploadKey?"ti ti-loader-2":"ti ti-plus"} style={{fontSize:12}}/>
                             {progresQc[uploadKey]?`Mengunggah ${progresQc[uploadKey]}`:"Tambah"}
@@ -430,7 +431,7 @@ export function QCChecklistTab({user,registerBackHandler}:any){
                                     <i className="ti ti-x" style={{fontSize:9}}/>
                                   </button>
                                 </div>
-                                <div style={{fontSize:8.5,color:"#94a3b8",marginTop:2}}>{fmtTglQc(f.uploaded_at)}</div>
+                                <div style={{fontSize:8.5,color:WARNA.redup,marginTop:2}}>{fmtTglQc(f.uploaded_at)}</div>
                               </div>
                               );
                             })}
@@ -476,7 +477,7 @@ export function QCChecklistTab({user,registerBackHandler}:any){
                       </div>
                     </div>
                     <button onClick={()=>togglePacking(p.id,true)}
-                      style={{fontSize:10.5,color:"#94a3b8",background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>
+                      style={{fontSize:10.5,color:WARNA.redup,background:"none",border:"none",cursor:"pointer",textDecoration:"underline"}}>
                       Batalkan
                     </button>
                   </div>
@@ -484,7 +485,7 @@ export function QCChecklistTab({user,registerBackHandler}:any){
                   <button onClick={()=>{if(qcSemuaComplete)togglePacking(p.id,false);}} disabled={!qcSemuaComplete}
                     style={{width:"100%",height:44,borderRadius:10,border:"none",cursor:qcSemuaComplete?"pointer":"not-allowed",
                       fontSize:13,fontWeight:700,display:"flex",alignItems:"center",justifyContent:"center",gap:6,
-                      background:qcSemuaComplete?"linear-gradient(135deg,#3b82f6,#1d4ed8)":"#f1f5f9",color:qcSemuaComplete?"#fff":"#94a3b8",
+                      background:qcSemuaComplete?GRADASI_AKSEN:"#f1f5f9",color:qcSemuaComplete?"#fff":"#94a3b8",
                       boxShadow:qcSemuaComplete?"0 4px 12px #1d4ed84a":"none"}}>
                     <i className={qcSemuaComplete?"ti ti-package":"ti ti-lock"} style={{fontSize:16}}/>
                     {qcSemuaComplete?"Tandai sudah packing":"Selesaikan QC dulu"}

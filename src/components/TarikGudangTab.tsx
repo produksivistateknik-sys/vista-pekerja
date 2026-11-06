@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
 import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
@@ -93,14 +94,14 @@ export function TarikGudangTab(){
           <button key={t.k} onClick={()=>setFilterMode(t.k)}
             style={{flex:1,padding:"9px 8px",border:"none",borderRadius:9,cursor:"pointer",
               fontWeight:700,fontSize:12.5,fontFamily:"inherit",
-              background:filterMode===t.k?"#fff":"transparent",color:filterMode===t.k?"#0369a1":"#64748b",
+              background:filterMode===t.k?"#fff":"transparent",color:filterMode===t.k?WARNA.aksenTeks:"#64748b",
               boxShadow:filterMode===t.k?"0 1px 3px rgba(0,0,0,0.08)":"none"}}>
             {t.l}
           </button>
         ))}
       </div>
       {loading?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
+        <div style={{textAlign:"center",padding:40,color:WARNA.redup,fontSize:13}}>Memuat...</div>
       ):filteredRows.length===0?(
         <EmptyState title={filterMode==="belum"?"Tidak ada yang menunggu":"Belum ada yang diambil"}
           description={filterMode==="belum"?"Semua barang yang sudah disiapkan sudah dikonfirmasi diambil operator.":"Belum ada konfirmasi pengambilan dari operator."}
@@ -110,8 +111,8 @@ export function TarikGudangTab(){
           {divisiKeys.map(divisi=>(
             <div key={divisi}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
-                <span style={{background:"#eff6ff",color:"#1d4ed8",border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:700}}>{DIVISI_LABEL[divisi]||divisi}</span>
-                <span style={{color:"#94a3b8",fontWeight:600,fontSize:11}}>{grouped[divisi].length} item</span>
+                <span style={{background:"#eff6ff",color:WARNA.aksenTeks,border:"1px solid #bfdbfe",borderRadius:6,padding:"3px 10px",fontSize:12,fontWeight:700}}>{DIVISI_LABEL[divisi]||divisi}</span>
+                <span style={{color:WARNA.redup,fontWeight:600,fontSize:11}}>{grouped[divisi].length} item</span>
               </div>
               <div style={{display:"flex",flexDirection:"column",gap:10}}>
                 {grouped[divisi].map((r:any)=>(
@@ -119,14 +120,14 @@ export function TarikGudangTab(){
                     <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:8,gap:8}}>
                       <div style={{minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,marginBottom:2}}>
-                          <span style={{background:"#eff6ff",color:"#1d4ed8",borderRadius:5,padding:"1px 7px",fontSize:9.5,fontWeight:800}}>{r.perm.jenis}</span>
+                          <span style={{background:"#eff6ff",color:WARNA.aksenTeks,borderRadius:5,padding:"1px 7px",fontSize:9.5,fontWeight:800}}>{r.perm.jenis}</span>
                           <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{r.perm.operator_nama}</span>
                         </div>
                         <div style={{fontSize:11,color:"#64748b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                           {r.perm.proyek||"-"} · {r.perm.panel_nama||"-"}
                         </div>
                       </div>
-                      <div style={{fontSize:10,color:"#94a3b8",whiteSpace:"nowrap",flexShrink:0}}>Diminta: {fmtDateTime(r.perm.created_at)}</div>
+                      <div style={{fontSize:10,color:WARNA.redup,whiteSpace:"nowrap",flexShrink:0}}>Diminta: {fmtDateTime(r.perm.created_at)}</div>
                     </div>
                     <div style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:9,padding:"9px 10px"}}>
                       <span style={{flex:1,minWidth:0,fontSize:13,fontWeight:700,color:"#334155"}}>{r.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{r.qty}{r.satuan?` ${r.satuan}`:""}</span></span>

@@ -4,6 +4,7 @@
 // Isi: qty lama -> disetujui (+ usulan Gudang bila admin mengubah angka), alasan, pengaju, penyetuju, waktu,
 // status ambil (opsional). Aturan angka: lib/koreksiPermintaan.ts.
 import { qtyDisetujui, qtyDiubahAdmin, type KoreksiPermintaan } from '../lib/koreksiPermintaan'
+import { WARNA } from '../lib/warnaTema'
 
 const fmtWaktu = (d?: string | null) => d ? new Date(d).toLocaleString('id-ID', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : '-'
 
@@ -23,7 +24,7 @@ export function KartuKoreksi({ k, satuan, judul, subjudul, ambil }: {
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8, marginBottom: 5 }}>
         <div style={{ minWidth: 0 }}>
           {judul && <div style={{ fontSize: 13, fontWeight: 700, color: '#1e293b' }}>{judul}</div>}
-          {subjudul && <div style={{ fontSize: 10.5, color: '#94a3b8', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subjudul}</div>}
+          {subjudul && <div style={{ fontSize: 10.5, color:WARNA.redup, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{subjudul}</div>}
           {!judul && <div style={{ fontSize: 11, fontWeight: 700, color: '#b45309' }}>✏️ Koreksi qty</div>}
         </div>
         <span style={{ flexShrink: 0, background: warna + '18', color: warna, borderRadius: 20, padding: '2px 9px', fontSize: 10.5, fontWeight: 700, whiteSpace: 'nowrap' }}>
@@ -39,7 +40,7 @@ export function KartuKoreksi({ k, satuan, judul, subjudul, ambil }: {
         {(disetujui || ditolak) && <span>{disetujui ? '✅ Disetujui' : '✕ Ditolak'} oleh {k.disetujui_oleh || '-'} — {fmtWaktu(k.diputuskan_at)}</span>}
         {ambil?.relevan && (ambil.sudah
           ? <span>📦 Diambil oleh {ambil.oleh || '-'} — {fmtWaktu(ambil.at)}</span>
-          : <span style={{ color: '#94a3b8' }}>⏳ Menunggu diambil</span>)}
+          : <span style={{ color:WARNA.redup }}>⏳ Menunggu diambil</span>)}
       </div>
       <div style={{ fontSize: 10.5, color: '#64748b', fontStyle: 'italic', marginTop: 4 }}>Alasan: {k.alasan || '-'}</div>
       {ditolak && k.catatan_reject && <div style={{ fontSize: 11, color: '#dc2626', marginTop: 4 }}>⚠ {k.catatan_reject}</div>}

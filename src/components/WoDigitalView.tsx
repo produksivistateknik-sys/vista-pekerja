@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { fetchAllPanels } from "../lib/panelHelpers";
 import { SectionCard, EmptyState, Badge } from "./ui/Primitives";
@@ -150,11 +151,11 @@ export function WoDigitalView({registerBackHandler}:{registerBackHandler?:(fn:((
           <>
             <div style={{display:"flex",gap:6,marginBottom:10}}>
               <button onClick={()=>setViewMode("aktif")} style={{flex:1,padding:"9px 6px",borderRadius:9,border:"none",cursor:"pointer",
-                fontSize:12,fontWeight:700,background:viewMode==="aktif"?"#1d4ed8":"#e2e8f0",color:viewMode==="aktif"?"#fff":"#64748b"}}>
+                fontSize:12,fontWeight:700,background:viewMode==="aktif"?WARNA.aksen:"#e2e8f0",color:viewMode==="aktif"?"#fff":"#64748b"}}>
                 Aktif
               </button>
               <button onClick={()=>setViewMode("arsip")} style={{flex:1,padding:"9px 6px",borderRadius:9,border:"none",cursor:"pointer",
-                fontSize:12,fontWeight:700,background:viewMode==="arsip"?"#1d4ed8":"#e2e8f0",color:viewMode==="arsip"?"#fff":"#64748b"}}>
+                fontSize:12,fontWeight:700,background:viewMode==="arsip"?WARNA.aksen:"#e2e8f0",color:viewMode==="arsip"?"#fff":"#64748b"}}>
                 🗄️ Arsip
               </button>
             </div>
@@ -162,7 +163,7 @@ export function WoDigitalView({registerBackHandler}:{registerBackHandler?:(fn:((
               style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
 
             {loading?(
-              <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
+              <div style={{textAlign:"center",padding:20,color:WARNA.redup,fontSize:12}}>Memuat...</div>
             ):filteredWo.length===0?(
               <EmptyState title="Tidak ada" description="Tidak ada WO yang cocok." variant="box-paper"/>
             ):(
@@ -174,14 +175,14 @@ export function WoDigitalView({registerBackHandler}:{registerBackHandler?:(fn:((
                       style={{display:"flex",alignItems:"center",gap:10,padding:"12px 14px",cursor:"pointer",
                         borderTop:wi===0?"none":"1px solid #f1f5f9",background:"#fff"}}>
                       <div style={{width:34,height:34,borderRadius:9,background:"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                        <i className="ti ti-folder" style={{fontSize:16,color:"#1d4ed8"}}/>
+                        <i className="ti ti-folder" style={{fontSize:16,color:WARNA.aksenTeks}}/>
                       </div>
                       <div style={{flex:1,minWidth:0}}>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" as const}}>
                           <span style={{fontSize:13,fontWeight:700,color:"#0f172a",overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>WO {w.wo} · {w.proyek}</span>
                           {stats.totalPanels>0&&(stats.docCount===stats.totalPanels?<Badge label="Semua Ada Dokumen" color="#16a34a" bg="#f0fdf4"/>:stats.docCount>0?<Badge label={`${stats.docCount}/${stats.totalPanels} Dokumen`} color="#d97706" bg="#fffbeb"/>:<Badge label="Belum Ada Dokumen" color="#94a3b8" bg="#f1f5f9"/>)}
                         </div>
-                        <div style={{fontSize:11,color:"#94a3b8",marginTop:2,overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{panelPreviewOfWo(w.id)}</div>
+                        <div style={{fontSize:11,color:WARNA.redup,marginTop:2,overflow:"hidden",textOverflow:"ellipsis" as const,whiteSpace:"nowrap" as const}}>{panelPreviewOfWo(w.id)}</div>
                       </div>
                       <i className="ti ti-chevron-right" style={{fontSize:16,color:"#cbd5e1",flexShrink:0}}/>
                     </div>
@@ -216,7 +217,7 @@ export function WoDigitalView({registerBackHandler}:{registerBackHandler?:(fn:((
                             style={{display:"flex",alignItems:"center",gap:10,padding:"11px 14px",cursor:"pointer",
                               borderTop:ri===0?"none":"1px solid #f1f5f9",background:rev.is_current?"#fafbff":"#fff"}}>
                             <div style={{width:32,height:32,borderRadius:8,background:rev.is_current?"#eff6ff":"#f1f5f9",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                              <i className="ti ti-file-type-pdf" style={{fontSize:15,color:rev.is_current?"#1d4ed8":"#94a3b8"}}/>
+                              <i className="ti ti-file-type-pdf" style={{fontSize:15,color:rev.is_current?WARNA.aksenTeks:"#94a3b8"}}/>
                             </div>
                             <div style={{flex:1,minWidth:0}}>
                               <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap" as const}}>
@@ -229,7 +230,7 @@ export function WoDigitalView({registerBackHandler}:{registerBackHandler?:(fn:((
                                 {fmtTgl(rev.uploaded_at)}{rev.page_count?` · ${rev.page_count} halaman`:""}
                               </div>
                             </div>
-                            <i className="ti ti-external-link" style={{fontSize:15,color:rev.is_current?"#1d4ed8":"#cbd5e1",flexShrink:0}}/>
+                            <i className="ti ti-external-link" style={{fontSize:15,color:rev.is_current?WARNA.aksenTeks:"#cbd5e1",flexShrink:0}}/>
                           </div>
                         ))}
                       </div>

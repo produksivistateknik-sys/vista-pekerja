@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { TODAY } from "../lib/dateHelpers";
 
@@ -149,15 +150,15 @@ export function KomponenTambahanView({user,registerBackHandler}:any){
         <input value={qty} onChange={e=>setQty(e.target.value.replace(/[^0-9]/g,""))} placeholder="Qty" inputMode="numeric"
           style={{width:"100%",padding:"9px 10px",borderRadius:8,border:"1px solid #e2e8f0",fontSize:12.5,marginBottom:10,boxSizing:"border-box"}}/>
         <button disabled={submitting} onClick={tambahKomponen}
-          style={{width:"100%",padding:"11px",borderRadius:8,border:"none",background:"#2563eb",color:"#fff",fontWeight:700,fontSize:13,cursor:submitting?"not-allowed":"pointer"}}>
+          style={{width:"100%",padding:"11px",borderRadius:8,border:"none",background:WARNA.aksen,color:"#fff",fontWeight:700,fontSize:13,cursor:submitting?"not-allowed":"pointer"}}>
           {submitting?"Menyimpan...":"+ Tambah"}
         </button>
       </div>
       <div style={{fontWeight:800,fontSize:13,color:"#1e293b",marginBottom:8}}>Komponen Tambahan Hari Ini</div>
       {loading?(
-        <div style={{textAlign:"center",color:"#94a3b8",padding:20}}>Memuat...</div>
+        <div style={{textAlign:"center",color:WARNA.redup,padding:20}}>Memuat...</div>
       ):items.length===0?(
-        <div style={{textAlign:"center",color:"#94a3b8",padding:20,background:"#fff",borderRadius:12}}>Belum ada komponen tambahan hari ini.</div>
+        <div style={{textAlign:"center",color:WARNA.redup,padding:20,background:"#fff",borderRadius:12}}>Belum ada komponen tambahan hari ini.</div>
       ):(
         <div style={{display:"flex",flexDirection:"column",gap:8}}>
           {items.map((it:any)=>{

@@ -289,7 +289,7 @@ export function Login({onLogin}:any){
              :success?<><span>✓</span><span>Berhasil!</span></>
              :<><span>Masuk</span><span style={{fontSize:16}}>→</span></>}
           </button>
-          <div style={{marginTop:16,paddingTop:14,borderTop:"1px solid #f1f5f9",textAlign:"center",fontSize:11,color:"#cbd5e1"}}>
+          <div style={{marginTop:16,paddingTop:14,borderTop:"1px solid #f1f5f9",textAlign:"center",fontSize:11,color:WARNA.redup}}>
             2026 Vista Teknik · Electrical Switchboard Manufacturing
           </div>
         </div>

@@ -2276,7 +2276,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
             </div>
           </div>
           <button onClick={()=>setShiftSet(false)}
-            style={{fontSize:11,color:"#94a3b8",background:"none",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}>
+            style={{fontSize:11,color:WARNA.redup,background:"none",border:"1px solid #e2e8f0",borderRadius:6,padding:"4px 10px",cursor:"pointer"}}>
             Ganti Shift
           </button>
         </div>
@@ -2291,7 +2291,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
         <div style={{textAlign:"center",padding:"40px 20px"}}>
           <div style={{fontSize:40,marginBottom:10}}>📋</div>
           <div style={{fontWeight:700,fontSize:15,color:"#1e293b",marginBottom:6}}>Tidak ada jadwal</div>
-          <div style={{fontSize:13,color:"#94a3b8",marginBottom:16}}>Belum ada rencana kerja untuk tanggal ini</div>
+          <div style={{fontSize:13,color:WARNA.redup,marginBottom:16}}>Belum ada rencana kerja untuk tanggal ini</div>
         </div>
       </div>
     );
@@ -2340,7 +2340,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
             <button onClick={()=>setViewDate(addDays(viewDate,1))} style={{width:26,height:26,borderRadius:6,border:"none",background:"#f8fafc",cursor:"pointer",fontSize:14,color:"#475569"}}>›</button>
           </div>
           <button onClick={()=>setShiftSet(false)}
-            style={{fontSize:11,color:"#94a3b8",background:"none",border:"1px solid #e2e8f0",borderRadius:6,padding:"5px 10px",cursor:"pointer"}}>
+            style={{fontSize:11,color:WARNA.redup,background:"none",border:"1px solid #e2e8f0",borderRadius:6,padding:"5px 10px",cursor:"pointer"}}>
             Ganti Shift
           </button>
         </div>
@@ -2368,7 +2368,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
             <div key={pr} style={{background:"#fff",borderRadius:8,padding:"6px 12px",border:`1.5px solid ${pc}30`,
               borderLeft:`3px solid ${pc}`,display:"flex",gap:8,alignItems:"center"}}>
               <span style={{fontSize:11,fontWeight:700,color:pc}}>{pr}</span>
-              <span style={{fontSize:11,color:"#94a3b8"}}>{doneKomp}/{totalKomp} komponen</span>
+              <span style={{fontSize:11,color:WARNA.redup}}>{doneKomp}/{totalKomp} komponen</span>
             </div>
           );
         })}
@@ -2378,7 +2378,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
       {(proyekList.length>1||panelList.length>1)&&(
         <div style={{display:"flex",gap:8,marginBottom:12,flexWrap:"wrap",alignItems:"center",
           background:"#fff",borderRadius:10,padding:"8px 12px",border:"1px solid #e2e8f0"}}>
-          <span style={{fontSize:11,color:"#94a3b8",fontWeight:600}}>Filter:</span>
+          <span style={{fontSize:11,color:WARNA.redup,fontWeight:600}}>Filter:</span>
           {proyekList.length>1&&(
             <select value={fProyek} onChange={e=>{setFProyek(e.target.value);setFPanel("ALL");}}
               style={{padding:"4px 10px",borderRadius:8,border:"1.5px solid #e2e8f0",
@@ -2412,7 +2412,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
       {isMekanikConsolidated&&!selectedMekanikProses&&(
         <Card style={{marginBottom:20,padding:16}}>
           <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:2}}>MEKANIK</div>
-          <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Pilih proses yang mau dikerjakan</div>
+          <div style={{fontSize:11,color:WARNA.redup,marginBottom:14}}>Pilih proses yang mau dikerjakan</div>
           <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
             {myProses.map((p:string)=>(
               <button key={p} onClick={()=>setSelectedMekanikProses(p)}
@@ -2636,7 +2636,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
         if(proses==="BUSBAR"&&!selectedBusbarTahap)return(
           <Card key={proses} style={{marginBottom:20,padding:16}}>
             <div style={{fontWeight:800,fontSize:14,color:"#1e293b",marginBottom:2}}>BUSBAR</div>
-            <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Pilih proses yang mau dikerjakan</div>
+            <div style={{fontSize:11,color:WARNA.redup,marginBottom:14}}>Pilih proses yang mau dikerjakan</div>
             <div style={{display:"grid",gridTemplateColumns:"repeat(2,1fr)",gap:10}}>
               {BUSBAR_URUTAN_TAHAP_LENGKAP.map((t:string)=>(
                 <button key={t} onClick={()=>setSelectedBusbarTahap(t)}
@@ -2712,7 +2712,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                   });
                   if(panelGroupList.length===0&&statusFilter!=="ALL"){
                     return(
-                      <div style={{fontSize:11,color:"#94a3b8",padding:"4px 0"}}>
+                      <div style={{fontSize:11,color:WARNA.redup,padding:"4px 0"}}>
                         Gak ada panel dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di proses ini.
                       </div>
                     );
@@ -2744,7 +2744,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                           <i className="ti ti-server" style={{fontSize:16,color:"#fff"}}/>
                         </div>
                         <span style={{fontSize:11,fontWeight:700,color:"#1e293b",textAlign:"center"}}>{pg.panel.nama}</span>
-                        <span style={{fontSize:9,color:"#94a3b8",textAlign:"center"}}>{pg.proyek}</span>
+                        <span style={{fontSize:9,color:WARNA.redup,textAlign:"center"}}>{pg.proyek}</span>
                         <span style={{background:stStyle.bg,color:stStyle.color,border:`1px solid ${stStyle.border}`,
                           borderRadius:20,padding:"2px 9px",fontSize:9,fontWeight:700}}>
                           {STATUS_PIPELINE_LABEL[groupStatus]}
@@ -2768,7 +2768,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                   });
                   if(jenisList.length===0&&statusFilter!=="ALL"){
                     return(
-                      <div style={{fontSize:11,color:"#94a3b8",padding:"4px 0"}}>
+                      <div style={{fontSize:11,color:WARNA.redup,padding:"4px 0"}}>
                         Gak ada komponen dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di proses ini.
                       </div>
                     );
@@ -2807,11 +2807,11 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                           boxShadow:garisMendesak(urgensi,!bisaNaik)}}>
                         {urgensi?(
                           <span style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,width:"100%"}}>
-                            <span style={{fontSize:9,color:"#94a3b8"}}>{panelCount} panel</span>
+                            <span style={{fontSize:9,color:WARNA.redup}}>{panelCount} panel</span>
                             {badgeMendesak(urgensi,!bisaNaik)}
                           </span>
                         ):(
-                          <span style={{fontSize:9,color:"#94a3b8"}}>{panelCount} panel</span>
+                          <span style={{fontSize:9,color:WARNA.redup}}>{panelCount} panel</span>
                         )}
                         <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{jg.namaKomponen}</span>
                         {groupSudahTuntas?(
@@ -2823,7 +2823,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                             {selesaiCount>0&&<span style={{color:"#16a34a"}}>{selesaiCount} selesai</span>}
                           </span>
                         ):(
-                          <span style={{fontSize:9,color:"#94a3b8",fontWeight:600}}>+ Pilih Panel</span>
+                          <span style={{fontSize:9,color:WARNA.redup,fontWeight:600}}>+ Pilih Panel</span>
                         )}
                       </button>
                     );
@@ -2843,7 +2843,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                   });
                   if(panelList.length===0&&statusFilter!=="ALL"){
                     return(
-                      <div style={{fontSize:11,color:"#94a3b8",padding:"4px 0"}}>
+                      <div style={{fontSize:11,color:WARNA.redup,padding:"4px 0"}}>
                         Gak ada komponen dengan status "{STATUS_PIPELINE_LABEL[statusFilter as ProsesStatus]}" di proses ini.
                       </div>
                     );
@@ -2880,11 +2880,11 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                           boxShadow:garisMendesak(urgensi,!bisaNaik)}}>
                         {urgensi?(
                           <span style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:6,width:"100%"}}>
-                            <span style={{fontSize:9,color:"#94a3b8"}}>{pg.proyek}</span>
+                            <span style={{fontSize:9,color:WARNA.redup}}>{pg.proyek}</span>
                             {badgeMendesak(urgensi,!bisaNaik)}
                           </span>
                         ):(
-                          <span style={{fontSize:9,color:"#94a3b8"}}>{pg.proyek}</span>
+                          <span style={{fontSize:9,color:WARNA.redup}}>{pg.proyek}</span>
                         )}
                         <span style={{fontSize:12,fontWeight:700,color:"#1e293b"}}>{pg.panel.nama}</span>
                         {panelSudahTuntas?(
@@ -2896,7 +2896,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                             {selesaiCount>0&&<span style={{color:"#16a34a"}}>{selesaiCount} selesai</span>}
                           </span>
                         ):(
-                          <span style={{fontSize:9,color:"#94a3b8",fontWeight:600}}>+ Pilih Komponen</span>
+                          <span style={{fontSize:9,color:WARNA.redup,fontWeight:600}}>+ Pilih Komponen</span>
                         )}
                       </button>
                     );
@@ -2924,7 +2924,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                       <div style={{minWidth:0}}>
                         <div style={{fontSize:12,fontWeight:600,color:"#64748b"}}>{panelInfo?.task.proyek}</div>
                         <div style={{fontSize:17,fontWeight:800,color:"#1e293b",marginTop:1}}>{panelInfo?.panel.nama}</div>
-                        <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>Pilih komponen yang mau dikerjakan</div>
+                        <div style={{fontSize:11,color:WARNA.redup,marginTop:4}}>Pilih komponen yang mau dikerjakan</div>
                       </div>
                       <button onClick={()=>setKomponenPopup(null)}
                         style={{flexShrink:0,width:28,height:28,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700}}>×</button>
@@ -2965,7 +2965,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                                   );
                                 })()}
                               </div>
-                              <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
+                              <span style={{fontSize:10,color:WARNA.redup,fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
                             </div>
                           </label>
                         );
@@ -3039,7 +3039,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                     <div style={{padding:"14px 16px",borderBottom:"1.5px solid #e2e8f0",display:"flex",alignItems:"flex-start",justifyContent:"space-between",gap:10}}>
                       <div style={{minWidth:0}}>
                         <div style={{fontSize:17,fontWeight:800,color:"#1e293b"}}>{komponenPopupJenis.namaKomponen}</div>
-                        <div style={{fontSize:11,color:"#94a3b8",marginTop:4}}>Pilih panel yang mau dikerjakan</div>
+                        <div style={{fontSize:11,color:WARNA.redup,marginTop:4}}>Pilih panel yang mau dikerjakan</div>
                       </div>
                       <button onClick={()=>setKomponenPopupJenis(null)}
                         style={{flexShrink:0,width:28,height:28,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:15,fontWeight:700}}>×</button>
@@ -3074,7 +3074,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                                   );
                                 })()}
                               </div>
-                              <span style={{fontSize:10,color:"#94a3b8"}}>{r.task.proyek}</span>
+                              <span style={{fontSize:10,color:WARNA.redup}}>{r.task.proyek}</span>
                             </div>
                             {urgensiPanel&&badgeMendesak(urgensiPanel,isDisabled)}
                           </label>
@@ -3174,7 +3174,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                         <button onClick={()=>setBulkAssignProses(null)}
                           style={{flexShrink:0,width:26,height:26,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>
                       </div>
-                      <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-assign & timer langsung mulai untuk {bulkTargetRows.length} komponen terkumpul di {proses}.</div>
+                      <div style={{fontSize:11,color:WARNA.redup,marginBottom:14}}>Operator akan di-assign & timer langsung mulai untuk {bulkTargetRows.length} komponen terkumpul di {proses}.</div>
                       <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
                         {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
                           const checked=tempBulkPekerjaIds.includes(p.id);
@@ -3310,7 +3310,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                 <button onClick={()=>setBulkAssignProses(null)}
                   style={{flexShrink:0,width:26,height:26,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>
               </div>
-              <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Operator akan di-assign & timer langsung mulai untuk {bulkTargetRows.length} komponen terkumpul di {proses}.</div>
+              <div style={{fontSize:11,color:WARNA.redup,marginBottom:14}}>Operator akan di-assign & timer langsung mulai untuk {bulkTargetRows.length} komponen terkumpul di {proses}.</div>
               <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
                 {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
                   const checked=tempBulkPekerjaIds.includes(p.id);
@@ -3373,7 +3373,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
             style={{display:"flex",justifyContent:"space-between",alignItems:"center",padding:"12px 14px",cursor:"pointer",background:isOpen?"#eff6ff":"#fff"}}>
             <div style={{display:"flex",flexDirection:"column",gap:2}}>
               <span style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>{group.namaKomponen}</span>
-              <span style={{fontSize:10,color:"#94a3b8"}}>{panelCount} panel · {group.rows.length} komponen{belumAdaOperatorCount>0?` · ${belumAdaOperatorCount} belum ada operator`:""}</span>
+              <span style={{fontSize:10,color:WARNA.redup}}>{panelCount} panel · {group.rows.length} komponen{belumAdaOperatorCount>0?` · ${belumAdaOperatorCount} belum ada operator`:""}</span>
             </div>
             <span style={{fontSize:14,color:"#94a3b8",transition:"transform .15s",transform:isOpen?"rotate(180deg)":"none"}}>▾</span>
           </div>
@@ -3395,7 +3395,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                       <button onClick={()=>{setBulkAssignProses(null);setBulkAssignGroupKey(null);setBulkAssignTahap(null);}}
                         style={{flexShrink:0,width:26,height:26,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>
                     </div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>
+                    <div style={{fontSize:11,color:WARNA.redup,marginBottom:14}}>
                       {proses==="BUSBAR"
                         ?`Timer bakal LANGSUNG MULAI buat SATU tahap yang dipilih, di SEMUA ${group.rows.length} "${group.namaKomponen}" di ${panelCount} panel sekaligus - gak perlu klik Mulai satu-satu per panel lagi. Cocok buat kerja borongan (misal fabrikasi banyak part sekaligus).`
                         :`Operator akan di-set untuk SEMUA ${group.rows.length} "${group.namaKomponen}" di ${panelCount} panel (menimpa operator lama kalau ada). Timer tetap diklik manual per komponen.`}
@@ -3609,7 +3609,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                             + Pilih Operator
                           </button>
                         ):(
-                          <div style={{fontSize:11,color:"#94a3b8",fontStyle:"italic",padding:"6px 0"}}>
+                          <div style={{fontSize:11,color:WARNA.redup,fontStyle:"italic",padding:"6px 0"}}>
                             {proses==="POTONG"?'Belum dimulai - klik "▶ Mulai Semua" di atas.':'Belum ada operator - klik "Pilih Operator" di atas.'}
                           </div>
                         )
@@ -3706,7 +3706,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                         </div>
                         <div style={{fontSize:11,fontWeight:600,color:"#64748b"}}>{r.task.proyek} · <span style={{color:"#334155",fontWeight:700}}>{r.panel.nama}</span></div>
                         <div style={{display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
-                          <span style={{fontSize:10,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
+                          <span style={{fontSize:10,color:WARNA.redup,fontFamily:"'DM Mono',monospace"}}>{r.kode}</span>
                           <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>
                         </div>
                       </div>
@@ -3765,7 +3765,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                                   background:r.qtyKomp===0||qtyLocked?"#f8fafc":floor>0?"#fffbeb":"#eff6ff",
                                   fontSize:16,textAlign:"center",fontWeight:700,fontFamily:"'DM Mono',monospace",
                                   color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":WARNA.aksenTeks}}/>
-                              {qtyLocked&&<span style={{fontSize:9,color:"#94a3b8",fontWeight:600,whiteSpace:"nowrap"}}>Klik Mulai dulu</span>}
+                              {qtyLocked&&<span style={{fontSize:9,color:WARNA.redup,fontWeight:600,whiteSpace:"nowrap"}}>Klik Mulai dulu</span>}
                               {!qtyLocked&&capMek&&capMek.capQty<r.qtyKomp&&(
                                 <span style={{fontSize:9,color:"#b45309",fontWeight:700,whiteSpace:"nowrap"}} title={`Tidak boleh melebihi progress ${capMek.prosesSebelum}`}>
                                   maks {capMek.capQty} · {capMek.prosesSebelum} {capMek.pctSebelum}%
@@ -3860,7 +3860,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                     return(
                       <tr key={`${r.task.id}-${r.kode}`}
                         style={isLockedRow?{opacity:0.55,pointerEvents:"none" as const}:undefined}>
-                        <td style={{...td,position:"sticky",left:0,zIndex:1,textAlign:"center",fontFamily:"'DM Mono',monospace",color:"#94a3b8",fontWeight:700}}>{ri+1}</td>
+                        <td style={{...td,position:"sticky",left:0,zIndex:1,textAlign:"center",fontFamily:"'DM Mono',monospace",color:WARNA.redup,fontWeight:700}}>{ri+1}</td>
                         <td style={{...td,position:"sticky",left:40,zIndex:1,fontWeight:600,fontSize:11,color:"#475569",whiteSpace:"nowrap"}}>
                           {(()=>{
                             const urg=getUrgensi(r.task.wo_id||r.task.woId);
@@ -3884,7 +3884,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                           })()}
                         </td>
                         <td style={{...td,position:"sticky",left:140,zIndex:1,fontWeight:600,fontSize:11,color:"#1e293b",whiteSpace:"nowrap"}}>
-                          <span style={{fontSize:10,color:"#94a3b8",marginRight:4}}>#{r.panel.no_pnl||r.panel.noPnl}</span>{r.panel.nama}
+                          <span style={{fontSize:10,color:WARNA.redup,marginRight:4}}>#{r.panel.no_pnl||r.panel.noPnl}</span>{r.panel.nama}
                           {r.task.carryOver&&r.isFirst&&(
                             <span style={{marginLeft:6,background:"#fef9c3",border:"1px solid #fde047",color:"#92400e",
                               borderRadius:4,padding:"1px 6px",fontSize:9,fontWeight:700}}>↩ Lanjutan</span>
@@ -3901,7 +3901,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                             <td style={{...td,fontWeight:600,color:"#374151",whiteSpace:"nowrap"}}>
                               {renderNamaKomponen(r.item.nama)}
                             </td>
-                            <td style={{...td,textAlign:"center",fontFamily:"'DM Mono',monospace",fontSize:10,color:"#94a3b8"}}>{r.kode}</td>
+                            <td style={{...td,textAlign:"center",fontFamily:"'DM Mono',monospace",fontSize:10,color:WARNA.redup}}>{r.kode}</td>
                             <td style={{...td,textAlign:"center"}}>
                               <Badge label={r.task.prioritas||"Sedang"} color={r.priColor}/>
                             </td>
@@ -3948,7 +3948,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                                               fontFamily:"'DM Mono',monospace",
                                               color:r.qtyKomp===0?"#cbd5e1":floor>0?"#b45309":WARNA.aksenTeks}}/>
                                           {qtyLocked?(
-                                            <span style={{fontSize:9,color:"#94a3b8",fontWeight:600,whiteSpace:"nowrap"}}>Klik Mulai dulu</span>
+                                            <span style={{fontSize:9,color:WARNA.redup,fontWeight:600,whiteSpace:"nowrap"}}>Klik Mulai dulu</span>
                                           ):floor>0&&<span style={{fontSize:9,color:"#f59e0b",fontWeight:700}}>min {floor} 🔒</span>}
                                           {!qtyLocked&&capMek&&capMek.capQty<r.qtyKomp&&(
                                             <span style={{fontSize:9,color:"#b45309",fontWeight:700,whiteSpace:"nowrap"}} title={`Tidak boleh melebihi progress ${capMek.prosesSebelum}`}>
@@ -4022,7 +4022,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                                 })}
                                 {proses!=="POTONG"&&(
                                   <button onClick={()=>{setOperatorModal({taskId:r.task.id,kode:r.kode});setTempPekerjaIds(idsKomp);}}
-                                    style={{fontSize:9,color:"#94a3b8",fontWeight:600,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"2px 6px",cursor:"pointer"}}>
+                                    style={{fontSize:9,color:WARNA.redup,fontWeight:600,background:"none",border:"1px dashed #cbd5e1",borderRadius:8,padding:"2px 6px",cursor:"pointer"}}>
                                     {workers.length>0?"+ Edit":"+ Pilih Operator"}
                                   </button>
                                 )}
@@ -4095,7 +4095,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
               display:"flex",alignItems:"center",justifyContent:"center",gap:8}}>
             {lockMsg?"✅ Progress hari ini berhasil dikunci & tersimpan!":pernahDikunci?"✅ Sudah Dikunci — Kunci Ulang":"🔒 Kunci Progress Hari Ini"}
           </button>
-          <div style={{fontSize:11,color:"#94a3b8",textAlign:"center",marginTop:8,lineHeight:1.5}}>
+          <div style={{fontSize:11,color:WARNA.redup,textAlign:"center",marginTop:8,lineHeight:1.5}}>
             Klik di akhir shift untuk menyimpan progress hari ini sebagai catatan permanen.<br/>
             Bisa diklik lagi jika ada update di shift berikutnya (tersimpan terpisah).
           </div>
@@ -4113,7 +4113,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
               <button onClick={()=>setOperatorModal(null)}
                 style={{flexShrink:0,width:26,height:26,borderRadius:99,border:"none",background:"#f1f5f9",color:"#64748b",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center",fontSize:14,fontWeight:700}}>×</button>
             </div>
-            <div style={{fontSize:11,color:"#94a3b8",marginBottom:14}}>Bisa pilih lebih dari satu orang</div>
+            <div style={{fontSize:11,color:WARNA.redup,marginBottom:14}}>Bisa pilih lebih dari satu orang</div>
             <div style={{display:"flex",flexDirection:"column",gap:6,marginBottom:16}}>
               {pekerjaList.filter((p:any)=>p.divisi===user.divisi).map((p:any)=>{
                 const checked=tempPekerjaIds.includes(p.id);

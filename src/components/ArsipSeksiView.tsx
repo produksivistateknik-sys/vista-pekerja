@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { Card } from "./ui/Primitives";
 import { FotoZoomViewerPekerja } from "./FotoZoomViewerPekerja";
@@ -143,15 +144,15 @@ export function ArsipSeksiView({seksi}:{seksi:string}){
         </div>
       )}
       {loading?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12}}>Memuat arsip...</div>
+        <div style={{textAlign:"center",padding:40,color:WARNA.redup,fontSize:12}}>Memuat arsip...</div>
       ):rows.length===0?(
-        !gagalMuat&&<div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:12,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
+        !gagalMuat&&<div style={{textAlign:"center",padding:40,color:WARNA.redup,fontSize:12,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
           Belum ada yang diarsipkan.
         </div>
       ):grouped.length===0?(
         <div style={{textAlign:"center",padding:"28px 16px",color:"#64748b",fontSize:12.5,background:"#fff",borderRadius:10,border:"1px solid #e2e8f0"}}>
           <div style={{fontWeight:700,color:"#0f172a"}}>Tidak ada WO, proyek, atau panel yang cocok dengan “{search.trim()}”.</div>
-          <button onClick={()=>setSearch("")} style={{marginTop:12,border:"1.5px solid #e2e8f0",background:"#fff",color:"#1d4ed8",borderRadius:9,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Hapus pencarian</button>
+          <button onClick={()=>setSearch("")} style={{marginTop:12,border:"1.5px solid #e2e8f0",background:"#fff",color:WARNA.aksenTeks,borderRadius:9,padding:"7px 14px",fontSize:12,fontWeight:700,cursor:"pointer"}}>Hapus pencarian</button>
         </div>
       ):(
         <div style={{display:"flex",flexDirection:"column" as const,gap:8}}>
@@ -179,7 +180,7 @@ export function ArsipSeksiView({seksi}:{seksi:string}){
                               <div style={{fontSize:13.5,fontWeight:800,color:"#0f172a"}}>{r.panel_nama}</div>
                               {r.kode&&<div style={{fontSize:10,color:"#64748b"}}>{r.komponen_nama||r.kode}</div>}
                             </div>
-                            <div style={{fontSize:9,color:"#94a3b8",textAlign:"right" as const,whiteSpace:"nowrap" as const}}>{fmtTgl(r.diarsipkan_pada)}</div>
+                            <div style={{fontSize:9,color:WARNA.redup,textAlign:"right" as const,whiteSpace:"nowrap" as const}}>{fmtTgl(r.diarsipkan_pada)}</div>
                           </div>
                           {fotoList.length===0?(
                             <div style={{fontSize:11,color:"#cbd5e1",fontStyle:"italic" as const}}>Belum ada foto</div>

@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { withRetry, alertGagalSimpan } from "../lib/koneksi";
 import { getLocalDateStr } from "../lib/dateHelpers";
@@ -227,7 +228,7 @@ export function ProsesAktifView({user,tahapPasangKomponen}:{user:any;tahapPasang
       <SectionCard icon="⏱" title="Proses Saya" subtitle={loading?"Memuat...":`${timers.length} proses sedang berjalan`}>
         {errSaya&&pesanError(errSaya)}
         {loading?(
-          <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
+          <div style={{textAlign:"center",padding:20,color:WARNA.redup,fontSize:12}}>Memuat...</div>
         ):timers.length===0?(
           <EmptyState title="Tidak ada proses aktif" description="Belum ada timer yang sedang berjalan saat ini."/>
         ):timers.map(t=>{
@@ -241,12 +242,12 @@ export function ProsesAktifView({user,tahapPasangKomponen}:{user:any;tahapPasang
                 </div>
                 <div style={{textAlign:"right",flexShrink:0}}>
                   <div style={{fontWeight:800,fontSize:14,color:"#16a34a",fontFamily:"'DM Mono',monospace"}}>{fmtDurasi(t.mulai)}</div>
-                  <div style={{fontSize:9,color:"#94a3b8"}}>berjalan</div>
+                  <div style={{fontSize:9,color:WARNA.redup}}>berjalan</div>
                 </div>
               </div>
               <button disabled={closingId===t.id} onClick={()=>forceClose(t.id)}
-                style={{marginTop:8,width:"100%",fontSize:11,fontWeight:700,border:"1px solid #fbcfe8",borderRadius:8,
-                  padding:"7px 10px",background:"#fff",color:"#db2777",cursor:closingId===t.id?"not-allowed":"pointer"}}>
+                style={{marginTop:8,width:"100%",fontSize:11,fontWeight:700,border:`1px solid ${WARNA.bahaya}40`,borderRadius:8,
+                  padding:"7px 10px",background:"#fff",color:WARNA.bahaya,cursor:closingId===t.id?"not-allowed":"pointer"}}>
                 {closingId===t.id?"Menutup...":"⏹ Force Close"}
               </button>
             </div>
@@ -260,14 +261,14 @@ export function ProsesAktifView({user,tahapPasangKomponen}:{user:any;tahapPasang
         subtitle={rekanLoading?"Memuat...":`${grupRekan.length} operator · ${rekanTimers.length} proses berjalan hari ini`}>
         {errRekan&&pesanError(errRekan)}
         {rekanLoading?(
-          <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
+          <div style={{textAlign:"center",padding:20,color:WARNA.redup,fontSize:12}}>Memuat...</div>
         ):grupRekan.length===0?(
           <EmptyState title="Tidak ada rekan yang sedang jalan" description="Belum ada rekan satu sub-bagian yang menjalankan timer hari ini."/>
         ):grupRekan.map(g=>(
           <div key={g.pekerjaId} style={{border:"1px solid #e2e8f0",borderRadius:12,padding:"10px 12px",marginBottom:8,background:"#fff"}}>
             <div style={{fontWeight:800,fontSize:13,color:"#1e293b",marginBottom:6}}>
               {rekanNama[g.pekerjaId]||"Operator #"+g.pekerjaId}
-              <span style={{fontWeight:600,fontSize:10,color:"#94a3b8",marginLeft:6}}>{g.timers.length} proses</span>
+              <span style={{fontWeight:600,fontSize:10,color:WARNA.redup,marginLeft:6}}>{g.timers.length} proses</span>
             </div>
             {g.timers.map((t:any)=>{
               const panel=rekanPanels[t.panel_id];
@@ -281,7 +282,7 @@ export function ProsesAktifView({user,tahapPasangKomponen}:{user:any;tahapPasang
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontWeight:800,fontSize:13,color:"#0f766e",fontFamily:"'DM Mono',monospace"}}>{fmtDurasi(t.mulai)}</div>
-                    <div style={{fontSize:9,color:"#94a3b8"}}>berjalan</div>
+                    <div style={{fontSize:9,color:WARNA.redup}}>berjalan</div>
                   </div>
                 </div>
               );

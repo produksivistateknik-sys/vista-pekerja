@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { hapusFotoDariStorage } from "../lib/fotoHelpers";
 import { PESAN_DIANTREKAN, unggahBanyak, MAKS_FOTO_PER_SIMPAN, pesanMelebihiBatasFoto } from "../lib/siapkanMedia";
@@ -169,12 +170,12 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
     return(
       <div style={{padding:16}}>
         <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:12}}>
-          <button onClick={()=>{setMode("list");setActiveMomFat(null);}} style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:"#2563eb",fontWeight:700,fontSize:13,cursor:"pointer",padding:0}}>
+          <button onClick={()=>{setMode("list");setActiveMomFat(null);}} style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:WARNA.aksenTeks,fontWeight:700,fontSize:13,cursor:"pointer",padding:0}}>
             <i className="ti ti-arrow-left"/> Kembali
           </button>
         </div>
         <SectionCard icon="📋" title={activeMomFat.judul} subtitle={`${done}/${total} poin selesai · diupload ${activeMomFat.operator_nama}`}>
-          <a href={activeMomFat.file_url} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,color:"#2563eb",marginBottom:14,textDecoration:"none"}}>
+          <a href={activeMomFat.file_url} target="_blank" rel="noreferrer" style={{display:"flex",alignItems:"center",gap:6,fontSize:12,fontWeight:700,color:WARNA.aksenTeks,marginBottom:14,textDecoration:"none"}}>
             <i className="ti ti-file-description"/> Lihat dokumen asli
           </a>
           <div style={{display:"flex",flexDirection:"column",gap:8,textAlign:"left"}}>
@@ -185,13 +186,13 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
                   <div style={{flex:1,minWidth:0,textAlign:"left"}}>
                     <div onClick={()=>toggleCentang(p)} style={{textAlign:"left",fontSize:13,color:p.selesai?"#16a34a":"#1e293b",textDecoration:p.selesai?"line-through":"none",cursor:"pointer",lineHeight:1.5}}>{p.teks}</div>
                     <div style={{display:"flex",gap:6,alignItems:"center",marginTop:4,flexWrap:"wrap"}}>
-                      {p.dicentang_oleh&&<span style={{fontSize:10,color:"#94a3b8"}}>✓ {p.dicentang_oleh}</span>}
+                      {p.dicentang_oleh&&<span style={{fontSize:10,color:WARNA.redup}}>✓ {p.dicentang_oleh}</span>}
                     </div>
                     <div style={{marginTop:6}}>
                       <div style={{display:"flex",alignItems:"center",justifyContent:"space-between",marginBottom:5}}>
                         {(p.foto||[]).length>0&&<span style={{fontSize:9.5,fontWeight:600,color:"#64748b"}}>Foto {p.foto.length}</span>}
                         <MediaPickerSheet allowVideo disabled={uploadingPoinId===p.id}
-                          triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:"#2563eb",fontSize:10.5,fontWeight:600,marginLeft:"auto"}}
+                          triggerStyle={{display:"flex",alignItems:"center",gap:4,cursor:"pointer",color:WARNA.aksenTeks,fontSize:10.5,fontWeight:600,marginLeft:"auto"}}
                           onFiles={(files)=>uploadFotoPoin(p,files)}>
                           <i className={uploadingPoinId===p.id?"ti ti-loader-2":"ti ti-camera-plus"} style={{fontSize:12}}/>
                           {uploadingPoinId===p.id&&progresFoto?`Mengunggah ${progresFoto}`:"Tambah Foto"}
@@ -227,11 +228,11 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
     <div style={{padding:16}}>
       <div style={{display:"flex",gap:8,marginBottom:14}}>
         <button onClick={()=>setMode("list")} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
-          fontSize:12.5,fontWeight:700,background:mode==="list"?"#1d4ed8":"#e2e8f0",color:mode==="list"?"#fff":"#64748b"}}>
+          fontSize:12.5,fontWeight:700,background:mode==="list"?WARNA.aksen:"#e2e8f0",color:mode==="list"?"#fff":"#64748b"}}>
           📋 Daftar Dokumen
         </button>
         <button onClick={()=>setMode("arsip")} style={{flex:1,padding:"10px",borderRadius:10,border:"none",cursor:"pointer",
-          fontSize:12.5,fontWeight:700,background:mode==="arsip"?"#1d4ed8":"#e2e8f0",color:mode==="arsip"?"#fff":"#64748b"}}>
+          fontSize:12.5,fontWeight:700,background:mode==="arsip"?WARNA.aksen:"#e2e8f0",color:mode==="arsip"?"#fff":"#64748b"}}>
           🗄️ Arsip
         </button>
       </div>
@@ -249,7 +250,7 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
           <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Cari judul dokumen / operator..."
             style={{width:"100%",padding:"9px 12px",borderRadius:10,border:"1.5px solid #e2e8f0",fontSize:13,fontFamily:"inherit",boxSizing:"border-box",marginBottom:12}}/>
           {loading?(
-            <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
+            <div style={{textAlign:"center",padding:20,color:WARNA.redup,fontSize:12}}>Memuat...</div>
           ):filteredList.length===0?(
             <EmptyState title={isArsip?"Belum ada dokumen diarsip":"Belum ada dokumen"} description={isArsip?"Dokumen yang diarsipkan Admin/Engineering akan muncul di sini.":(q?"Tidak ada dokumen yang cocok.":'Dokumen MOM FAT diupload oleh Admin/Engineering di Vista Teknik - akan muncul di sini.')} variant="box-paper"/>
           ):filteredList.map(m=>{
@@ -260,7 +261,7 @@ export function MomFatView({user,registerBackHandler}:{user:any,registerBackHand
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:8}}>
                   <div style={{minWidth:0,flex:1}}>
                     <div style={{fontWeight:700,fontSize:13,color:"#1e293b",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{m.judul}</div>
-                    <div style={{fontSize:11,color:"#94a3b8",marginTop:2}}>👤 {m.operator_nama} · {m.status==="ready"?`${prog.done}/${prog.total} poin`:""}</div>
+                    <div style={{fontSize:11,color:WARNA.redup,marginTop:2}}>👤 {m.operator_nama} · {m.status==="ready"?`${prog.done}/${prog.total} poin`:""}</div>
                   </div>
                   <div style={{display:"flex",alignItems:"center",gap:5,flexShrink:0}}>
                     {m.is_archived&&<span style={{background:"#f1f5f9",color:"#64748b",borderRadius:20,padding:"3px 10px",fontSize:10.5,fontWeight:700}}>Arsip</span>}

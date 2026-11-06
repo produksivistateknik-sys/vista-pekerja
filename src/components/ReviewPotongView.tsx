@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { PROSES_COLOR } from "../lib/panelTypes";
 import { fetchKomponenNamaMap, getNamaKomponen } from "../lib/komponenNama";
@@ -143,12 +144,12 @@ export function ReviewPotongView(){
       </div>
 
       {loading?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+        <div style={{textAlign:"center",padding:40,color:WARNA.redup}}>
           <div style={{fontSize:24,marginBottom:8}}>⏳</div>
           Memuat riwayat...
         </div>
       ):groupedShift.length===0?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+        <div style={{textAlign:"center",padding:40,color:WARNA.redup}}>
           <div style={{fontSize:32,marginBottom:8}}>📭</div>
           <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>Belum ada riwayat</div>
           <div style={{fontSize:12,marginTop:4}}>Belum ada section yang disimpan di tanggal ini</div>
@@ -180,7 +181,7 @@ export function ReviewPotongView(){
                     </div>
                     <div style={{textAlign:"right" as const,flexShrink:0}}>
                       <div style={{fontWeight:800,fontSize:15,color:pc,lineHeight:1}}>{totalQty}</div>
-                      <div style={{fontSize:8.5,fontWeight:700,color:"#94a3b8"}}>pcs</div>
+                      <div style={{fontSize:8.5,fontWeight:700,color:WARNA.redup}}>pcs</div>
                     </div>
                     <span style={{fontSize:11,color:"#cbd5e1"}}>{isOpen?"▾":"▸"}</span>
                   </div>
@@ -188,7 +189,7 @@ export function ReviewPotongView(){
                     <div style={{display:"flex",flexDirection:"column" as const,gap:8,padding:"2px 13px 12px"}}>
                       {sec.panels.map((pnl:any,pi:number)=>(
                         <div key={pi}>
-                          <div style={{fontSize:10.5,fontWeight:800,color:"#334155",marginBottom:4,paddingTop:6}}>{pnl.panelNama} <span style={{fontWeight:600,color:"#94a3b8"}}>· {pnl.proyek}</span></div>
+                          <div style={{fontSize:10.5,fontWeight:800,color:"#334155",marginBottom:4,paddingTop:6}}>{pnl.panelNama} <span style={{fontWeight:600,color:WARNA.redup}}>· {pnl.proyek}</span></div>
                           <div style={{display:"flex",flexDirection:"column" as const,gap:4}}>
                             {pnl.items.map((r:any,i:number)=>(
                               <div key={i} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:8,padding:"7px 10px"}}>

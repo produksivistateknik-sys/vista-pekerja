@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo, useRef } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { hariKerjaWib } from "../lib/tanggalWib";
 import { supabase } from "../lib/supabase";
 import { PCT_STEPS } from "../lib/panelTypes";
@@ -792,12 +793,12 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
         </div>
 
         {loading?(
-          <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{textAlign:"center",padding:40,color:WARNA.redup}}>
             <i className="ti ti-loader-2" style={{fontSize:26,display:"block",marginBottom:8}}/>
             Memuat data...
           </div>
         ):filteredProjects.length===0?(
-          <div style={{textAlign:"center",padding:40,color:"#94a3b8"}}>
+          <div style={{textAlign:"center",padding:40,color:WARNA.redup}}>
             <i className="ti ti-folder-x" style={{fontSize:32,display:"block",marginBottom:8}}/>
             Tidak ada proyek
           </div>
@@ -849,7 +850,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
   return(
     <div style={{padding:"14px 14px 28px",background:"#f8fafc",minHeight:"100%"}}>
       <button onClick={()=>setSelectedWoId(null)}
-        style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:tugas.color,fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12,padding:0}}>
+        style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:WARNA.aksenTeks,fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12,padding:0}}>
         <i className="ti ti-arrow-left" style={{fontSize:16}}/> Kembali ke Daftar Proyek
       </button>
 
@@ -908,7 +909,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
               <div onClick={()=>togglePanel(p.id)}
                 style={{display:"flex",alignItems:"center",gap:11,padding:"13px 15px",cursor:"pointer"}}>
                 <div style={{width:38,height:38,borderRadius:11,background:allDonePanel?"#dcfce7":"#eff6ff",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}}>
-                  <i className={`ti ${allDonePanel?"ti-circle-check-filled":"ti-tool"}`} style={{fontSize:18,color:allDonePanel?"#16a34a":"#2563eb"}}/>
+                  <i className={`ti ${allDonePanel?"ti-circle-check-filled":"ti-tool"}`} style={{fontSize:18,color:allDonePanel?"#16a34a":WARNA.aksen}}/>
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:800,fontSize:14.5,color:"#0f172a",whiteSpace:"nowrap" as const,overflow:"hidden",textOverflow:"ellipsis"}}>{p.nama}</div>
@@ -986,8 +987,8 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                             return(
                               <button key={s} onClick={handleStepClick}
                                 style={{flex:1,minWidth:36,padding:"8px 3px",borderRadius:8,border:"none",cursor:"pointer",
-                                  background:reached?tugas.color:isNext?`${tugas.color}14`:"#f1f5f9",
-                                  color:reached?"#fff":isNext?tugas.color:"#94a3b8",
+                                  background:reached?WARNA.aksen:isNext?`${WARNA.aksen}14`:"#f1f5f9",
+                                  color:reached?"#fff":isNext?WARNA.aksenTeks:"#94a3b8",
                                   fontWeight:700,fontSize:10.5}}>
                                 {reached?"✓":`${s}%`}
                               </button>
@@ -995,7 +996,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                           })}
                         </div>
                         <>
-                            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.3}}>
+                            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:9.5,fontWeight:700,color:WARNA.redup,marginBottom:6,letterSpacing:0.3}}>
                               <i className="ti ti-camera" style={{fontSize:11}}/> FOTO PEMASANGAN (WAJIB)
                             </div>
                             {fotoKodeArr.length===0&&stagedKodeFoto.length===0?(
@@ -1014,7 +1015,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                                 ))}
                                 {stagedKodeFoto.map((s,si)=>(
                                   <div key={`staged_${si}`} style={{position:"relative" as const}}>
-                                    <div style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:`1.5px dashed ${tugas.color}`}}><ThumbMedia url={s.previewUrl} video={isFileVideo(s.file)}/></div>
+                                    <div style={{width:52,height:52,borderRadius:8,overflow:"hidden",border:`1.5px dashed ${WARNA.aksen}`}}><ThumbMedia url={s.previewUrl} video={isFileVideo(s.file)}/></div>
                                     <button onClick={()=>batalkanFotoStaged(key,si)}
                                       style={{position:"absolute" as const,top:-6,right:-6,width:18,height:18,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                       <i className="ti ti-x" style={{fontSize:10}}/>
@@ -1025,13 +1026,13 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                             )}
                             <div style={{display:"flex",gap:6,flexWrap:"wrap" as const,marginBottom:10}}>
                               <MediaPickerSheet allowVideo disabled={saving}
-                                triggerStyle={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:tugas.color,background:`${tugas.color}0f`,border:`1px dashed ${tugas.color}55`,borderRadius:8,padding:"7px 11px",cursor:"pointer"}}
+                                triggerStyle={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,color:WARNA.aksen,background:`${WARNA.aksen}0f`,border:`1px dashed ${WARNA.aksen}55`,borderRadius:8,padding:"7px 11px",cursor:"pointer"}}
                                 onFiles={(files)=>pilihFotoStaged(key,files)}>
                                 + Tambah Foto
                               </MediaPickerSheet>
                               {stagedKodeFoto.length>0&&(
                                 <button onClick={()=>simpanFotoStaged(p,key,`${p.id}/${r.kode}`)} disabled={savingKey==="foto_"+key}
-                                  style={{fontSize:11,fontWeight:700,color:"#fff",background:tugas.color,border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>
+                                  style={{fontSize:11,fontWeight:700,color:"#fff",background:WARNA.aksen,border:"none",borderRadius:8,padding:"7px 12px",cursor:"pointer"}}>
                                   {savingKey==="foto_"+key?(progresFoto?`⏳ Mengunggah ${progresFoto}`:"⏳ Menyimpan..."):"💾 Simpan Foto"}
                                 </button>
                               )}
@@ -1049,7 +1050,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                             ("💾 Simpan Progress", checkpoint biasa) - biar operator sadar bedanya. */}
                         <button onClick={()=>simpanProgress(p,r.kode,r.nama,r.isTahap)} disabled={saving||pct===0||sudahDiarsip}
                           style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,width:"100%",
-                            background:sudahDiarsip?"#dcfce7":saving||pct===0?"#cbd5e1":tugas.color,
+                            background:sudahDiarsip?"#dcfce7":saving||pct===0?"#cbd5e1":WARNA.aksen,
                             color:sudahDiarsip?"#16a34a":"#fff",border:"none",borderRadius:10,padding:"10px 10px",fontSize:12,fontWeight:700,
                             cursor:saving||pct===0||sudahDiarsip?"not-allowed":"pointer"}}>
                           <i className={saving?"ti ti-loader-2":sudahDiarsip?"ti ti-circle-check-filled":pct>=100?"ti ti-archive":"ti ti-device-floppy"} style={{fontSize:14}}/>
@@ -1061,7 +1062,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                   {relevanArsip.length>0&&(
                     <div style={{display:"flex",flexDirection:"column" as const,gap:10}}>
                       {relevanBelumArsip.length>0&&(
-                        <div style={{fontSize:9.5,fontWeight:800,color:"#94a3b8",letterSpacing:0.4}}>SUDAH DIARSIP</div>
+                        <div style={{fontSize:9.5,fontWeight:800,color:WARNA.redup,letterSpacing:0.4}}>SUDAH DIARSIP</div>
                       )}
                       {relevanArsip.map(r=>{
                         const key=`${p.id}_${r.kode}`;
@@ -1076,7 +1077,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                                 <i className="ti ti-circle-check-filled" style={{fontSize:12}}/> Sudah Diarsip
                               </span>
                             </div>
-                            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:6,letterSpacing:0.3}}>
+                            <div style={{display:"flex",alignItems:"center",gap:5,fontSize:9.5,fontWeight:700,color:WARNA.redup,marginBottom:6,letterSpacing:0.3}}>
                               <i className="ti ti-camera" style={{fontSize:11}}/> FOTO PEMASANGAN
                             </div>
                             {fotoKodeArr.length===0&&stagedKodeFoto.length===0?(
@@ -1126,7 +1127,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                       biar foto yang udah pernah ke-upload gak hilang dari tampilan, operator
                       masih bisa nambah foto umum ke sini kapan saja (8 Agu 2026). */}
                   <div style={{border:"1.5px solid #eef0f3",borderRadius:12,padding:"12px 13px",background:"#fafbfc"}}>
-                      <div style={{display:"flex",alignItems:"center",gap:5,fontSize:9.5,fontWeight:700,color:"#94a3b8",marginBottom:8,letterSpacing:0.3}}>
+                      <div style={{display:"flex",alignItems:"center",gap:5,fontSize:9.5,fontWeight:700,color:WARNA.redup,marginBottom:8,letterSpacing:0.3}}>
                         <i className="ti ti-camera" style={{fontSize:11}}/> FOTO PEMASANGAN PANEL (SEMUA KOMPONEN)
                       </div>
                       {fotoPanelArr.length===0&&stagedPanel.length===0?(
@@ -1145,7 +1146,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                           ))}
                           {stagedPanel.map((s,si)=>(
                             <div key={`staged_${si}`} style={{position:"relative" as const}}>
-                              <div style={{width:62,height:62,borderRadius:10,overflow:"hidden",border:`1.5px dashed ${tugas.color}`}}><ThumbMedia url={s.previewUrl} video={isFileVideo(s.file)}/></div>
+                              <div style={{width:62,height:62,borderRadius:10,overflow:"hidden",border:`1.5px dashed ${WARNA.aksen}`}}><ThumbMedia url={s.previewUrl} video={isFileVideo(s.file)}/></div>
                               <button onClick={()=>batalkanFotoStaged(stagedPanelKey,si)}
                                 style={{position:"absolute" as const,top:-6,right:-6,width:19,height:19,borderRadius:99,background:"#dc2626",color:"#fff",border:"2px solid #fff",cursor:"pointer",display:"flex",alignItems:"center",justifyContent:"center"}}>
                                 <i className="ti ti-x" style={{fontSize:10}}/>
@@ -1155,14 +1156,14 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
                         </div>
                       )}
                       <MediaPickerSheet allowVideo disabled={savingPanelFoto}
-                        triggerStyle={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:tugas.color,background:`${tugas.color}0f`,border:`1.5px dashed ${tugas.color}55`,borderRadius:10,padding:"9px 13px",cursor:"pointer"}}
+                        triggerStyle={{display:"inline-flex",alignItems:"center",gap:5,fontSize:11.5,fontWeight:700,color:WARNA.aksen,background:`${WARNA.aksen}0f`,border:`1.5px dashed ${WARNA.aksen}55`,borderRadius:10,padding:"9px 13px",cursor:"pointer"}}
                         onFiles={(files)=>pilihFotoStaged(stagedPanelKey,files)}>
                         <i className="ti ti-camera-plus" style={{fontSize:14}}/> Tambah Foto
                       </MediaPickerSheet>
                       {stagedPanel.length>0&&(
                         <button onClick={()=>simpanFotoStaged(p,stagedPanelKey,`${p.id}`)} disabled={savingPanelFoto}
                           style={{display:"flex",alignItems:"center",justifyContent:"center",gap:6,marginTop:12,width:"100%",
-                            background:savingPanelFoto?"#cbd5e1":tugas.color,color:"#fff",border:"none",borderRadius:11,padding:"11px 10px",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>
+                            background:savingPanelFoto?"#cbd5e1":WARNA.aksen,color:"#fff",border:"none",borderRadius:11,padding:"11px 10px",fontSize:12.5,fontWeight:700,cursor:"pointer"}}>
                           {savingPanelFoto?(progresFoto?`Mengunggah ${progresFoto}`:"Menyimpan..."):"💾 Simpan Foto"}
                         </button>
                       )}

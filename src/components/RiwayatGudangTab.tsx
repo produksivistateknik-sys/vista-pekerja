@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { SectionCard, EmptyState, DatePickerField } from "./gudang/GudangUI";
 import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
@@ -327,7 +328,7 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
       </div>
 
       {loading?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
+        <div style={{textAlign:"center",padding:40,color:WARNA.redup,fontSize:13}}>Memuat...</div>
       ):filteredRows.length===0?(
         <EmptyState title="Belum ada aksi"
           description={q||statusFilter!=="ALL"?"Tidak ada hasil yang cocok dengan pencarian/filter.":"Belum ada aksi submit/reject/ambil yang tercatat di tanggal ini."}/>
@@ -340,7 +341,7 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8,marginBottom:8}}>
                   <div style={{minWidth:0}}>
                     <div style={{fontSize:13,fontWeight:700,color:"#1e293b"}}>{r.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{r.qty}{r.satuan?` ${r.satuan}`:""}</span></div>
-                    <div style={{fontSize:10.5,color:"#94a3b8",overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
+                    <div style={{fontSize:10.5,color:WARNA.redup,overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>
                       {r.perm.jenis} · {DIVISI_LABEL[r.perm.divisi]||r.perm.divisi} · {r.perm.operator_nama} · {r.perm.proyek||"-"}{r.perm.panel_nama?` · ${r.perm.panel_nama}`:""}
                     </div>
                   </div>
@@ -362,7 +363,7 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
                   {r.status==="submit"&&(
                     r.sudah_diambil
                       ?<span>📦 Diambil oleh {r.diambil_oleh||"-"} — {fmtDateTime(r.diambil_at)}</span>
-                      :<span style={{color:"#94a3b8"}}>⏳ Menunggu diambil</span>
+                      :<span style={{color:WARNA.redup}}>⏳ Menunggu diambil</span>
                   )}
                 </div>
                 {r.status==="reject"&&r.catatan_reject&&<div style={{fontSize:11,color:"#dc2626",marginTop:6}}>⚠ {r.catatan_reject}</div>}
@@ -387,7 +388,7 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
                 ):(
                   <div style={{marginTop:8,paddingTop:8,borderTop:"1px solid #f1f5f9"}}>
                     <button onClick={()=>bukaKoreksi(r)}
-                      style={{fontSize:10.5,fontWeight:700,color:"#0369a1",background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>
+                      style={{fontSize:10.5,fontWeight:700,color:WARNA.aksenTeks,background:"none",border:"none",cursor:"pointer",fontFamily:"inherit",padding:0}}>
                       ✏️ Ajukan Koreksi Qty
                     </button>
                   </div>
@@ -442,7 +443,7 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
               </button>
               <button onClick={submitKoreksi} disabled={koreksiSubmitting}
                 style={{flex:1,padding:"10px",borderRadius:9,border:"none",
-                  background:koreksiSubmitting?"#94a3b8":"#0369a1",color:"#fff",fontWeight:700,fontSize:13,
+                  background:koreksiSubmitting?"#94a3b8":WARNA.aksen,color:"#fff",fontWeight:700,fontSize:13,
                   cursor:koreksiSubmitting?"default":"pointer",fontFamily:"inherit"}}>
                 {koreksiSubmitting?"Mengajukan...":"Ajukan"}
               </button>

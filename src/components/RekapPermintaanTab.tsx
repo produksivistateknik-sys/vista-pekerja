@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { WARNA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { gabungDenganArsip, muatItemRekap, muatPermintaanTanpaRincian, type WoRekap, type PermintaanTanpaRincian } from "../lib/rekapPermintaanArsip";
 import { muatKoreksiDisetujui, teksTandaKoreksi, qtyEfektif, type KoreksiPermintaan } from "../lib/koreksiPermintaan";
@@ -234,7 +235,7 @@ ${kop.body}
       <div style={{padding:16}}>
         <div style={{marginBottom:14}}>
           <div style={{fontWeight:800,fontSize:15,color:"#0f172a"}}>Rekap Permintaan</div>
-          <div style={{fontSize:11.5,color:"#94a3b8",marginTop:2}}>Pilih WO/proyek untuk lihat rekap item yang sudah keluar dari Gudang, digabung per jenis item.</div>
+          <div style={{fontSize:11.5,color:WARNA.redup,marginTop:2}}>Pilih WO/proyek untuk lihat rekap item yang sudah keluar dari Gudang, digabung per jenis item.</div>
         </div>
         <label style={{display:"flex",alignItems:"center",gap:6,fontSize:12.5,fontWeight:600,color:"#475569",marginBottom:8,cursor:"pointer"}}>
           <input type="checkbox" checked={tampilArsip} onChange={(e:any)=>setTampilArsip(e.target.checked)}/>
@@ -243,7 +244,7 @@ ${kop.body}
         <input type="text" placeholder="🔍 Cari nomor WO atau nama proyek..." value={woSearch}
           onChange={(e:any)=>setWoSearch(e.target.value)} style={{...inputS,marginBottom:14}}/>
         {woLoading?(
-          <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat daftar WO...</div>
+          <div style={{textAlign:"center",padding:40,color:WARNA.redup,fontSize:13}}>Memuat daftar WO...</div>
         ):woFiltered.length===0?(
           <EmptyState title="WO tidak ditemukan" description={woSearch?`Tidak ada WO/proyek yang cocok dengan pencarian "${woSearch}".`:"Belum ada WO aktif yang punya panel."}/>
         ):(
@@ -257,7 +258,7 @@ ${kop.body}
                   alignItems:"center",justifyContent:"center",flexShrink:0,fontSize:18}}>📁</div>
                 <div style={{minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:13,color:"#1e293b"}}>WO {w.wo}{w.arsip&&<span style={{marginLeft:6,fontSize:10.5,fontWeight:700,color:"#64748b",background:"#f1f5f9",borderRadius:10,padding:"1px 7px"}}>Arsip</span>}</div>
-                  <div style={{fontSize:11.5,color:"#94a3b8"}}>{w.proyek} - {w.panels.length} panel{!w.arsip&&w.panels.some(p=>p.arsip)?` (${w.panels.filter(p=>p.arsip).length} arsip)`:""}</div>
+                  <div style={{fontSize:11.5,color:WARNA.redup}}>{w.proyek} - {w.panels.length} panel{!w.arsip&&w.panels.some(p=>p.arsip)?` (${w.panels.filter(p=>p.arsip).length} arsip)`:""}</div>
                 </div>
               </button>
             ))}
@@ -274,7 +275,7 @@ ${kop.body}
           border:"1px solid #cbd5e1",background:"#fff",color:"#475569",fontSize:12.5,fontWeight:700,
           cursor:"pointer",fontFamily:"inherit"}}>← Ganti WO</button>
         <button onClick={openPrintWindow} style={{height:36,padding:"0 14px",borderRadius:8,border:"none",
-          background:"#1d4ed8",color:"#fff",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
+          background:WARNA.aksen,color:"#fff",fontSize:12.5,fontWeight:700,cursor:"pointer",fontFamily:"inherit"}}>
           🖨️ Print Rekap
         </button>
       </div>
@@ -291,12 +292,12 @@ ${kop.body}
 
       {/* Kop ringkas (di layar, BUKAN dokumen print - itu string HTML terpisah di openPrintWindow) */}
       <div style={{textAlign:"center" as const,padding:"14px 12px 14px",marginBottom:14,borderBottom:"2px solid #1e3a8a"}}>
-        <div style={{fontSize:10.5,color:"#94a3b8",fontWeight:600,letterSpacing:.4,textTransform:"uppercase" as const}}>{selectedWo.proyek}</div>
+        <div style={{fontSize:10.5,color:WARNA.redup,fontWeight:600,letterSpacing:.4,textTransform:"uppercase" as const}}>{selectedWo.proyek}</div>
         <div style={{fontSize:18,fontWeight:800,color:"#1e293b",marginTop:2}}>
           WO {selectedWo.wo}{scopePanelId?` — ${panelsInWo.find(p=>p.id===scopePanelId)?.nama||""}`:` (gabungan ${panelsInWo.length} panel)`}
         </div>
         <div style={{fontSize:11,fontWeight:700,color:"#1e3a8a",marginTop:4}}>REKAP PERMINTAAN BARANG</div>
-        <div style={{fontSize:10.5,color:"#94a3b8",marginTop:6}}>Item yang sudah keluar dari Gudang</div>
+        <div style={{fontSize:10.5,color:WARNA.redup,marginTop:6}}>Item yang sudah keluar dari Gudang</div>
       </div>
 
       {/* (18 Okt 2026) permintaan yang kepalanya ada tapi tanpa satu pun item - ditampilkan, kepala tidak dihapus */}
@@ -319,7 +320,7 @@ ${kop.body}
         );
       })()}
       {rekapLoading?(
-        <div style={{textAlign:"center",padding:40,color:"#94a3b8",fontSize:13}}>Memuat...</div>
+        <div style={{textAlign:"center",padding:40,color:WARNA.redup,fontSize:13}}>Memuat...</div>
       ):rowsDisplayed.length===0&&rowsFull.length===0&&tanpaRincian.some(t=>!scopePanelId||t.panel_id===scopePanelId)?null:rowsDisplayed.length===0?(
         <EmptyState title={rowsFull.length===0?"Belum ada item":"Tidak cocok dengan pencarian"}
           description={rowsFull.length===0?"Belum ada permintaan barang yang sudah keluar dari Gudang untuk cakupan ini.":`Coba kata kunci lain (pencarian: "${search}").`}/>
@@ -347,7 +348,7 @@ ${kop.body}
               </tbody>
               <tfoot>
                 <tr>
-                  <td colSpan={4} style={{padding:"10px 12px",background:"#eff6ff",color:"#1d4ed8",fontWeight:700,fontSize:11.5,borderTop:"2px solid #dbeafe"}}>
+                  <td colSpan={4} style={{padding:"10px 12px",background:"#eff6ff",color:WARNA.aksenTeks,fontWeight:700,fontSize:11.5,borderTop:"2px solid #dbeafe"}}>
                     Total {rowsDisplayed.length} jenis item{search?` (dari ${rowsFull.length} total)`:""}
                   </td>
                 </tr>
@@ -355,7 +356,7 @@ ${kop.body}
             </table>
           </div>
           {search&&rowsDisplayed.length>0&&(
-            <div style={{fontSize:10.5,color:"#94a3b8",marginTop:8}}>
+            <div style={{fontSize:10.5,color:WARNA.redup,marginTop:8}}>
               Menampilkan {rowsDisplayed.length} dari {rowsFull.length} item - Print akan cetak persis yang ditampilkan ini.
             </div>
           )}

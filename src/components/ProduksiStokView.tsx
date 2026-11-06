@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { WARNA as TEMA } from "../lib/warnaTema";
 import { supabase } from "../lib/supabase";
 import { produksiStokService } from "../lib/produksiStokService";
 import { alertGagalSimpan } from "../lib/koneksi";
@@ -25,7 +26,7 @@ import { labelDurasiTimer } from "../lib/timerHelpers";
 // ─────────────────────────────────────────────────────────────────────────────
 
 const PCT_CHIP=[25,50,75,90,100];
-const WARNA="#059669";
+const WARNA=TEMA.aksen;
 
 const bacaBerhenti=():Record<string,{mulai:string;menit:number}>=>{try{return JSON.parse(localStorage.getItem("vista_produksi_stok_berhenti")||"{}");}catch{return {};}};
 const tulisBerhenti=(v:Record<string,{mulai:string;menit:number}>)=>{try{localStorage.setItem("vista_produksi_stok_berhenti",JSON.stringify(v));}catch{/* private mode - abaikan */}};
@@ -169,7 +170,7 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
     }
   };
 
-  if(loading)return <div style={{padding:16}}><SectionCard icon="🏭" title="Produksi Stok" subtitle="Memuat..."><div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div></SectionCard></div>;
+  if(loading)return <div style={{padding:16}}><SectionCard icon="🏭" title="Produksi Stok" subtitle="Memuat..."><div style={{textAlign:"center",padding:20,color:TEMA.redup,fontSize:12}}>Memuat...</div></SectionCard></div>;
 
   return(
     <div style={{padding:16}}>
@@ -212,11 +213,11 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
                 <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",gap:8}}>
                   <div style={{minWidth:0}}>
                     <div style={{fontWeight:800,fontSize:14,color:"#0f172a"}}>{komp?.nama||"Komponen #"+b.komponen_id}</div>
-                    <div style={{fontSize:10.5,color:"#94a3b8",fontFamily:"'DM Mono',monospace"}}>{komp?.kode||""} · batch #{b.id}</div>
+                    <div style={{fontSize:10.5,color:TEMA.redup,fontFamily:"'DM Mono',monospace"}}>{komp?.kode||""} · batch #{b.id}</div>
                   </div>
                   <div style={{textAlign:"right",flexShrink:0}}>
                     <div style={{fontWeight:800,fontSize:15,color:"#0f172a"}}>{t.qty_baik}/{b.target_qty}</div>
-                    <div style={{fontSize:9,color:"#94a3b8",textTransform:"uppercase" as const}}>pcs baik {t.tahap}</div>
+                    <div style={{fontSize:9,color:TEMA.redup,textTransform:"uppercase" as const}}>pcs baik {t.tahap}</div>
                   </div>
                 </div>
                 <div style={{display:"flex",flexDirection:"column" as const,gap:5,margin:"10px 0"}}>
@@ -261,7 +262,7 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
                     ?<span style={{fontSize:11,color:"#dc2626",fontWeight:700}}>Sesi sedang berjalan</span>
                     :berhenti[key]
                       ?<span style={{fontSize:11,color:"#64748b"}}>Sesi terakhir {labelDurasiTimer(berhenti[key].menit)} · belum disimpan</span>
-                      :<span style={{fontSize:11,color:"#94a3b8"}}>Tekan saat mulai mengerjakan</span>}
+                      :<span style={{fontSize:11,color:TEMA.redup}}>Tekan saat mulai mengerjakan</span>}
                 </div>
                 {[
                   {lbl:`Jumlah selesai sesi ini (maks. ${t.tersedia})`,val:qty,set:(v:number)=>setQtyInput(p=>({...p,[key]:Math.max(0,Math.min(t.tersedia,v))})),min:0,max:t.tersedia},
@@ -278,7 +279,7 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
                 {/* Chip = INDIKATOR pasif (revisi 2 Okt 2026, diminta user) - bukan tombol: tanpa kotak
                     berlatar ala tombol disabled, cuma label + titik. Tercapai = hijau. */}
                 <div style={{marginBottom:10}}>
-                  <div style={{fontSize:9.5,fontWeight:700,color:"#94a3b8",letterSpacing:0.3,marginBottom:4}}>
+                  <div style={{fontSize:9.5,fontWeight:700,color:TEMA.redup,letterSpacing:0.3,marginBottom:4}}>
                     PROGRESS {t.tahap}: {pctPreview}%
                     {pctPreview>pctTersimpan&&<span style={{color:WARNA,fontWeight:800}}> · tersimpan {pctTersimpan}%, +{pctPreview-pctTersimpan}% kalau disimpan</span>}
                   </div>
@@ -311,7 +312,7 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
         }))}
 
         {tab==="riwayat"&&(riwayat===null?(
-          <div style={{textAlign:"center",padding:20,color:"#94a3b8",fontSize:12}}>Memuat...</div>
+          <div style={{textAlign:"center",padding:20,color:TEMA.redup,fontSize:12}}>Memuat...</div>
         ):riwayat.log.length===0?(
           <EmptyState title="Belum ada riwayat" description="Sesi Produksi Stok yang Anda simpan akan muncul di sini."/>
         ):riwayat.log.map((l:any)=>{
@@ -323,7 +324,7 @@ export function ProduksiStokView({user}:{user:any;registerBackHandler?:(fn:(()=>
                 <span style={{fontWeight:700,fontSize:12.5,color:"#1e293b"}}>{k?.nama||"Batch #"+l.batch_id} · {l.tahap}</span>
                 <span style={{fontWeight:800,fontSize:12.5,color:WARNA}}>{l.qty_sesi_ini} pcs{l.qty_reject_sesi_ini>0&&<span style={{color:"#dc2626"}}> ({l.qty_reject_sesi_ini}R)</span>}</span>
               </div>
-              <div style={{fontSize:10.5,color:"#94a3b8",marginTop:2}}>{new Date(l.created_at).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}{l.catatan?` · ${l.catatan}`:""}</div>
+              <div style={{fontSize:10.5,color:TEMA.redup,marginTop:2}}>{new Date(l.created_at).toLocaleString("id-ID",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}{l.catatan?` · ${l.catatan}`:""}</div>
             </div>
           );
         }))}

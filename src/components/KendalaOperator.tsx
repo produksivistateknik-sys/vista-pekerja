@@ -10,13 +10,14 @@
 // pembungkus -> padding 16px diatur di sini. Belum ada mode gelap di aplikasi operator. Data & aturan: lib/kendalaProduksi.ts.
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactElement } from 'react'
+import { WARNA } from '../lib/warnaTema'
 import {
   muatProyekAktif, muatKendala, hapusKendala, catatKendalaBanyak, susunTeksKendala, JENIS_KENDALA,
   bolehUbahSendiri, labelDivisi, fmtTanggalPanjang, jamWib, tanggalHariIniWib, type Kendala, type ProyekAktif,
 } from '../lib/kendalaProduksi'
 
 const CSS = `
-.kdo{--card:#fff;--fg:#17211b;--mute:#6f7c74;--line:#e3e9e5;--accent:#16a34a;--warn:#c2680a;--ok:#17803f;--bad:#c0392b;--chip:#f3f6f4;--chip-on:#e1f5e8;
+.kdo{--card:#fff;--fg:#17211b;--mute:#6f7c74;--line:#e3e9e5;--accent:${WARNA.aksen};--accent-t:${WARNA.aksenTeks};--warn:#c2680a;--ok:#17803f;--bad:#c0392b;--chip:#f3f6f4;--chip-on:${WARNA.aksenLembut};
   color-scheme:light;color:var(--fg);text-align:left;font-size:14px;line-height:1.4;letter-spacing:0;padding:12px 16px calc(96px + env(safe-area-inset-bottom,0px));width:100%;overflow-x:hidden}
 .kdo *{box-sizing:border-box;letter-spacing:inherit}
 .kdo button,.kdo select,.kdo textarea{font-family:inherit}
@@ -61,7 +62,7 @@ const CSS = `
 .kdo-sh select{width:100%;flex:none}
 .kdo-ch{display:flex;flex-wrap:wrap;gap:6px}
 .kdo-c{height:32px;padding:0 11px;border-radius:9px;border:1px solid var(--line);background:var(--chip);color:var(--fg);font-size:12.5px;font-weight:500;cursor:pointer;max-width:100%;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-.kdo-c[aria-pressed="true"]{background:var(--chip-on);border-color:var(--accent);color:var(--ok);font-weight:700}
+.kdo-c[aria-pressed="true"]{background:var(--chip-on);border-color:var(--accent);color:var(--accent-t);font-weight:700}
 .kdo-c.dash{border-style:dashed;background:none}
 .kdo-sh textarea{width:100%;min-height:56px;resize:none;border:1px solid var(--line);border-radius:10px;background:var(--chip);color:var(--fg);padding:9px 10px;font-size:14px;line-height:1.4}
 .kdo-sh textarea:focus,.kdo select:focus{outline:2px solid var(--accent);outline-offset:-1px}
