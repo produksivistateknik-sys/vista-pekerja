@@ -7,6 +7,7 @@ import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateH
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai, hentikanTimerKomponenHari } from "../lib/tutupTimerKomponen";
 import { hariKerjaWib } from "../lib/tanggalWib";
+import { catatPersenTimerBusbar } from "../lib/persenTimerBusbar";
 import { saringTimerKartu, timerMilikKartu } from "../lib/timerKartu";
 import { daftarOperatorHarian, LABEL_STATUS_OPERATOR, labelMenit } from "../lib/operatorHarian";
 import { catatCheckpoint } from "../lib/catatCheckpoint";
@@ -1667,6 +1668,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
         sudahDisimpan100:false,updatedBy:pekerjaNamaTahap,
       }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (updatePctManualBusbarTahap):",error);})
         .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (updatePctManualBusbarTahap) - ccp bisa nyangkut basi:",err));
+      await catatPersenTimerBusbar(supabase,{panelId,kode,tahap,pct,ids:idsTahap,tanggal:[...new Set([viewDate,hariKerjaWib()])],asal:'updatePctManualBusbarTahap'});
     }catch(err){
       alertGagalSimpanBusbar(err,'updatePctManualBusbarTahap',{panelId,kode,proses:'BUSBAR',tahap});
     }
@@ -1756,29 +1758,8 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
       sudahDisimpan100:pctTahap>=100,updatedBy:pekerjaNamaLog,
     }).then(({error})=>{if(error)console.error("dual-write component_process_progress gagal (simpanProgressTahapBusbar):",error);})
       .catch(err=>console.error("dual-write component_process_progress GAGAL TOTAL setelah retry habis (simpanProgressTahapBusbar) - ccp bisa nyangkut basi:",err));
-    // Catat snapshot persen ke fcs_timer_kerja (kolom `progress`, ditambah investigasi "histori
-    // persen busbar" - JANGAN dianggap pengganti checklist.busbarTahap di atas, itu tetap sumber
-    // progress TERKINI/gabungan, ini MURNI tambahan histori per-record). Diisi ke baris sesi
-    // TERBARU (mulai terbesar) per operator utk panel+komponen+tahap+tanggal ini - dicari lagi
-    // di sini (bukan pakai id dari timerAktif) karena operator boleh masih klik Simpan lagi
-    // SETELAH klik Selesai (canSimpanBusbarTahap juga izinin timerSelesaiHariIni), jadi baris
-    // yang relevan bisa aja udah tertutup (selesai != null). Best-effort & TIDAK BOLEH gagalin
-    // Simpan-nya sendiri (checkpoint + checklist di atas udah sukses) - kalau kolom belum ada
-    // atau update gagal, cukup ke-log, operator tetap lihat Simpan berhasil.
-    try{
-      for(const wid of idsKomp){
-        const{data:row,error:selErr}=await supabase.from('fcs_timer_kerja')
-          .select('id').eq('panel_id',panelId).eq('kode_komponen',kode).eq('tahap',tahap)
-          .in("tanggal",[...new Set([viewDate,hariKerjaWib()])]).eq('pekerja_id',wid)
-          .order('mulai',{ascending:false}).limit(1).maybeSingle();
-        if(selErr){console.warn('[simpanProgressTahapBusbar] gagal cari baris fcs_timer_kerja utk progress (non-fatal)',selErr);continue;}
-        if(!row)continue;
-        const{error:updErr}=await supabase.from('fcs_timer_kerja').update({progress:pctTahap}).eq('id',row.id);
-        if(updErr)console.warn('[simpanProgressTahapBusbar] gagal update progress fcs_timer_kerja (non-fatal)',updErr);
-      }
-    }catch(err){
-      console.warn('[simpanProgressTahapBusbar] gagal catat progress ke fcs_timer_kerja (non-fatal)',err);
-    }
+    // Snapshot persen tahap utk ringkasan hari Rencana Harian - lihat lib/persenTimerBusbar.
+    await catatPersenTimerBusbar(supabase,{panelId,kode,tahap,pct:pctTahap,ids:idsKomp,tanggal:[...new Set([viewDate,hariKerjaWib()])],asal:'simpanProgressTahapBusbar'});
     setPanelsMap((prev:any)=>({...prev,[panelId]:{...panel,checklist:newChecklist}}));
     await autoStopTimerJikaSelesai(panelId,kode,"BUSBAR",pctTahap,idsKomp,tahap);
     return true;
