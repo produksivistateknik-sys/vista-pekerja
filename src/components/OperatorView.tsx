@@ -11,6 +11,7 @@ import { WARNA } from "../lib/warnaTema";
 import { catatPersenTimerBusbar } from "../lib/persenTimerBusbar";
 import { saringTimerKartu, timerMilikKartu } from "../lib/timerKartu";
 import { daftarOperatorHarian, LABEL_STATUS_OPERATOR, labelMenit } from "../lib/operatorHarian";
+import { menitSesiBerjalan, menitHariKerja } from "../lib/durasiTimer";
 import { catatCheckpoint } from "../lib/catatCheckpoint";
 import { bersihkanJadwalWiringSelesai } from "../lib/jadwalWiring";
 import { tambahAntrean, bacaAntrean, gagalKarenaKoneksi, EVENT_HASIL_ANTREAN, type HasilKirim } from "../lib/antreanSimpan";
@@ -409,9 +410,15 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
 
   const [timerPernahMulai,setTimerPernahMulai]=useState<Record<string,boolean>>({});
   const [timerSelesaiHariIni,setTimerSelesaiHariIni]=useState<Record<string,boolean>>({});
-  const [timerDurasiSelesai,setTimerDurasiSelesai]=useState<Record<string,number>>({});
   // (22 Okt 2026, operator harian) SEMUA baris timer bertanggal viewDate (milik siapa pun) - sumber daftar pengerja
   // kartu (lib/operatorHarian, sama dgn Rencana Harian admin). Diisi refreshTimerData & refreshTimerKey.
+  // (7 Nov 2026) Durasi TIDAK lagi diambil dari jumlah sesi milik kartu (dulu state timerDurasiSelesai): tombol = sesi
+  // berjalan, tooltip = hari kerja kartu (lib/durasiTimer). Lihat komentar di sana.
+  const judulOperatorHarian=(e:any,sesiKomp:any[])=>{
+    const m=e.id!=null&&(e.status==="berjalan"||e.status==="selesai")
+      ?menitHariKerja(sesiKomp.filter((x:any)=>Number(x.pekerja_id)===Number(e.id)),viewDate,hariKerjaWib()):0;
+    return LABEL_STATUS_OPERATOR[e.status as keyof typeof LABEL_STATUS_OPERATOR]+(m>0?` · ${viewDate===hariKerjaWib()?"hari ini":"tanggal ini"} ${labelMenit(m)}`:"");
+  };
   const [timerHariIni,setTimerHariIni]=useState<any[]>([]);
   const [timerLoading,setTimerLoading]=useState<string|null>(null);
   const [, setTimerTick]=useState(0);
@@ -517,7 +524,6 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const mapAktif:Record<string,any>={};
     const mapPernahMulai:Record<string,boolean>={};
     const mapSelesaiHariIni:Record<string,boolean>={};
-    const mapDurasiSelesai:Record<string,number>={};
     // (23 Okt 2026, bug B) timer BERJALAN selalu dianggap aktif di kartu, apa pun kolom tanggal-nya: timer baru kini
     // bertanggal hari mulai (WIB), jadi timer yang dimulai dari kartu tanggal lain tetap tampil berjalan & bisa
     // dihentikan dari kartu itu. Sesi SELESAI tetap per tanggal kartu.
@@ -526,15 +532,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       const key=timerKey(t.panel_id,t.kode_komponen,t.proses,t.pekerja_id,t.tahap);
       if(!t.selesai)mapAktif[key]=t;
       mapPernahMulai[key]=true;
-      if(t.selesai){
-        mapSelesaiHariIni[key]=true;
-        mapDurasiSelesai[key]=(mapDurasiSelesai[key]||0)+Number(t.durasi_menit||0);
-      }
+      if(t.selesai)mapSelesaiHariIni[key]=true;
     });
     setTimerAktif(mapAktif);
     setTimerPernahMulai(mapPernahMulai);
     setTimerSelesaiHariIni(mapSelesaiHariIni);
-    setTimerDurasiSelesai(mapDurasiSelesai);
     setTimerHariIni(milikKartu);
   };
 
@@ -557,19 +559,15 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const rows=(data||[]).filter((t:any)=>timerMilikKartu(t,viewDate));
     setTimerHariIni(prev=>[...prev.filter((t:any)=>!(t.panel_id===panelId&&t.kode_komponen===kode&&t.proses===proses&&t.pekerja_id===pekerjaId&&(t.tahap||null)===(tahap||null))),
       ...rows]);
-    let aktif:any=null,pernahMulai=false,selesaiHariIni=false,durasiSelesai=0;
+    let aktif:any=null,pernahMulai=false,selesaiHariIni=false;
     rows.forEach((t:any)=>{
       if(!t.selesai)aktif=t; // (23 Okt 2026) berjalan = aktif, apa pun tanggal-nya (lihat refreshTimerData)
       pernahMulai=true;
-      if(t.selesai){
-        selesaiHariIni=true;
-        durasiSelesai+=Number(t.durasi_menit||0);
-      }
+      if(t.selesai)selesaiHariIni=true;
     });
     setTimerAktif(prev=>{const n={...prev};if(aktif)n[key]=aktif;else delete n[key];return n;});
     if(pernahMulai)setTimerPernahMulai(prev=>({...prev,[key]:true}));
     setTimerSelesaiHariIni(prev=>{const n={...prev};if(selesaiHariIni)n[key]=true;else delete n[key];return n;});
-    setTimerDurasiSelesai(prev=>{const n={...prev};if(durasiSelesai>0)n[key]=durasiSelesai;else delete n[key];return n;});
   };
 
   // Load data dari Supabase
@@ -3250,9 +3248,8 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
         if(runningPid!==undefined){
           const key=`${r.panelId}_${r.kode}_${proses}_${runningPid}`;
           const timer=timerAktif[key];
-          const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
-          const totalMenit=(timerDurasiSelesai[key]||0)+menitBerjalan;
-          const label=labelDurasiTimer(totalMenit);
+          // (7 Nov 2026) tombol = sesi yang sedang berjalan saja (lib/durasiTimer), bukan ditambah sesi selesai.
+          const label=labelDurasiTimer(menitSesiBerjalan([timer]));
           return{ada:true,label};
         }
       }
@@ -3499,14 +3496,11 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                           const timerKeysTahap=workersTahap.map((w:any)=>timerKey(r.panelId,r.kode,"BUSBAR",w.id,t));
                           const anyTimerRunningTahap=timerKeysTahap.some((k:string)=>!!timerAktif[k])||timerHariIni.some((x:any)=>!x.selesai&&x.panel_id===r.panelId&&x.kode_komponen===r.kode&&x.proses==="BUSBAR"&&x.tahap===t); // (22 Okt) termasuk di luar daftar
                           const anyLoadingTahap=timerKeysTahap.some((k:string)=>timerLoading===k);
-                          let durasiLabelTahap="";
-                          const runningKeyTahap=timerKeysTahap.find((k:string)=>timerAktif[k]);
-                          if(runningKeyTahap){
-                            const timer=timerAktif[runningKeyTahap];
-                            const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
-                            const totalMenit=(timerDurasiSelesai[runningKeyTahap]||0)+menitBerjalan;
-                            durasiLabelTahap=labelDurasiTimer(totalMenit);
-                          }
+                          // (7 Nov 2026) tombol = sesi tahap ini yang sedang berjalan, dari mulai paling awal (sama dgn pil admin
+                          // "berjalan sejak"); dulu ditambah sesi selesai milik kartu -> shift malam kemarin ikut terhitung.
+                          const sesiJalanTahap=[...timerKeysTahap.map((k:string)=>timerAktif[k]).filter(Boolean),
+                            ...timerHariIni.filter((x:any)=>!x.selesai&&x.panel_id===r.panelId&&x.kode_komponen===r.kode&&x.proses==="BUSBAR"&&x.tahap===t)];
+                          const durasiLabelTahap=sesiJalanTahap.length?labelDurasiTimer(menitSesiBerjalan(sesiJalanTahap)):"";
                           const flashKeyTahap=`${r.panelId}_${r.kode}_BUSBAR_${t}`;
                           const flashingTahap=!!savedFlash[flashKeyTahap];
                           return(
@@ -3526,7 +3520,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                                     const w=pekerjaList.find((p:any)=>Number(p.id)===Number(e.id));
                                     const redup=e.status==="belum_mulai"||e.status==="tidak_mulai";
                                     return(
-                                    <span key={String(e.id)+e.status} title={LABEL_STATUS_OPERATOR[e.status]+(e.menit>0?` · ${labelMenit(e.menit)}`:"")}
+                                    <span key={String(e.id)+e.status} title={judulOperatorHarian(e,timerHariIni.filter((x:any)=>x.panel_id===r.panelId&&x.kode_komponen===r.kode&&x.proses==="BUSBAR"&&x.tahap===t))}
                                       style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:10,fontWeight:700,
                                       color:redup?"#94a3b8":(DIVISI_CONFIG[w?.divisi]?.color||"#64748b"),background:redup?"#fff":(DIVISI_CONFIG[w?.divisi]?.bg||"#f1f5f9"),
                                       border:redup?"1px dashed #cbd5e1":"1px solid transparent",borderRadius:20,padding:"3px 8px"}}>
@@ -3634,8 +3628,9 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                         const timerKeys=workers.map((w:any)=>timerKey(r.panelId,r.kode,proses,w.id));
                         const anyTimerRunning=daftarK.entri.some(e=>e.status==="berjalan");
                         const anyLoading=timerKeys.some((k:string)=>timerLoading===k);
-                        const jalan=daftarK.entri.filter(e=>e.status==="berjalan");
-                        const durasiLabel=jalan.length?labelDurasiTimer(Math.max(...jalan.map(e=>e.menitTepat??e.menit))):"";
+                        // (7 Nov 2026) tombol = sesi yang sedang berjalan (lib/durasiTimer), bukan total hari per operator.
+                        const sesiJalanK=timerHariIni.filter((x:any)=>!x.selesai&&x.panel_id===r.panelId&&x.kode_komponen===r.kode&&x.proses===proses&&!x.tahap);
+                        const durasiLabel=sesiJalanK.length?labelDurasiTimer(menitSesiBerjalan(sesiJalanK)):"";
                         return(
                           <div style={{display:"flex",flexDirection:"column",gap:6}}>
                             <div style={{display:"flex",flexWrap:"wrap",gap:6,alignItems:"center"}}>
@@ -3643,7 +3638,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                                 const w=pekerjaList.find((p:any)=>Number(p.id)===Number(e.id));
                                 const redup=e.status==="belum_mulai"||e.status==="tidak_mulai";
                                 return(
-                                <span key={String(e.id)+e.status} title={LABEL_STATUS_OPERATOR[e.status]+(e.menit>0?` · ${labelMenit(e.menit)}`:"")}
+                                <span key={String(e.id)+e.status} title={judulOperatorHarian(e,timerHariIni.filter((x:any)=>x.panel_id===r.panelId&&x.kode_komponen===r.kode&&x.proses===proses&&!x.tahap))}
                                   style={{display:"inline-flex",alignItems:"center",gap:4,fontSize:11,fontWeight:700,
                                   color:redup?"#94a3b8":(DIVISI_CONFIG[w?.divisi]?.color||"#64748b"),background:redup?"#fff":(DIVISI_CONFIG[w?.divisi]?.bg||"#f1f5f9"),
                                   border:redup?"1px dashed #cbd5e1":"1px solid transparent",
@@ -4002,12 +3997,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
                                   const key=`${r.panelId}_${r.kode}_${proses}_${w.id}`;
                                   const timer=timerAktif[key];
                                   const loading=timerLoading===key;
-                                  let durasiLabel="";
-                                  if(timer){
-                                    const menitBerjalan=(Date.now()-new Date(timer.mulai).getTime())/60000;
-                                    const totalMenit=(timerDurasiSelesai[key]||0)+menitBerjalan;
-                                    durasiLabel=labelDurasiTimer(totalMenit);
-                                  }
+                                  const durasiLabel=timer?labelDurasiTimer(menitSesiBerjalan([timer])):""; // (7 Nov 2026) sesi berjalan saja
                                   return(
                                     <div key={w.id} style={{display:"flex",alignItems:"center",gap:5,
                                       background:DIVISI_CONFIG[w.divisi]?.bg||"#f1f5f9",
