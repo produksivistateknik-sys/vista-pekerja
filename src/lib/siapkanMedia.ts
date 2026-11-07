@@ -29,6 +29,28 @@ export type MediaSiapUpload = { blob: Blob; contentType: string; ext: string; mi
 
 export const isFileVideo = (f: File) => f.type.startsWith('video/') || (!f.type && EKSTENSI_VIDEO.test(f.name))
 
+// FOTO HEIC/HEIF (8 Nov 2026, laporan QC: foto gagal diunggah). Browser selain Safari (Chrome Android, dsb.) tidak bisa
+// membaca HEIC -> kompres kanvas gagal "Gagal membaca foto" tanpa penjelasan. Sekarang dikenali LEBIH DULU (tipe image/heic
+// atau image/heif, ATAU ekstensi .heic/.heif/.hif huruf besar/kecil - Android bisa memberi type kosong) lalu ditolak dgn
+// panduan. Belum dikonversi (perbaikan penuh menyusul). Bagian ini SAMA di vista-teknik/src/lib/siapkanMedia.ts.
+const TIPE_HEIC = /^image\/hei[cf](-sequence)?$/i
+const EKSTENSI_HEIC = /\.(heic|heif|hif)$/i
+export const isFileHeic = (f: File) => TIPE_HEIC.test(f.type || '') || EKSTENSI_HEIC.test(f.name || '')
+export const PESAN_FOTO_HEIC = 'Foto berformat HEIC/HEIF (mode hemat ruang kamera) belum bisa dibaca aplikasi. Foto BELUM tersimpan. '
+  + 'Ambil ulang lewat tombol Kamera di aplikasi, atau ubah pengaturan kamera HP lalu foto ulang: Samsung - Kamera > Pengaturan > '
+  + 'Format gambar lanjutan > matikan "Foto efisiensi tinggi"; iPhone - Pengaturan > Kamera > Format > "Paling Kompatibel".'
+export const PESAN_FOTO_TAK_TERBACA = 'Foto tidak bisa dibaca HP ini (format tidak dikenali). Foto BELUM tersimpan. Ambil ulang lewat tombol Kamera di aplikasi.'
+// Konteks log TANPA data pribadi (tanpa nama file / isi foto): tipe, ekstensi, ukuran, jenis browser & sistem.
+export function konteksFile(f: File): Record<string, string | number> {
+  const dot = (f.name || '').lastIndexOf('.')
+  const ua = typeof navigator !== 'undefined' ? navigator.userAgent : ''
+  const browser = /SamsungBrowser/.test(ua) ? 'Samsung Internet' : /CriOS|Chrome\//.test(ua) ? 'Chrome' : /Firefox|FxiOS/.test(ua) ? 'Firefox' : /Safari/.test(ua) ? 'Safari' : 'lain'
+  const sistem = /Android/.test(ua) ? 'Android' : /iPhone|iPad|iPod/.test(ua) ? 'iOS' : /Windows/.test(ua) ? 'Windows' : /Mac OS/.test(ua) ? 'macOS' : 'lain'
+  return { tipe: f.type || '(kosong)', ekstensi: dot > 0 ? f.name.slice(dot + 1).toLowerCase().slice(0, 8) : '(tanpa)', ukuranKb: Math.round(f.size / 1024), browser, sistem }
+}
+type GalatSiap = Error & { kode?: string; asli?: unknown }
+const galatKode = (pesan: string, kode: string, asli?: unknown): GalatSiap => Object.assign(new Error(pesan), { kode, asli })
+
 const ekstensiNama = (f: File, cadangan: string) => {
   const dot = f.name.lastIndexOf('.')
   return dot > 0 && dot < f.name.length - 1 ? f.name.slice(dot + 1).toLowerCase() : cadangan
@@ -75,6 +97,7 @@ export async function kompresVideo(file: File): Promise<Blob | null> {
 }
 
 export async function siapkanMediaUpload(file: File): Promise<MediaSiapUpload> {
+  if (isFileHeic(file)) throw galatKode(PESAN_FOTO_HEIC, 'heic')
   if (isFileVideo(file)) {
     const hasil = await kompresVideo(file)
     const blob: Blob = hasil || file
@@ -85,8 +108,9 @@ export async function siapkanMediaUpload(file: File): Promise<MediaSiapUpload> {
     return { blob, contentType: tipe, ext: hasil ? 'mp4' : ekstensiNama(file, 'mp4'), mime: tipe }
   }
   if (file.type.startsWith('image/')) {
-    const { foto, thumb } = await kompresFotoDanThumb(file)
-    return { blob: foto, contentType: 'image/jpeg', ext: 'jpg', mime: 'image/jpeg', thumb }
+    let hasil: { foto: Blob; thumb: Blob | null }
+    try { hasil = await kompresFotoDanThumb(file) } catch (err) { throw galatKode(PESAN_FOTO_TAK_TERBACA, 'tak_terbaca', err) }
+    return { blob: hasil.foto, contentType: 'image/jpeg', ext: 'jpg', mime: 'image/jpeg', thumb: hasil.thumb }
   }
   const tipe = file.type || 'application/octet-stream'
   return { blob: file, contentType: tipe, ext: ekstensiNama(file, 'bin'), mime: tipe }
@@ -123,7 +147,16 @@ const sudahTerunggah = new WeakMap<File, HasilUnggahMedia>()
 export async function unggahMediaKeR2(file: File, prefixKey: string, antrean?: OpsiAntreanUnggah): Promise<HasilUnggahMedia> {
   const cache = sudahTerunggah.get(file)
   if (cache) return cache
-  const m = await siapkanMediaUpload(file)
+  let m: MediaSiapUpload
+  try {
+    m = await siapkanMediaUpload(file)
+  } catch (galat) {
+    const err = galat as GalatSiap & { asli?: { stack?: string } }
+    // (8 Nov 2026) gagal SEBELUM unggah (HEIC, foto tak terbaca, video terlalu besar) dulu tidak tercatat sama sekali.
+    laporError('upload', { message: `Gagal menyiapkan file (${prefixKey.split('/')[0]}): ${err?.kode || err?.message || err}`, stack: err?.asli?.stack || err?.stack },
+      { folder: prefixKey, langkah: err?.kode === 'heic' ? 'format HEIC' : err?.kode === 'tak_terbaca' ? 'baca foto' : 'siapkan file', ...konteksFile(file) })
+    throw err
+  }
   const key = `${prefixKey}/${Date.now()}_${Math.random().toString(36).slice(2, 8)}.${m.ext}`
   const jenisMedia = m.mime.startsWith('video') ? 'video' : m.mime.startsWith('image') ? 'foto' : 'file'
   const mulai = Date.now()
