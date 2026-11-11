@@ -45,7 +45,7 @@ import { InventarisOperatorView } from "./components/InventarisOperatorView";
 import { WoDigitalView } from "./components/WoDigitalView";
 import { ProduksiStokView } from "./components/ProduksiStokView";
 import { bacaSemuaPerPotongan } from "./lib/bacaSemua";
-import { tanggalSesiKerja, useGantiHariKerja } from "./lib/timerShift";
+import { tanggalSesiKerja } from "./lib/timerShift";
 // Tahap yang mungkin dipakai Produksi Stok (sama dgn CHECK tabel produksi_stok_tahap) - dipakai
 // nentuin sub-bagian mana yang dapat tile menu-nya.
 const TAHAP_PRODUKSI_STOK=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING"];
@@ -124,8 +124,10 @@ export default function App(){
     }catch{return "1";}
   });
   // Tanggal sesi shift = hari kerja WIB (12 Nov 2026, lib/timerShift - opsi A): dicocokkan & ditulis dgn aturan yang sama
-  // dgn pembaca shift timer; ganti hari kerja saat sesi aktif -> gerbang "Pilih shift" tampil lagi.
-  const [gateTanggal,setGateTanggal]=useState(()=>tanggalSesiKerja());
+  // dgn pembaca shift timer. Gerbang App SENGAJA tidak direset otomatis saat hari kerja berganti: OperatorView/
+  // KomponenPasangView dirender di cabang sesudah gerbang ini -> reset di sini meng-unmount keduanya dan isian yang
+  // belum disimpan hilang (tinjauan ui-reviewer 12 Nov). Reset ganti hari dilakukan DI DALAM OperatorView (tetap
+  // ter-mount); timer lain membaca shift lewat bacaShiftSesi yang menolak sesi hari lain (NULL, bukan shift kemarin).
   const [gateShiftSet,setGateShiftSet]=useState(()=>{
     if(!wsKey)return false;
     try{
@@ -134,13 +136,9 @@ export default function App(){
     }catch{return false;}
   });
   const mulaiKerja=()=>{
-    const t=tanggalSesiKerja();
-    setGateTanggal(t);
     setGateShiftSet(true);
-    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:t,shift:gateShift,shiftSet:true}));}catch{}
+    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:tanggalSesiKerja(),shift:gateShift,shiftSet:true}));}catch{}
   };
-  const gantiHariGate=useCallback(()=>{setGateShiftSet(false);setGateTanggal(tanggalSesiKerja());},[]);
-  useGantiHariKerja(!!isOperatorDivisi&&gateShiftSet,gateTanggal,gantiHariGate);
 
   // Tab bawah "Arsip" - cuma muncul buat divisi/sub_bagian yang punya seksi arsip otomatis
   // (QS/QC/Assembling Luar/Wiring Control/Nameplate - "Warehouse" DIHAPUS 14 Agu 2026 bareng
