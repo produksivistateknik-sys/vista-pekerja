@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { WARNA } from "../lib/warnaTema";
 import { hariKerjaWib } from "../lib/tanggalWib";
-import { insertTimerKerja, bacaShiftSesi, kunciSesiKerja } from "../lib/timerShift";
+import { insertTimerKerja, bacaShiftSesi, kunciSesiKerja, tahanTimerBaru } from "../lib/timerShift";
 import { supabase } from "../lib/supabase";
 import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
@@ -225,6 +225,8 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
   },[Object.keys(timerAktif).length>0]);
 
   const mulaiTimer=async(panelId:number,kode:string)=>{
+    // (12 Nov 2026, keputusan user) hari kerja berganti & shift belum dipilih ulang -> timer baru ditahan (banner di atas).
+    if(tahanTimerBaru(kunciSesiKerja(user)))return;
     const tKey=`${panelId}_${kode}`;
     setTimerLoading(tKey);
     try{

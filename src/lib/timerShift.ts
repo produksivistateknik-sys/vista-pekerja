@@ -5,7 +5,7 @@
 // belum dimuat ulang) insert diulang SEKALI tanpa shift - mulai timer tidak pernah gagal karena kolom ini. Versi lama
 // aplikasi yang insert tanpa shift tetap jalan (kolom nullable tanpa default).
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { hariKerjaWib } from './tanggalWib'
 
 // TANGGAL SESI SHIFT (12 Nov 2026, keputusan user opsi A): localStorage sesi {tanggal, shift, shiftSet} memakai HARI
@@ -14,15 +14,70 @@ import { hariKerjaWib } from './tanggalWib'
 // + shift lama -> shift kemarin ikut tersimpan di timer hari ini).
 export const tanggalSesiKerja = (): string => hariKerjaWib()
 
-// Cek tiap menit: bila hari kerja berganti saat sesi shift aktif -> onGanti (gerbang "Pilih shift" ditampilkan lagi).
-export function useGantiHariKerja(aktif: boolean, tanggalSesi: string, onGanti: () => void) {
+// "11 Nov" dari "YYYY-MM-DD" (label hari kerja di gerbang/banner/chip - keputusan user 12 Nov butir 3).
+const BULAN = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
+export const labelHariKerja = (tgl: string): string => {
+  const [, m, d] = (tgl || '').split('-').map(Number)
+  return m && d ? `${d} ${BULAN[m - 1]}` : tgl
+}
+
+// Simpan pilihan shift sesi (gerbang awal App, setup OperatorView, banner pilih ulang) + kabari App & Tugas Saya di tab
+// yang sama (event "storage" bawaan hanya untuk tab lain).
+export const EVENT_SESI_SHIFT = 'vp-sesi-shift'
+export function simpanSesiShift(wsKey: string, shift: string) {
+  try { localStorage.setItem(wsKey, JSON.stringify({ tanggal: tanggalSesiKerja(), shift, shiftSet: true })) } catch { /* mode privat: tetap jalan */ }
+  try { window.dispatchEvent(new Event(EVENT_SESI_SHIFT)) } catch { /* lingkungan tanpa window */ }
+}
+
+// PERLU PILIH ULANG (keputusan user 12 Nov butir 1-2): sesi PERNAH memilih shift tapi hari kerjanya sudah berganti
+// (aplikasi dibiarkan terbuka melewati 07.00). Yang ditahan HANYA pembuatan timer baru (banner di atas konten, bukan
+// gerbang layar penuh) - timer berjalan & Simpan Progress tidak tertahan, konten tidak di-unmount.
+// localStorage tidak terbaca / belum pernah memilih -> false (tidak menahan; gerbang awal yang menangani).
+export function perluPilihUlangShift(wsKey: string, hariKerja: string = tanggalSesiKerja()): boolean {
+  if (!wsKey) return false
+  try {
+    const saved = JSON.parse(localStorage.getItem(wsKey) || '{}')
+    return saved?.shiftSet === true && !!saved?.tanggal && saved.tanggal !== hariKerja
+  } catch { return false }
+}
+
+// Dicek ulang tiap menit, saat aplikasi kembali ke layar/fokus, dan saat pilihan shift berubah (tab ini / tab lain).
+export function usePerluPilihShift(wsKey: string, aktif: boolean): boolean {
+  const [perlu, setPerlu] = useState(() => perluPilihUlangShift(wsKey))
   useEffect(() => {
     if (!aktif) return
-    const cek = () => { if (tanggalSesiKerja() !== tanggalSesi) onGanti() }
+    const cek = () => setPerlu(perluPilihUlangShift(wsKey))
     cek()
     const id = setInterval(cek, 60000)
-    return () => clearInterval(id)
-  }, [aktif, tanggalSesi, onGanti])
+    const saatTampil = () => { if (document.visibilityState === 'visible') cek() }
+    document.addEventListener('visibilitychange', saatTampil)
+    window.addEventListener('focus', cek)
+    window.addEventListener('storage', cek)
+    window.addEventListener(EVENT_SESI_SHIFT, cek)
+    return () => {
+      clearInterval(id)
+      document.removeEventListener('visibilitychange', saatTampil)
+      window.removeEventListener('focus', cek)
+      window.removeEventListener('storage', cek)
+      window.removeEventListener(EVENT_SESI_SHIFT, cek)
+    }
+  }, [wsKey, aktif])
+  return aktif && perlu
+}
+
+export const PESAN_PILIH_ULANG = 'Hari kerja baru dimulai (07.00). Pilih shift untuk hari ini.'
+
+// Penahan mulai timer baru: true = DITAHAN (peringatan muncul paling banyak sekali per 5 dtk - startTimer dipanggil
+// berulang dalam loop tim/bulk).
+let terakhirPeringatan = 0
+export function tahanTimerBaru(wsKey: string): boolean {
+  if (!perluPilihUlangShift(wsKey)) return false
+  const kini = Date.now()
+  if (kini - terakhirPeringatan > 5000) {
+    terakhirPeringatan = kini
+    try { window.alert(`${PESAN_PILIH_ULANG} Pilih shift di bagian atas layar, lalu mulai timer lagi.`) } catch { /* tanpa window */ }
+  }
+  return true
 }
 
 export type ShiftSesi = '1' | '2'

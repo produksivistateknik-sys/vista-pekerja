@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef, useCallback } from "react";
+import { useState, useMemo, useEffect, useRef } from "react";
 import { labelDurasiTimer } from "../lib/timerHelpers";
 import { supabase } from "../lib/supabase";
 import { bacaSemuaHalaman } from "../lib/bacaSemua";
@@ -7,7 +7,7 @@ import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateH
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai, hentikanTimerKomponenHari } from "../lib/tutupTimerKomponen";
 import { hariKerjaWib } from "../lib/tanggalWib";
-import { insertTimerKerja, bacaShiftSesi, tanggalSesiKerja, useGantiHariKerja } from "../lib/timerShift";
+import { insertTimerKerja, bacaShiftSesi, tanggalSesiKerja, simpanSesiShift, tahanTimerBaru, EVENT_SESI_SHIFT } from "../lib/timerShift";
 import { WARNA } from "../lib/warnaTema";
 import { catatPersenTimerBusbar } from "../lib/persenTimerBusbar";
 import { saringTimerKartu, timerMilikKartu } from "../lib/timerKartu";
@@ -190,9 +190,9 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // Tanggal sesi shift (12 Nov 2026, opsi A - lib/timerShift): hari kerja WIB saat shift dipilih; TIDAK ikut berganti
   // sendiri (dulu efek di bawah menulis tanggal hari baru + shift lama -> shift kemarin tersimpan di timer hari ini).
   const [tanggalSesi,setTanggalSesi]=useState(()=>tanggalSesiKerja());
-  const mulaiSesiShift=()=>{setTanggalSesi(tanggalSesiKerja());setShiftSet(true);};
-  const gantiHariSesi=useCallback(()=>{setShiftSet(false);setTanggalSesi(tanggalSesiKerja());},[]);
-  useGantiHariKerja(shiftSet,tanggalSesi,gantiHariSesi);
+  // Konfirmasi setup shift: simpanSesiShift juga mengabari App (chip/banner). Ganti hari kerja saat terbuka TIDAK lagi
+  // mengganti layar ini dgn gerbang (keputusan user 12 Nov): App menampilkan BannerPilihShift, startTimer ditahan.
+  const mulaiSesiShift=()=>{setTanggalSesi(tanggalSesiKerja());setShiftSet(true);simpanSesiShift(wsKey,shift);};
   useEffect(()=>{
     // Simpan tanggal SESI (hari kerja saat shift dipilih), BUKAN viewDate - viewDate bisa
     // berubah bebas kalau operator navigasi lihat hari lain (tombol prev/next), dan itu gak
@@ -205,10 +205,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // tetep mikir shift lama sampai reload manual. Dengerin event "storage" bawaan browser (cuma
     // fire di tab LAIN, bukan tab yang nulis sendiri) buat nyamain shift/shiftSet live antar tab.
     // Gak nyentuh viewDate (itu murni navigasi lihat-lihat, bukan status sesi kerja).
-    const onStorage=(e:StorageEvent)=>{
-      if(e.key!==wsKey||!e.newValue)return;
+    // (12 Nov 2026) + event EVENT_SESI_SHIFT dari tab ini (banner pilih ulang di App).
+    const terapkan=(teks:string|null)=>{
+      if(!teks)return;
       try{
-        const saved=JSON.parse(e.newValue);
+        const saved=JSON.parse(teks);
         if(saved.tanggal===tanggalSesiKerja()){
           if(saved.shift)setShift(saved.shift);
           setShiftSet(!!saved.shiftSet);
@@ -216,8 +217,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
         }
       }catch{}
     };
+    const onStorage=(e:StorageEvent)=>{if(e.key===wsKey)terapkan(e.newValue);};
+    const onSesi=()=>{try{terapkan(localStorage.getItem(wsKey));}catch{/* localStorage tidak terbaca: abaikan */}};
     window.addEventListener("storage",onStorage);
-    return()=>window.removeEventListener("storage",onStorage);
+    window.addEventListener(EVENT_SESI_SHIFT,onSesi);
+    return()=>{window.removeEventListener("storage",onStorage);window.removeEventListener(EVENT_SESI_SHIFT,onSesi);};
   },[wsKey]);
   const [lockMsg,setLockMsg]=useState(false);
   const [pernahDikunci,setPernahDikunci]=useState(false);
@@ -1045,6 +1049,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // (23 Okt 2026, bug B - insiden RIFKI/FAHRI 544 FS.4 & 9 timer BUSBAR 521) tanggal timer = HARI KERJA saat mulai (WIB; 00.00-06.59 = hari sebelumnya, shift malam - lib/tanggalWib),
     // BUKAN tanggal kartu yang sedang dibuka (viewDate bisa digeser < >). Parameter tanggal kartu dibiarkan (pemanggil
     // tidak berubah) tapi tidak dipakai utk menulis.
+    // (12 Nov 2026, keputusan user) hari kerja berganti & shift belum dipilih ulang -> timer baru ditahan (banner di atas).
+    if(tahanTimerBaru(wsKey))return;
     const tanggal=hariKerjaWib();
     const key=timerKey(panelId,kode,proses,pekerjaId,tahap);
     setTimerLoading(key);
