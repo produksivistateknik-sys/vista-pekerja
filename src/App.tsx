@@ -559,7 +559,7 @@ export default function App(){
                   navTarget={permintaanNavTarget} onNavTargetConsumed={()=>setPermintaanNavTarget(null)}/>
                   :selectedMenu==="arsip"&&arsipSeksi==="qc"?<ArsipQCView registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="arsip"&&arsipSeksi?<ArsipSeksiView seksi={arsipSeksi}/>
-                  :selectedMenu==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas} registerBackHandler={registerBackHandler} shift={isOperatorDivisi&&gateShiftSet?gateShift:null}/>
+                  :selectedMenu==="komponen"&&komponenPasangTugas?<KomponenPasangView user={user} tugas={komponenPasangTugas} registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="riwayat"?<RiwayatKerjaView proses={prosesRiwayat} label={cfg?.label||user.divisi} icon={cfg?.icon||"🕘"} color={cfg?.color||"#d97706"} registerBackHandler={registerBackHandler}/>
                   :selectedMenu==="review"?(bisaReviewPainting?<ReviewPaintingView/>:<ReviewPotongView/>)
                   :selectedMenu==="tambahan"?<KomponenTambahanView user={user} registerBackHandler={registerBackHandler}/>

@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { WARNA } from "../lib/warnaTema";
 import { hariKerjaWib } from "../lib/tanggalWib";
-import { insertTimerKerja } from "../lib/timerShift";
+import { insertTimerKerja, bacaShiftSesi, kunciSesiKerja } from "../lib/timerShift";
 import { supabase } from "../lib/supabase";
 import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
@@ -42,8 +42,7 @@ export type KomponenPasangTugas={
 // Progress, archive ke panel_seksi_archived (ON CONFLICT panel_id,seksi,kode - constraint yang
 // sama dipakai trigger panels_auto_archive_seksi()) langsung berapapun persennya.
 // ─────────────────────────────────────────────────────────────────────────────
-// shift (12 Nov 2026, tahap D): pilihan shift gerbang login (App gateShift) - disimpan ke timer lewat lib/timerShift.
-export function KomponenPasangView({user,tugas,registerBackHandler,shift}:{user:any,tugas:KomponenPasangTugas,registerBackHandler?:(fn:(()=>boolean)|null)=>void,shift?:string|null}){
+export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tugas:KomponenPasangTugas,registerBackHandler?:(fn:(()=>boolean)|null)=>void}){
   // BUG FIX (14 Agu 2026): checklist[kode].fotoPemasangan itu 1 array yang dipakai BERSAMA
   // Assembling Luar & Wiring Control buat komponen tahap (Box Control/Pintu) - tapi masing-masing
   // nyimpen snapshot arsipnya sendiri (seksi=assembling_luar vs seksi=wiring_control), di WAKTU
@@ -241,7 +240,7 @@ export function KomponenPasangView({user,tugas,registerBackHandler,shift}:{user:
       const{data,error}=await withRetry(async()=>{
         const hasil=await insertTimerKerja(supabase,{
           pekerja_id:user.id,panel_id:panelId,kode_komponen:kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap,tanggal,mulai:new Date().toISOString(),
-        },shift??null);
+        },bacaShiftSesi(kunciSesiKerja(user))); // (12 Nov 2026, tahap D) shift sesi login - lib/timerShift
         // BUG FIX (20 Sep 2026) - constraint DB fcs_timer_kerja_satu_aktif (migration terkait,
         // partial unique index) jadi jaring pengaman terakhir kalau cek `existing` di atas lolos
         // gara-gara race (attempt retry sebelumnya belum ke-commit pas attempt ini jalan - sama
