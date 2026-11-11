@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect, useRef } from "react";
+import { useState, useMemo, useEffect, useRef, useCallback } from "react";
 import { labelDurasiTimer } from "../lib/timerHelpers";
 import { supabase } from "../lib/supabase";
 import { bacaSemuaHalaman } from "../lib/bacaSemua";
@@ -7,7 +7,7 @@ import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateH
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai, hentikanTimerKomponenHari } from "../lib/tutupTimerKomponen";
 import { hariKerjaWib } from "../lib/tanggalWib";
-import { insertTimerKerja, bacaShiftSesi } from "../lib/timerShift";
+import { insertTimerKerja, bacaShiftSesi, tanggalSesiKerja, useGantiHariKerja } from "../lib/timerShift";
 import { WARNA } from "../lib/warnaTema";
 import { catatPersenTimerBusbar } from "../lib/persenTimerBusbar";
 import { saringTimerKartu, timerMilikKartu } from "../lib/timerKartu";
@@ -178,21 +178,27 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   const [shift,setShift]=useState(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===hariKerjaAwal&&saved.shift?saved.shift:"1";
+      return saved.tanggal===tanggalSesiKerja()&&saved.shift?saved.shift:"1";
     }catch{return "1";}
   });
   const [shiftSet,setShiftSet]=useState(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===hariKerjaAwal?!!saved.shiftSet:false;
+      return saved.tanggal===tanggalSesiKerja()?!!saved.shiftSet:false;
     }catch{return false;}
   });
+  // Tanggal sesi shift (12 Nov 2026, opsi A - lib/timerShift): hari kerja WIB saat shift dipilih; TIDAK ikut berganti
+  // sendiri (dulu efek di bawah menulis tanggal hari baru + shift lama -> shift kemarin tersimpan di timer hari ini).
+  const [tanggalSesi,setTanggalSesi]=useState(()=>tanggalSesiKerja());
+  const mulaiSesiShift=()=>{setTanggalSesi(tanggalSesiKerja());setShiftSet(true);};
+  const gantiHariSesi=useCallback(()=>{setShiftSet(false);setTanggalSesi(tanggalSesiKerja());},[]);
+  useGantiHariKerja(shiftSet,tanggalSesi,gantiHariSesi);
   useEffect(()=>{
-    // Simpan hariKerjaAwal (tanggal sesi kerja sesungguhnya), BUKAN viewDate - viewDate bisa
+    // Simpan tanggal SESI (hari kerja saat shift dipilih), BUKAN viewDate - viewDate bisa
     // berubah bebas kalau operator navigasi lihat hari lain (tombol prev/next), dan itu gak
     // boleh ikut nimpa/ngerusak status shift sesi kerja yang sebenarnya lagi berjalan.
-    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:hariKerjaAwal,shift,shiftSet}));}catch{}
-  },[shift,shiftSet,wsKey,hariKerjaAwal]);
+    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:tanggalSesi,shift,shiftSet}));}catch{}
+  },[shift,shiftSet,wsKey,tanggalSesi]);
   useEffect(()=>{
     // localStorage dishare otomatis antar tab SATU browser/device (native), tapi React state di
     // tab lain gak otomatis ke-refresh - kalau operator buka 2 tab & ganti shift di tab A, tab B
@@ -203,15 +209,16 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       if(e.key!==wsKey||!e.newValue)return;
       try{
         const saved=JSON.parse(e.newValue);
-        if(saved.tanggal===hariKerjaAwal){
+        if(saved.tanggal===tanggalSesiKerja()){
           if(saved.shift)setShift(saved.shift);
           setShiftSet(!!saved.shiftSet);
+          setTanggalSesi(saved.tanggal);
         }
       }catch{}
     };
     window.addEventListener("storage",onStorage);
     return()=>window.removeEventListener("storage",onStorage);
-  },[wsKey,hariKerjaAwal]);
+  },[wsKey]);
   const [lockMsg,setLockMsg]=useState(false);
   const [pernahDikunci,setPernahDikunci]=useState(false);
   const [lockedCells,setLockedCells]=useState<Record<string,boolean>>({});
@@ -2247,7 +2254,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
               ))}
             </div>
           </div>
-          <Btn style={{width:"100%",padding:13,fontSize:15}} onClick={()=>setShiftSet(true)}>
+          <Btn style={{width:"100%",padding:13,fontSize:15}} onClick={mulaiSesiShift}>
             Mulai Kerja →
           </Btn>
         </Card>

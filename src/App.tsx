@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { supabase } from "./lib/supabase";
 import { isPushSupported, getPushPermissionState, subscribeToPush } from "./lib/pushNotif";
-import { TODAY, addDays, tanggalLokalDari } from "./lib/dateHelpers";
+import { tanggalLokalDari } from "./lib/dateHelpers";
 import { useDateRollover } from "./lib/dateRollover";
 import { useVersionCheck, muatUlangBersih } from "./lib/versionCheck";
 import { DIVISI_CONFIG } from "./lib/panelTypes";
@@ -45,6 +45,7 @@ import { InventarisOperatorView } from "./components/InventarisOperatorView";
 import { WoDigitalView } from "./components/WoDigitalView";
 import { ProduksiStokView } from "./components/ProduksiStokView";
 import { bacaSemuaPerPotongan } from "./lib/bacaSemua";
+import { tanggalSesiKerja, useGantiHariKerja } from "./lib/timerShift";
 // Tahap yang mungkin dipakai Produksi Stok (sama dgn CHECK tabel produksi_stok_tahap) - dipakai
 // nentuin sub-bagian mana yang dapat tile menu-nya.
 const TAHAP_PRODUKSI_STOK=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING"];
@@ -115,34 +116,31 @@ export default function App(){
   // pakai tombol internal OperatorView.tsx yang sudah ada (gak disentuh) - badge Shift di header
   // di bawah cuma affordance tambahan buat reset ulang gate ini dari luar.
   const wsKey=user?`vista_pekerja_ws_${user.divisi}_${user.sub_bagian||""}_${user.id||user.username||user.nama||""}`:"";
-  const hariKerjaAwal=(()=>{
-    if(!wsKey)return TODAY;
-    try{
-      const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      const jamNow=new Date().getHours();
-      const kemarin=addDays(TODAY,-1);
-      if(jamNow<7&&saved.shift==="2"&&saved.tanggal===kemarin)return kemarin;
-    }catch{}
-    return TODAY;
-  })();
   const [gateShift,setGateShift]=useState(()=>{
     if(!wsKey)return "1";
     try{
       const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===hariKerjaAwal&&saved.shift?saved.shift:"1";
+      return saved.tanggal===tanggalSesiKerja()&&saved.shift?saved.shift:"1";
     }catch{return "1";}
   });
+  // Tanggal sesi shift = hari kerja WIB (12 Nov 2026, lib/timerShift - opsi A): dicocokkan & ditulis dgn aturan yang sama
+  // dgn pembaca shift timer; ganti hari kerja saat sesi aktif -> gerbang "Pilih shift" tampil lagi.
+  const [gateTanggal,setGateTanggal]=useState(()=>tanggalSesiKerja());
   const [gateShiftSet,setGateShiftSet]=useState(()=>{
     if(!wsKey)return false;
     try{
       const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===hariKerjaAwal?!!saved.shiftSet:false;
+      return saved.tanggal===tanggalSesiKerja()?!!saved.shiftSet:false;
     }catch{return false;}
   });
   const mulaiKerja=()=>{
+    const t=tanggalSesiKerja();
+    setGateTanggal(t);
     setGateShiftSet(true);
-    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:hariKerjaAwal,shift:gateShift,shiftSet:true}));}catch{}
+    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:t,shift:gateShift,shiftSet:true}));}catch{}
   };
+  const gantiHariGate=useCallback(()=>{setGateShiftSet(false);setGateTanggal(tanggalSesiKerja());},[]);
+  useGantiHariKerja(!!isOperatorDivisi&&gateShiftSet,gateTanggal,gantiHariGate);
 
   // Tab bawah "Arsip" - cuma muncul buat divisi/sub_bagian yang punya seksi arsip otomatis
   // (QS/QC/Assembling Luar/Wiring Control/Nameplate - "Warehouse" DIHAPUS 14 Agu 2026 bareng

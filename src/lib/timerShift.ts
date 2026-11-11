@@ -5,7 +5,25 @@
 // belum dimuat ulang) insert diulang SEKALI tanpa shift - mulai timer tidak pernah gagal karena kolom ini. Versi lama
 // aplikasi yang insert tanpa shift tetap jalan (kolom nullable tanpa default).
 /* eslint-disable @typescript-eslint/no-explicit-any */
+import { useEffect } from 'react'
 import { hariKerjaWib } from './tanggalWib'
+
+// TANGGAL SESI SHIFT (12 Nov 2026, keputusan user opsi A): localStorage sesi {tanggal, shift, shiftSet} memakai HARI
+// KERJA WIB (00.00-06.59 = hari sebelumnya) - aturan yang SAMA dgn pembanding bacaShiftSesi. Ditetapkan saat operator
+// memilih shift; TIDAK distempel ulang otomatis saat hari berganti (dulu efek OperatorView menulis ulang tanggal baru
+// + shift lama -> shift kemarin ikut tersimpan di timer hari ini).
+export const tanggalSesiKerja = (): string => hariKerjaWib()
+
+// Cek tiap menit: bila hari kerja berganti saat sesi shift aktif -> onGanti (gerbang "Pilih shift" ditampilkan lagi).
+export function useGantiHariKerja(aktif: boolean, tanggalSesi: string, onGanti: () => void) {
+  useEffect(() => {
+    if (!aktif) return
+    const cek = () => { if (tanggalSesiKerja() !== tanggalSesi) onGanti() }
+    cek()
+    const id = setInterval(cek, 60000)
+    return () => clearInterval(id)
+  }, [aktif, tanggalSesi, onGanti])
+}
 
 export type ShiftSesi = '1' | '2'
 
