@@ -8,7 +8,7 @@ import { simpanSesiShift, labelHariKerja, tanggalSesiKerja, PESAN_PILIH_ULANG } 
 export function BannerPilihShift({ wsKey, onDipilih }: { wsKey: string; onDipilih?: (shift: string) => void }) {
   const pilih = (s: string) => { simpanSesiShift(wsKey, s); onDipilih?.(s); };
   return (
-    <div role="alert" style={{ margin: "12px 16px 0", padding: "12px 14px", borderRadius: 14, background: "#fff7e6", border: "1px solid #f5c26b" }}>
+    <div role="status" style={{ margin: "12px 16px 0", padding: "12px 14px", borderRadius: 14, background: "#fff7e6", border: "1px solid #f5c26b" }}>
       <div style={{ fontWeight: 800, fontSize: 14, color: "#7a4a00" }}>{PESAN_PILIH_ULANG}</div>
       <div style={{ fontSize: 12, color: "#7a4a00", marginTop: 2 }}>
         Hari kerja: {labelHariKerja(tanggalSesiKerja())}. Timer yang sedang berjalan dan Simpan Progress tetap jalan; mulai timer baru setelah memilih shift.

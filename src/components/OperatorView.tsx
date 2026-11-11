@@ -190,6 +190,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   // Tanggal sesi shift (12 Nov 2026, opsi A - lib/timerShift): hari kerja WIB saat shift dipilih; TIDAK ikut berganti
   // sendiri (dulu efek di bawah menulis tanggal hari baru + shift lama -> shift kemarin tersimpan di timer hari ini).
   const [tanggalSesi,setTanggalSesi]=useState(()=>tanggalSesiKerja());
+  const tanggalSesiRef=useRef(tanggalSesi);
+  useEffect(()=>{tanggalSesiRef.current=tanggalSesi;},[tanggalSesi]);
   // Konfirmasi setup shift: simpanSesiShift juga mengabari App (chip/banner). Ganti hari kerja saat terbuka TIDAK lagi
   // mengganti layar ini dgn gerbang (keputusan user 12 Nov): App menampilkan BannerPilihShift, startTimer ditahan.
   const mulaiSesiShift=()=>{setTanggalSesi(tanggalSesiKerja());setShiftSet(true);simpanSesiShift(wsKey,shift);};
@@ -211,6 +213,9 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       try{
         const saved=JSON.parse(teks);
         if(saved.tanggal===tanggalSesiKerja()){
+          // (12 Nov 2026, tinjauan bug-detector) shift dipilih utk HARI KERJA BARU (banner) -> tampilan ikut ke hari kerja
+          // itu, supaya Simpan Progress tidak menulis {tanggal kemarin, shift hari ini} (menimpa entri kemarin).
+          if(saved.shiftSet&&saved.tanggal!==tanggalSesiRef.current)setViewDate(saved.tanggal);
           if(saved.shift)setShift(saved.shift);
           setShiftSet(!!saved.shiftSet);
           setTanggalSesi(saved.tanggal);
@@ -1356,6 +1361,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // biasanya sesi/orang lain - beda dari proses lain yang satu operator ngerjain satu komponen
     // utuh dari awal sampai akhir.
     const bulkAssignBusbarOperatorAndStart=async(rowsGroup:any[],tahap:string,pekerjaIds:number[])=>{
+      if(tahanTimerBaru(wsKey))return; // (12 Nov 2026) ditahan SEBELUM assign: hindari operator ter-assign tanpa timer
       const flatRows=rowsGroup.map((r:any)=>({task:r.task,kode:r.kode,tahap}));
       await updatePekerjaPerKomponenBatch(flatRows,()=>pekerjaIds);
       for(const r of rowsGroup){
@@ -1372,6 +1378,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     };
 
     const bulkAssignAndStartDesktop=async(proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
+      if(tahanTimerBaru(wsKey))return; // (12 Nov 2026) ditahan SEBELUM assign: hindari operator ter-assign tanpa timer
       // Khusus desktop: assign operator SEKALIGUS start timer buat semua baris terkumpul.
       await updatePekerjaPerKomponenBatch(rowsToAssign,()=>pekerjaIds);
       for(const r of rowsToAssign){
@@ -1396,6 +1403,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
 
     // Khusus POTONG: operator = pekerja yang lagi login (gak ada picker), assign + start timer sekaligus.
     const startUntukUserSendiri=async(proses:string,rowsToAssign:any[])=>{
+      if(tahanTimerBaru(wsKey))return; // (12 Nov 2026) ditahan SEBELUM assign: hindari operator ter-assign tanpa timer
       await updatePekerjaPerKomponenBatch(rowsToAssign,(_r,sekarang)=>sekarang.includes(Number(user.id))?sekarang:[...sekarang,Number(user.id)]); // (22 Okt) tambah, bukan timpa
       for(const r of rowsToAssign){
         await startTimer(user.id,r.panelId,r.kode,proses,viewDate);

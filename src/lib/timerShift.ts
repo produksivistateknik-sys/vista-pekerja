@@ -72,10 +72,12 @@ export const PESAN_PILIH_ULANG = 'Hari kerja baru dimulai (07.00). Pilih shift u
 let terakhirPeringatan = 0
 export function tahanTimerBaru(wsKey: string): boolean {
   if (!perluPilihUlangShift(wsKey)) return false
-  const kini = Date.now()
-  if (kini - terakhirPeringatan > 5000) {
-    terakhirPeringatan = kini
+  // Banner langsung dimunculkan (tidak menunggu pengecekan 60 dtk) - tinjauan bug-detector 12 Nov.
+  try { window.dispatchEvent(new Event(EVENT_SESI_SHIFT)) } catch { /* tanpa window */ }
+  if (Date.now() - terakhirPeringatan > 5000) {
     try { window.alert(`${PESAN_PILIH_ULANG} Pilih shift di bagian atas layar, lalu mulai timer lagi.`) } catch { /* tanpa window */ }
+    // dicatat SETELAH alert ditutup (alert menahan eksekusi; loop tim forEach tidak memunculkan alert berulang)
+    terakhirPeringatan = Date.now()
   }
   return true
 }
