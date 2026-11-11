@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { WARNA } from "../lib/warnaTema";
 import { hariKerjaWib } from "../lib/tanggalWib";
+import { insertTimerKerja, bacaShiftSesi, kunciSesiKerja, tahanTimerBaru } from "../lib/timerShift";
 import { supabase } from "../lib/supabase";
 import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
@@ -224,6 +225,8 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
   },[Object.keys(timerAktif).length>0]);
 
   const mulaiTimer=async(panelId:number,kode:string)=>{
+    // (12 Nov 2026, keputusan user) hari kerja berganti & shift belum dipilih ulang -> timer baru ditahan (banner di atas).
+    if(tahanTimerBaru(kunciSesiKerja(user)))return;
     const tKey=`${panelId}_${kode}`;
     setTimerLoading(tKey);
     try{
@@ -237,9 +240,9 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         .eq("tahap",tugas.tahap).eq("tanggal",tanggal).is("selesai",null).order("mulai",{ascending:false}).limit(1).maybeSingle());
       if(existing){setTimerAktif(prev=>({...prev,[tKey]:existing}));return;}
       const{data,error}=await withRetry(async()=>{
-        const hasil=await supabase.from("fcs_timer_kerja").insert({
+        const hasil=await insertTimerKerja(supabase,{
           pekerja_id:user.id,panel_id:panelId,kode_komponen:kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap,tanggal,mulai:new Date().toISOString(),
-        }).select().single();
+        },bacaShiftSesi(kunciSesiKerja(user))); // (12 Nov 2026, tahap D) shift sesi login - lib/timerShift
         // BUG FIX (20 Sep 2026) - constraint DB fcs_timer_kerja_satu_aktif (migration terkait,
         // partial unique index) jadi jaring pengaman terakhir kalau cek `existing` di atas lolos
         // gara-gara race (attempt retry sebelumnya belum ke-commit pas attempt ini jalan - sama

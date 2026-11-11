@@ -1,7 +1,7 @@
 import { useState, useEffect, useLayoutEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { supabase } from "./lib/supabase";
 import { isPushSupported, getPushPermissionState, subscribeToPush } from "./lib/pushNotif";
-import { TODAY, addDays, tanggalLokalDari } from "./lib/dateHelpers";
+import { tanggalLokalDari } from "./lib/dateHelpers";
 import { useDateRollover } from "./lib/dateRollover";
 import { useVersionCheck, muatUlangBersih } from "./lib/versionCheck";
 import { DIVISI_CONFIG } from "./lib/panelTypes";
@@ -45,6 +45,9 @@ import { InventarisOperatorView } from "./components/InventarisOperatorView";
 import { WoDigitalView } from "./components/WoDigitalView";
 import { ProduksiStokView } from "./components/ProduksiStokView";
 import { bacaSemuaPerPotongan } from "./lib/bacaSemua";
+import { tanggalSesiKerja, simpanSesiShift, usePerluPilihShift, labelHariKerja, EVENT_SESI_SHIFT } from "./lib/timerShift";
+import { hariIniWib } from "./lib/tanggalWib";
+import { BannerPilihShift } from "./components/BannerPilihShift";
 // Tahap yang mungkin dipakai Produksi Stok (sama dgn CHECK tabel produksi_stok_tahap) - dipakai
 // nentuin sub-bagian mana yang dapat tile menu-nya.
 const TAHAP_PRODUKSI_STOK=["POTONG","BENDING","STEL","FINISHING","RENDAM","PAINTING"];
@@ -115,34 +118,39 @@ export default function App(){
   // pakai tombol internal OperatorView.tsx yang sudah ada (gak disentuh) - badge Shift di header
   // di bawah cuma affordance tambahan buat reset ulang gate ini dari luar.
   const wsKey=user?`vista_pekerja_ws_${user.divisi}_${user.sub_bagian||""}_${user.id||user.username||user.nama||""}`:"";
-  const hariKerjaAwal=(()=>{
-    if(!wsKey)return TODAY;
-    try{
-      const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      const jamNow=new Date().getHours();
-      const kemarin=addDays(TODAY,-1);
-      if(jamNow<7&&saved.shift==="2"&&saved.tanggal===kemarin)return kemarin;
-    }catch{}
-    return TODAY;
-  })();
   const [gateShift,setGateShift]=useState(()=>{
     if(!wsKey)return "1";
     try{
       const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===hariKerjaAwal&&saved.shift?saved.shift:"1";
+      return saved.tanggal===tanggalSesiKerja()&&saved.shift?saved.shift:"1";
     }catch{return "1";}
   });
+  // Tanggal sesi shift = hari kerja WIB (12 Nov 2026, lib/timerShift - opsi A): dicocokkan & ditulis dgn aturan yang sama
+  // dgn pembaca shift timer. Gerbang App SENGAJA tidak direset otomatis saat hari kerja berganti: OperatorView/
+  // KomponenPasangView dirender di cabang sesudah gerbang ini -> reset di sini meng-unmount keduanya dan isian yang
+  // belum disimpan hilang (tinjauan ui-reviewer 12 Nov). Ganti hari kerja saat aplikasi terbuka -> BannerPilihShift di
+  // atas konten (keputusan user butir 1-2): hanya mulai timer baru yang ditahan.
   const [gateShiftSet,setGateShiftSet]=useState(()=>{
     if(!wsKey)return false;
     try{
       const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===hariKerjaAwal?!!saved.shiftSet:false;
+      return saved.tanggal===tanggalSesiKerja()?!!saved.shiftSet:false;
     }catch{return false;}
   });
   const mulaiKerja=()=>{
     setGateShiftSet(true);
-    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:hariKerjaAwal,shift:gateShift,shiftSet:true}));}catch{}
+    simpanSesiShift(wsKey,gateShift);
   };
+  const perluPilihShift=usePerluPilihShift(wsKey,!!wsKey&&user?.divisi!=="gudang");
+  // Chip header ikut pilihan shift terbaru (banner / Ganti Shift di Tugas Saya / tab lain), hanya utk hari kerja ini.
+  useEffect(()=>{
+    if(!wsKey)return;
+    const sinkron=()=>{try{const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");if(saved.tanggal===tanggalSesiKerja()&&saved.shift)setGateShift(saved.shift);}catch{/* abaikan */}};
+    window.addEventListener(EVENT_SESI_SHIFT,sinkron);window.addEventListener("storage",sinkron);
+    return()=>{window.removeEventListener(EVENT_SESI_SHIFT,sinkron);window.removeEventListener("storage",sinkron);};
+  },[wsKey]);
+  const hariKerjaKini=tanggalSesiKerja();
+  const ketHariKerja=hariKerjaKini!==hariIniWib()?` · Hari kerja ${labelHariKerja(hariKerjaKini)}`:"";
 
   // Tab bawah "Arsip" - cuma muncul buat divisi/sub_bagian yang punya seksi arsip otomatis
   // (QS/QC/Assembling Luar/Wiring Control/Nameplate - "Warehouse" DIHAPUS 14 Agu 2026 bareng
@@ -487,7 +495,7 @@ export default function App(){
             <KoneksiBadge/>
             <AntreanBadge/>
             {!diBeranda&&<span className="bop-chip-status">{cfg?.icon} {namaOperator} · {divisiText}</span>}
-            {isOperatorDivisi&&gateShiftSet&&<span className="bop-chip-status">🕐 Shift {gateShift}</span>}
+            {isOperatorDivisi&&gateShiftSet&&<span className="bop-chip-status">🕐 {perluPilihShift?"Pilih shift":`Shift ${gateShift}`}{ketHariKerja}</span>}
             <div style={{flex:1}}/>
             {isOperatorDivisi&&(
               <button onClick={toggleViewMode} className="bop-status-btn" title={viewMode==="desktop"?"Ganti ke tampilan Mobile":"Ganti ke tampilan Desktop"}>
@@ -512,6 +520,7 @@ export default function App(){
           </div>
         )}
         <div style={{flex:1,overflowY:"auto"}}>
+          {perluPilihShift&&!(isOperatorDivisi&&!gateShiftSet)&&<BannerPilihShift wsKey={wsKey} onDipilih={(s)=>{setGateShift(s);setGateShiftSet(true);}}/>}
           {user.divisi==="gudang"?<GudangHome user={user} onLogout={doLogout}/>
             :activeBottomTab==="proses"?<ProsesAktifView user={user} tahapPasangKomponen={komponenPasangTugas?.tahap||null}/>
             :activeBottomTab==="jadwal"?<JadwalPengirimanView/>
@@ -521,7 +530,7 @@ export default function App(){
               <div style={{padding:20,maxWidth:420,margin:"0 auto"}} className="fi">
                 <div style={{background:"#fff",borderRadius:18,padding:20,boxShadow:"0 4px 14px #00000014"}}>
                   <div style={{fontWeight:800,fontSize:15,color:"#1e293b",marginBottom:2}}>Setup sesi kerja</div>
-                  <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Pilih shift kerja Anda hari ini</div>
+                  <div style={{fontSize:12,color:"#64748b",marginBottom:16}}>Pilih shift kerja Anda hari ini · Hari kerja: {labelHariKerja(tanggalSesiKerja())}</div>
                   <div style={{display:"flex",gap:10,marginBottom:16}}>
                     {["1","2"].map(s=>(
                       <button key={s} onClick={()=>setGateShift(s)}

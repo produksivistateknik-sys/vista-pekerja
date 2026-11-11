@@ -7,6 +7,7 @@ import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateH
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai, hentikanTimerKomponenHari } from "../lib/tutupTimerKomponen";
 import { hariKerjaWib } from "../lib/tanggalWib";
+import { insertTimerKerja, bacaShiftSesi, tanggalSesiKerja, simpanSesiShift, tahanTimerBaru, EVENT_SESI_SHIFT } from "../lib/timerShift";
 import { WARNA } from "../lib/warnaTema";
 import { catatPersenTimerBusbar } from "../lib/persenTimerBusbar";
 import { saringTimerKartu, timerMilikKartu } from "../lib/timerKartu";
@@ -177,40 +178,56 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
   const [shift,setShift]=useState(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===hariKerjaAwal&&saved.shift?saved.shift:"1";
+      return saved.tanggal===tanggalSesiKerja()&&saved.shift?saved.shift:"1";
     }catch{return "1";}
   });
   const [shiftSet,setShiftSet]=useState(()=>{
     try{
       const saved=JSON.parse(localStorage.getItem(wsKey)||"{}");
-      return saved.tanggal===hariKerjaAwal?!!saved.shiftSet:false;
+      return saved.tanggal===tanggalSesiKerja()?!!saved.shiftSet:false;
     }catch{return false;}
   });
+  // Tanggal sesi shift (12 Nov 2026, opsi A - lib/timerShift): hari kerja WIB saat shift dipilih; TIDAK ikut berganti
+  // sendiri (dulu efek di bawah menulis tanggal hari baru + shift lama -> shift kemarin tersimpan di timer hari ini).
+  const [tanggalSesi,setTanggalSesi]=useState(()=>tanggalSesiKerja());
+  const tanggalSesiRef=useRef(tanggalSesi);
+  useEffect(()=>{tanggalSesiRef.current=tanggalSesi;},[tanggalSesi]);
+  // Konfirmasi setup shift: simpanSesiShift juga mengabari App (chip/banner). Ganti hari kerja saat terbuka TIDAK lagi
+  // mengganti layar ini dgn gerbang (keputusan user 12 Nov): App menampilkan BannerPilihShift, startTimer ditahan.
+  const mulaiSesiShift=()=>{setTanggalSesi(tanggalSesiKerja());setShiftSet(true);simpanSesiShift(wsKey,shift);};
   useEffect(()=>{
-    // Simpan hariKerjaAwal (tanggal sesi kerja sesungguhnya), BUKAN viewDate - viewDate bisa
+    // Simpan tanggal SESI (hari kerja saat shift dipilih), BUKAN viewDate - viewDate bisa
     // berubah bebas kalau operator navigasi lihat hari lain (tombol prev/next), dan itu gak
     // boleh ikut nimpa/ngerusak status shift sesi kerja yang sebenarnya lagi berjalan.
-    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:hariKerjaAwal,shift,shiftSet}));}catch{}
-  },[shift,shiftSet,wsKey,hariKerjaAwal]);
+    try{localStorage.setItem(wsKey,JSON.stringify({tanggal:tanggalSesi,shift,shiftSet}));}catch{}
+  },[shift,shiftSet,wsKey,tanggalSesi]);
   useEffect(()=>{
     // localStorage dishare otomatis antar tab SATU browser/device (native), tapi React state di
     // tab lain gak otomatis ke-refresh - kalau operator buka 2 tab & ganti shift di tab A, tab B
     // tetep mikir shift lama sampai reload manual. Dengerin event "storage" bawaan browser (cuma
     // fire di tab LAIN, bukan tab yang nulis sendiri) buat nyamain shift/shiftSet live antar tab.
     // Gak nyentuh viewDate (itu murni navigasi lihat-lihat, bukan status sesi kerja).
-    const onStorage=(e:StorageEvent)=>{
-      if(e.key!==wsKey||!e.newValue)return;
+    // (12 Nov 2026) + event EVENT_SESI_SHIFT dari tab ini (banner pilih ulang di App).
+    const terapkan=(teks:string|null)=>{
+      if(!teks)return;
       try{
-        const saved=JSON.parse(e.newValue);
-        if(saved.tanggal===hariKerjaAwal){
+        const saved=JSON.parse(teks);
+        if(saved.tanggal===tanggalSesiKerja()){
+          // (12 Nov 2026, tinjauan bug-detector) shift dipilih utk HARI KERJA BARU (banner) -> tampilan ikut ke hari kerja
+          // itu, supaya Simpan Progress tidak menulis {tanggal kemarin, shift hari ini} (menimpa entri kemarin).
+          if(saved.shiftSet&&saved.tanggal!==tanggalSesiRef.current)setViewDate(saved.tanggal);
           if(saved.shift)setShift(saved.shift);
           setShiftSet(!!saved.shiftSet);
+          setTanggalSesi(saved.tanggal);
         }
       }catch{}
     };
+    const onStorage=(e:StorageEvent)=>{if(e.key===wsKey)terapkan(e.newValue);};
+    const onSesi=()=>{try{terapkan(localStorage.getItem(wsKey));}catch{/* localStorage tidak terbaca: abaikan */}};
     window.addEventListener("storage",onStorage);
-    return()=>window.removeEventListener("storage",onStorage);
-  },[wsKey,hariKerjaAwal]);
+    window.addEventListener(EVENT_SESI_SHIFT,onSesi);
+    return()=>{window.removeEventListener("storage",onStorage);window.removeEventListener(EVENT_SESI_SHIFT,onSesi);};
+  },[wsKey]);
   const [lockMsg,setLockMsg]=useState(false);
   const [pernahDikunci,setPernahDikunci]=useState(false);
   const [lockedCells,setLockedCells]=useState<Record<string,boolean>>({});
@@ -1037,6 +1054,8 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // (23 Okt 2026, bug B - insiden RIFKI/FAHRI 544 FS.4 & 9 timer BUSBAR 521) tanggal timer = HARI KERJA saat mulai (WIB; 00.00-06.59 = hari sebelumnya, shift malam - lib/tanggalWib),
     // BUKAN tanggal kartu yang sedang dibuka (viewDate bisa digeser < >). Parameter tanggal kartu dibiarkan (pemanggil
     // tidak berubah) tapi tidak dipakai utk menulis.
+    // (12 Nov 2026, keputusan user) hari kerja berganti & shift belum dipilih ulang -> timer baru ditahan (banner di atas).
+    if(tahanTimerBaru(wsKey))return;
     const tanggal=hariKerjaWib();
     const key=timerKey(panelId,kode,proses,pekerjaId,tahap);
     setTimerLoading(key);
@@ -1078,9 +1097,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       const{data,error}=await withRetry(async()=>{
         const{data:already}=await queryAktif();
         if(already)return{data:already,error:null};
-        const hasil=await supabase.from("fcs_timer_kerja").insert({
+        // (12 Nov 2026, tahap D) shift sesi login ikut disimpan - lib/timerShift (jatuh balik tanpa shift bila kolom belum ada).
+        const hasil=await insertTimerKerja(supabase,{
           pekerja_id:pekerjaId,panel_id:panelId,kode_komponen:kode,proses,tanggal,mulai:new Date().toISOString(),tahap:tahap||null
-        }).select().single();
+        },bacaShiftSesi(wsKey));
         // BUG FIX (20 Sep 2026) - constraint DB fcs_timer_kerja_satu_aktif (migration terkait,
         // partial unique index max 1 baris aktif per kombinasi) sekarang JADI JARING PENGAMAN
         // TERAKHIR kalau cek queryAktif() di atas lolos gara-gara race (2 pemanggilan startTimer
@@ -1341,6 +1361,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // biasanya sesi/orang lain - beda dari proses lain yang satu operator ngerjain satu komponen
     // utuh dari awal sampai akhir.
     const bulkAssignBusbarOperatorAndStart=async(rowsGroup:any[],tahap:string,pekerjaIds:number[])=>{
+      if(tahanTimerBaru(wsKey))return; // (12 Nov 2026) ditahan SEBELUM assign: hindari operator ter-assign tanpa timer
       const flatRows=rowsGroup.map((r:any)=>({task:r.task,kode:r.kode,tahap}));
       await updatePekerjaPerKomponenBatch(flatRows,()=>pekerjaIds);
       for(const r of rowsGroup){
@@ -1357,6 +1378,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     };
 
     const bulkAssignAndStartDesktop=async(proses:string,rowsToAssign:any[],pekerjaIds:number[])=>{
+      if(tahanTimerBaru(wsKey))return; // (12 Nov 2026) ditahan SEBELUM assign: hindari operator ter-assign tanpa timer
       // Khusus desktop: assign operator SEKALIGUS start timer buat semua baris terkumpul.
       await updatePekerjaPerKomponenBatch(rowsToAssign,()=>pekerjaIds);
       for(const r of rowsToAssign){
@@ -1381,6 +1403,7 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
 
     // Khusus POTONG: operator = pekerja yang lagi login (gak ada picker), assign + start timer sekaligus.
     const startUntukUserSendiri=async(proses:string,rowsToAssign:any[])=>{
+      if(tahanTimerBaru(wsKey))return; // (12 Nov 2026) ditahan SEBELUM assign: hindari operator ter-assign tanpa timer
       await updatePekerjaPerKomponenBatch(rowsToAssign,(_r,sekarang)=>sekarang.includes(Number(user.id))?sekarang:[...sekarang,Number(user.id)]); // (22 Okt) tambah, bukan timpa
       for(const r of rowsToAssign){
         await startTimer(user.id,r.panelId,r.kode,proses,viewDate);
@@ -2245,7 +2268,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
               ))}
             </div>
           </div>
-          <Btn style={{width:"100%",padding:13,fontSize:15}} onClick={()=>setShiftSet(true)}>
+          <Btn style={{width:"100%",padding:13,fontSize:15}} onClick={mulaiSesiShift}>
             Mulai Kerja →
           </Btn>
         </Card>
