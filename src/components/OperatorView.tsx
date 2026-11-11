@@ -7,6 +7,7 @@ import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateH
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai, hentikanTimerKomponenHari } from "../lib/tutupTimerKomponen";
 import { hariKerjaWib } from "../lib/tanggalWib";
+import { insertTimerKerja } from "../lib/timerShift";
 import { WARNA } from "../lib/warnaTema";
 import { catatPersenTimerBusbar } from "../lib/persenTimerBusbar";
 import { saringTimerKartu, timerMilikKartu } from "../lib/timerKartu";
@@ -1078,9 +1079,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
       const{data,error}=await withRetry(async()=>{
         const{data:already}=await queryAktif();
         if(already)return{data:already,error:null};
-        const hasil=await supabase.from("fcs_timer_kerja").insert({
+        // (12 Nov 2026, tahap D) shift sesi login ikut disimpan - lib/timerShift (jatuh balik tanpa shift bila kolom belum ada).
+        const hasil=await insertTimerKerja(supabase,{
           pekerja_id:pekerjaId,panel_id:panelId,kode_komponen:kode,proses,tanggal,mulai:new Date().toISOString(),tahap:tahap||null
-        }).select().single();
+        },shiftSet?shift:null);
         // BUG FIX (20 Sep 2026) - constraint DB fcs_timer_kerja_satu_aktif (migration terkait,
         // partial unique index max 1 baris aktif per kombinasi) sekarang JADI JARING PENGAMAN
         // TERAKHIR kalau cek queryAktif() di atas lolos gara-gara race (2 pemanggilan startTimer
