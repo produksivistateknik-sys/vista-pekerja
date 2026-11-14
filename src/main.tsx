@@ -11,11 +11,13 @@ pasangPencatatErrorGlobal()
 
 // (14 Nov 2026, logo JRENG Tahap 5) animasi masuk + layar koneksi di ATAS aplikasi, sekali per sesi tab.
 const tampilAnimasiMasuk = perluAnimasiMasuk()
+// Sesi login tersimpan -> boleh ketuk-lewati tanpa menunggu server (keputusan user 14 Nov, A+B).
+const sudahMasuk = (() => { try { return !!localStorage.getItem('vista_pekerja_session') } catch { return false } })()
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <App />
-    {tampilAnimasiMasuk && <AnimasiMasuk />}
+    {tampilAnimasiMasuk && <AnimasiMasuk sudahMasuk={sudahMasuk} />}
   </StrictMode>,
 )
 
