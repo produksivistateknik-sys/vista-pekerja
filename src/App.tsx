@@ -16,7 +16,6 @@ import { AntreanBadge } from "./components/ui/AntreanBadge";
 import { mulaiPengirimOtomatis } from "./lib/antreanSimpan";
 import { mulaiPengirimFotoOtomatis } from "./lib/antreanFoto";
 import { ErrorBoundary } from "./components/ui/ErrorBoundary";
-import { LandingPage } from "./components/LandingPage";
 import { Login } from "./components/Login";
 import { WoEngineeringBanner } from "./components/WoEngineeringBanner";
 import { ArsipSeksiView } from "./components/ArsipSeksiView";
@@ -79,7 +78,7 @@ export default function App(){
       return saved?JSON.parse(saved):null;
     }catch{return null;}
   });
-  const [page,setPage]=useState<string>(()=>{
+  const [,setPage]=useState<string>(()=>{ // nilai tidak lagi dibaca (LandingPage diganti AnimasiMasuk, 14 Nov 2026)
     try{
       return localStorage.getItem("vista_pekerja_session")?"app":"landing";
     }catch{return "landing";}
@@ -453,7 +452,8 @@ export default function App(){
     return()=>{supabase.removeChannel(ch);};
   },[user?.id]);
 
-  if(page==="landing") return <LandingPage onEnter={()=>setPage("login")}/>;
+  // (14 Nov 2026, logo JRENG Tahap 5) halaman "Masuk ke Aplikasi" (LandingPage) diganti animasi masuk otomatis di main.tsx
+  // (AnimasiMasuk, lapisan di atas aplikasi). page "landing" kini = belum masuk -> langsung ke Login di bawah.
   if(!user) return <Login onLogin={(u:any)=>{
     setUser(u);
     try{localStorage.setItem("vista_pekerja_session",JSON.stringify(u));}catch{}
