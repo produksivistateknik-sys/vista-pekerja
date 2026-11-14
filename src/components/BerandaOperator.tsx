@@ -1,7 +1,7 @@
 // BERANDA OPERATOR (6 Nov 2026) - tampilan saja: header (HeaderOperator), kartu sambutan, grid menu, banner. Acuan: pratinjau
 // beranda-operator.html. Daftar menu = menuTiles App.tsx, tidak diubah di sini. Satuan px eksplisit & color-scheme light (alasan
 // sama KendalaOperator: index.css sisa template Vite berukuran 18px dan "light dark"; aplikasi operator belum punya tema gelap).
-import { VISTA_LOGO_DATA_URI } from "../lib/logoAsset";
+import { LOGO_JRENG_HEADER, ALT_LOGO_JRENG } from "../lib/logoJreng";
 import { BannerBeranda } from "./BannerBeranda";
 
 const CSS = `
@@ -77,7 +77,7 @@ export function HeaderOperator({ jamText, tanggalText, notifCount, pengingatBaru
       <style>{CSS}</style>
       <header className="bop-hdr" style={{ paddingTop: "max(12px, env(safe-area-inset-top))" }}>
         <div className="bop-top">
-          <img className="bop-logo" src={VISTA_LOGO_DATA_URI} alt="Vista Teknik" />
+          <img className="bop-logo" src={LOGO_JRENG_HEADER} alt={ALT_LOGO_JRENG} width={38} height={38} />
           <div className="bop-kanan">
             <div className="bop-jam"><b>{jamText}</b><span>{tanggalText}</span></div>
             <button type="button" className="bop-bell" onClick={onLonceng} aria-label={[pengingatBaru > 0 ? `${pengingatBaru} pengingat belum dibaca` : "", notifCount > 0 ? `${notifCount} permintaan perlu perhatian` : ""].filter(Boolean).reduce((a, b) => `${a}, ${b}`, "Notifikasi")}>
