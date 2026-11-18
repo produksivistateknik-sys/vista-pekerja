@@ -3,6 +3,7 @@ import { supabase } from "../lib/supabase";
 import { DIVISI_CONFIG } from "../lib/panelTypes";
 import { GCss } from "../lib/globalCss";
 import { FOKUS_AKSEN, GRADASI_AKSEN, WARNA } from "../lib/warnaTema";
+import { LOGO_VISTA_AWAL, ALT_LOGO_VISTA_AWAL } from "../lib/logoJreng";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // LOGIN - dipisah dari App.tsx (Sprint 7)
@@ -175,15 +176,10 @@ export function Login({onLogin}:any){
         display:"flex",flexDirection:"column",padding:"44px 48px",color:"#fff",position:"relative",overflow:"hidden",flexShrink:0}}>
         <div style={{position:"absolute",top:-80,right:-80,width:320,height:320,borderRadius:"50%",background:"rgba(255,255,255,.04)"}}/>
         <div style={{position:"absolute",bottom:-60,left:-60,width:240,height:240,borderRadius:"50%",background:"rgba(255,255,255,.03)"}}/>
-        <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:48,position:"relative",zIndex:1}}>
-          <div style={{width:42,height:42,background:"rgba(255,255,255,.15)",borderRadius:11,border:"1px solid rgba(255,255,255,.25)",
-            display:"flex",alignItems:"center",justifyContent:"center"}}>
-            <span style={{color:"#fff",fontWeight:900,fontSize:19}}>V</span>
-          </div>
-          <div>
-            <div style={{fontWeight:800,fontSize:15,letterSpacing:.3}}>Vista Teknik</div>
-            <div style={{fontSize:10,color:"rgba(255,255,255,.55)",fontWeight:500}}>Electrical Switchboard Manufacturing</div>
-          </div>
+        {/* Logo Vista Teknik awal (18 Nov 2026) - logo sudah memuat tulisan VISTA TEKNIK, tagline di bawahnya */}
+        <div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:6,marginBottom:48,position:"relative",zIndex:1}}>
+          <img src={LOGO_VISTA_AWAL} alt={ALT_LOGO_VISTA_AWAL} width={108} height={42} style={{height:42,width:"auto",flexShrink:0}}/>
+          <div style={{fontSize:10,color:"rgba(255,255,255,.55)",fontWeight:500}}>Electrical Switchboard Manufacturing</div>
         </div>
         <div style={{position:"relative",zIndex:1}}>
           <div style={{fontSize:28,fontWeight:800,lineHeight:1.3,marginBottom:12}}>Portal Operator<br/>Vista Pekerja</div>
