@@ -12,7 +12,7 @@ import { WARNA, GRADASI_AKSEN } from '../lib/warnaTema'
 import { supabase } from '../lib/supabase'
 import { pasangPemulihRealtime } from '../lib/pemulihRealtime'
 import { bacaAntreanFoto, dengarJumlahAntreanFoto } from '../lib/antreanFoto'
-import { KONDISI, infoKondisi, STATUS_JADWAL, STATUS_LAPORAN, labelFrekuensi, fmtTanggal, fmtWaktu, teksSisaHari, laporanAktif, isVideo, isPdf,
+import { KONDISI, infoKondisi, STATUS_JADWAL, STATUS_LAPORAN, labelFrekuensi, fmtTanggal, fmtWaktu, teksSisaHari, laporanAktif, isVideo, isPdf, keteranganMediaRutin,
   type Barang, type Jadwal, type Laporan, type Media, type UpdateLaporan } from '../lib/inventarisAturan'
 import { muatInventarisDivisi, muatDariAdmin, DARI_ADMIN_HARI, type DariAdmin, setKondisiOperator, kirimLaporan, selesaikanJadwal, tambahBarangOperator, simpanLaporanOperator, RIWAYAT_HARI, buatKunci, type DataDivisi, type HasilKirim } from '../lib/inventarisOperator'
 import { MediaPickerSheet } from './ui/MediaPickerSheet'
@@ -128,6 +128,7 @@ function PilihFile({ files, setFiles, label }: { files: File[]; setFiles: (f: Fi
 
 export function InventarisOperatorView({ user, registerBackHandler }: { user: any; registerBackHandler?: (fn: (() => boolean) | null) => void }) {
   const [data, setData] = useState<DataDivisi | null>(null)
+  const [sekarang, setSekarang] = useState(0)   // waktu data terakhir dimuat - dasar hitung sisa hari foto Rutin (19 Nov 2026)
   const [galat, setGalat] = useState('')
   const [tab, setTab] = useState<Tab>('inventaris')
   const [barangId, setBarangId] = useState<number | null>(null)
@@ -161,7 +162,7 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   }, [tab, barangId, kerjaId, formLapor, formTambah, lapId])
 
   const muat = useCallback(async () => {
-    try { const [d, a] = await Promise.all([muatInventarisDivisi(db, user.divisi), muatDariAdmin(db, user.divisi)]); setData(d); setDariAdmin(a); setGalat('') }
+    try { const [d, a] = await Promise.all([muatInventarisDivisi(db, user.divisi), muatDariAdmin(db, user.divisi)]); setData(d); setSekarang(Date.now()); setDariAdmin(a); setGalat('') }
     catch (e: any) { console.error('[InventarisOperatorView] gagal memuat:', e); setGalat('Gagal memuat inventaris: ' + pesanGalat(e)) }
   }, [user.divisi])
   useEffect(() => { const t = setTimeout(muat, 0); return () => clearTimeout(t) }, [muat])
@@ -357,16 +358,19 @@ export function InventarisOperatorView({ user, registerBackHandler }: { user: an
   function tabRiwayat() {
     const ev = [
       ...data!.selesai.map(s => ({ k: 's' + s.id, tgl: s.tanggal, jenis: 'Rutin', judul: data!.jadwal.find(j => j.id === s.jadwal_id)?.jenis || 'Maintenance rutin',
-        ket: `${idx!.barang.get(s.barang_id)?.nama || ''} · oleh ${s.oleh}${s.tanpa_dokumentasi ? ' · tanpa dokumentasi' : ''}`, media: mediaDari('jadwal_selesai', s.id) })),
+        ket: `${idx!.barang.get(s.barang_id)?.nama || ''} · oleh ${s.oleh}${s.tanpa_dokumentasi ? ' · tanpa dokumentasi' : ''}`, media: mediaDari('jadwal_selesai', s.id),
+        // foto/video Rutin dihapus otomatis 30 hari sejak diunggah: sisa hari / keterangan sudah dihapus (sama dgn admin)
+        ketMedia: keteranganMediaRutin(s, mediaDari('jadwal_selesai', s.id), sekarang) })),
       ...data!.laporan.map(l => ({ k: 'l' + l.id, tgl: l.dibuat_pada.slice(0, 10), jenis: 'Kerusakan', judul: l.judul,
         ket: `${idx!.barang.get(l.barang_id)?.nama || ''} · ${STATUS_LAPORAN[l.status].label}`,
-        media: [...mediaDari('laporan', l.id, 'sebelum'), ...mediaDari('laporan', l.id, 'lama'), ...mediaDari('laporan', l.id, 'sesudah')] })),
+        media: [...mediaDari('laporan', l.id, 'sebelum'), ...mediaDari('laporan', l.id, 'lama'), ...mediaDari('laporan', l.id, 'sesudah')], ketMedia: null as string | null })),
     ].sort((a, z) => z.tgl.localeCompare(a.tgl))
     return <>
       <div className="mute" style={{ marginBottom: 8 }}>Maintenance {RIWAYAT_HARI} hari terakhir & semua laporan divisi.</div>
       {!ev.length && <div className="empty">Belum ada riwayat.</div>}
       {ev.map(e => <div key={e.k} className="item"><div className="r"><div className="it">{e.judul}</div>{e.jenis === 'Rutin' ? bdg('#64748b', '#eef1f5', 'Rutin') : bdg('#6d28d9', '#ece3ff', 'Kerusakan')}</div>
-        <div className="mute">{fmtTanggal(e.tgl)} · {e.ket}</div><Thumbs media={e.media} label={`${e.judul} ${fmtTanggal(e.tgl)}`} lihat={lihat} /></div>)}
+        <div className="mute">{fmtTanggal(e.tgl)} · {e.ket}</div><Thumbs media={e.media} label={`${e.judul} ${fmtTanggal(e.tgl)}`} lihat={lihat} />
+        {e.ketMedia && <div className="mute" style={{ marginTop: 4 }}>{e.ketMedia}</div>}</div>)}
     </>
   }
 }
