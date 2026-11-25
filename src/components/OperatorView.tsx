@@ -3263,7 +3263,13 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
     // disembunyikan dari daftar HANYA setelah progress 100% DAN "Simpan Progress" sudah
     // diklik (sudahDisimpan100) - bukan cuma begitu progress kebetulan penuh. visibleRows
     // (header counter) & rows (chip panel) tetap gak ikut difilter, cuma tampilan kartu ini aja.
-    const cardListRows=["POTONG","BENDING","STEL","FINISHING","WIRING CONTROL","WIRING POWER","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR"].includes(proses)?visibleRows.filter((r:any)=>!(isDone(r)&&r.sudahDisimpan100)):visibleRows;
+    // (25 Nov 2026, insiden 598 FS.4) kartu yang selesai TETAP tampil selama masih ada timer berjalan (tanpa tahap) utk
+    // komponen+proses itu, milik siapa pun - dulu kartu hilang bersama tombol "Selesai" sementara timer terus jalan.
+    // Hanya tampilan (visibleRows/rumus tuntas tidak berubah). POTONG (tombol timer di toolbar) & BUSBAR (timer per
+    // tahap) tidak diubah.
+    type TimerKartu={selesai?:string|null;panel_id:number;kode_komponen:string;proses:string;tahap?:string|null};
+    const adaTimerJalanKartu=(r:{panelId:number;kode:string})=>proses!=="POTONG"&&proses!=="BUSBAR"&&(timerHariIni as TimerKartu[]).some(t=>!t.selesai&&t.panel_id===r.panelId&&t.kode_komponen===r.kode&&t.proses===proses&&!t.tahap);
+    const cardListRows=["POTONG","BENDING","STEL","FINISHING","WIRING CONTROL","WIRING POWER","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR"].includes(proses)?visibleRows.filter((r:any)=>!(isDone(r)&&r.sudahDisimpan100)||adaTimerJalanKartu(r)):visibleRows;
     const komponenGroups:Record<string,{namaKomponen:string,rows:any[]}> = {};
     cardListRows.forEach((r:any)=>{
       const key=r.item?.nama||r.kode;
