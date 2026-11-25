@@ -6,6 +6,7 @@ import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVI
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai, hentikanTimerKomponenHari } from "../lib/tutupTimerKomponen";
+import { PROSES_KUNCI_MULAI, cekMulaiWiring, pesanMulaiDitolak } from "../lib/kunciMulaiWiring";
 import { hariKerjaWib } from "../lib/tanggalWib";
 import { insertTimerKerja, bacaShiftSesi, tanggalSesiKerja, simpanSesiShift, tahanTimerBaru, EVENT_SESI_SHIFT } from "../lib/timerShift";
 import { WARNA } from "../lib/warnaTema";
@@ -22,6 +23,7 @@ import { laporError } from "../lib/laporError";
 import {
   timerKey, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_ICON, BUSBAR_URUTAN_TAHAP_LENGKAP,
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate, selesaiSebelumTanggal,
+  daftarKoreksiRiwayat, entriRiwayatAktif, sudahDisimpan100Pada,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
   computeProsesStatus, alasanNotYet, computeBusbarTahapStatus, getBusbarCapTahap, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
   isKomponenTahapPasang, getUrutanCap, maxQtyUntukPct, getUrutanFloor, minQtyUntukPct, muatAturanUrutan,
@@ -1057,6 +1059,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // (12 Nov 2026, keputusan user) hari kerja berganti & shift belum dipilih ulang -> timer baru ditahan (banner di atas).
     if(tahanTimerBaru(wsKey))return;
     const tanggal=hariKerjaWib();
+    // (25 Nov 2026, Tahap 4.2) WIRING CONTROL/POWER yang sudah tuntas & tersimpan tidak bisa dimulai lagi - dicek ke server
+    // + antrean offline (lib/kunciMulaiWiring). Admin membuka kembali lewat Detail Progres. Proses lain tidak diperiksa.
+    if(!tahap&&PROSES_KUNCI_MULAI.includes(proses)){
+      const hasilCek=await cekMulaiWiring(panelId,kode,proses,tanggal);
+      if(hasilCek!=="boleh"){pesanMulaiDitolak(panelId,kode,proses,hasilCek);return;}
+    }
     const key=timerKey(panelId,kode,proses,pekerjaId,tahap);
     setTimerLoading(key);
     // Query builder Supabase sekali-pakai per .await() - dibungkus fungsi biar bisa dipanggil
@@ -1141,7 +1149,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     setTimerLoading(key);
     let berhasil=false;
     try{
-      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id));
+      // (25 Nov 2026, Tahap 3b M2) .is("selesai",null): state timerAktif HP ini bisa basi (realtime putus) - timer yang sudah
+      // ditutup perangkat lain tidak boleh ditimpa waktu selesainya (durasi membengkak). Sama dgn penjaga Force Close/
+      // pengingat/tutupTimerKomponen. Timer yang masih berjalan tetap ditutup seperti biasa.
+      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id).is("selesai",null));
       if(error){
         alertGagalSimpan(error,`Selesai-in timer ${proses} ${kode} panel ${panelId}`,{ref:{panelId,kode,proses,tahap},aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});
         return;
@@ -1307,9 +1318,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const selesaiSemuaTimer=async(panelId:number,kode:string,proses:string,tahap?:string|null)=>{
       const lokal=timerHariIni.filter((t:any)=>!t.selesai&&t.panel_id===panelId&&t.kode_komponen===kode&&t.proses===proses&&(t.tahap||null)===(tahap||null));
       for(const t of lokal){if(timerAktif[timerKey(panelId,kode,proses,t.pekerja_id,tahap)])await stopTimer(t.pekerja_id,panelId,kode,proses,tahap||undefined);}
-      const{n,error}=await hentikanTimerKomponenHari(panelId,kode,proses,null,tahap); // (23 Okt) semua yang berjalan, apa pun tanggal
+      const{error}=await hentikanTimerKomponenHari(panelId,kode,proses,null,tahap); // (23 Okt) semua yang berjalan, apa pun tanggal
       if(error)alertGagalSimpan(error,`Selesai-in semua timer ${proses} ${kode} panel ${panelId}`,{ref:{panelId,kode,proses,tahap:tahap||undefined},aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
-      if(n>0||error)await refreshTimerData();
+      // (25 Nov 2026, Tahap 3b M1) selalu muat ulang: n=0 bisa berarti timer sudah ditutup di tempat lain sementara state HP
+      // basi (realtime putus) - tanpa muat ulang kartu (Tahap 3) & tombol "Selesai" tertinggal tanpa efek.
+      await refreshTimerData();
     };
     // Simpan Edit Operator: orang yang DIKELUARKAN & timernya masih berjalan -> konfirmasi hentikan (dia sempat
     // mengerjakan, tetap tercatat) atau SALAH PILIH (timer hari ini dibatalkan lewat RPC batalkan_timer_salah_pilih,
@@ -1497,13 +1510,38 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
     if(pct===0){alert('Progress masih 0%, belum ada yang bisa dikunci.');return false;}
     const newChecklist={...panel.checklist};
     const prevHist=cl.history?.[proses]||[];
-    const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
+    const batasKoreksi=daftarKoreksiRiwayat(prevHist); // (Tahap 4.2) entri sebelum koreksi/buka kembali admin diabaikan
+    const existIdx=prevHist.findIndex((h:any)=>entriRiwayatAktif(h,batasKoreksi)&&h.tanggal===viewDate&&String(h.shift)===String(shift));
     const idsKomp=(task.pekerja_per_komponen||{})[kode]||[];
     const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
     const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
     const checkpointEntry={panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate};
     if(existIdx>=0){
-      if(prevHist[existIdx].pct===pct)return true;
+      if(prevHist[existIdx].pct===pct){
+        // (25 Nov 2026, insiden 598 FS.4 FIRMAN/AINUL) Simpan ulang nilai yang SAMA dulu keluar di sini TANPA
+        // menghentikan timer - timer yang dimulai sesudah komponen 100% tersimpan jalan terus sampai 22.58.
+        // Tidak ada yang ditulis ke checklist; hanya timer yang ditutup, dan HANYA bila server juga mencatat
+        // komponen+proses ini 100% hari itu (data layar bisa basi, mis. qty naik setelah 100% -> timer sah).
+        if(pct>=100){
+          try{
+            const{data:srv,error:srvErr}=await supabase.from("panels").select("checklist").eq("id",panelId).single();
+            if(srvErr)console.error("[Simpan Progress ulang] cek progres server gagal, timer tidak ditutup:",srvErr);
+            else{
+              type HistSrv={tanggal?:string;pct?:number|string};
+              const clSrv=(srv as {checklist?:Record<string,{history?:Record<string,HistSrv[]>;progress?:Record<string,number|string>}>}|null)?.checklist?.[kode];
+              const histSemua:HistSrv[]=clSrv?.history?.[proses]||[];const batasSrv=daftarKoreksiRiwayat(histSemua);const histSrv:HistSrv[]=histSemua.filter(h=>entriRiwayatAktif(h,batasSrv)); // (Tahap 4.2) abaikan entri sebelum koreksi admin
+              // + progres TERKINI juga 100: kartu tanggal lampau yang 100% tidak boleh menutup timer sah hari ini
+              // (mis. qty naik sesudah 100% -> progres terkini turun, timer baru memang sah).
+              const srv100=Number(clSrv?.progress?.[proses])>=100&&getProgressOnDate(clSrv,proses,viewDate)>=100&&histSrv.some(h=>h.tanggal===viewDate&&Number(h.pct)>=100);
+              if(srv100){
+                await autoStopTimerJikaSelesai(panelId,kode,proses,pct,idsKomp);
+                await refreshTimerData(); // (Tahap 3b M1) timer yang ditutup lewat DB langsung terlihat, tidak menunggu realtime
+              }
+            }
+          }catch(e){console.error("[Simpan Progress ulang] tutup timer gagal (diabaikan):",e);}
+        }
+        return true;
+      }
       const updatedHist=[...prevHist];
       updatedHist[existIdx]={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
       newChecklist[kode]={...cl,history:{...(cl.history||{}),[proses]:updatedHist}};
@@ -2031,7 +2069,8 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
               timerStopCandidates.push({kode,proses:pr,idsKomp:(task.pekerja_per_komponen||{})[kode]||[]});
             }
             const prevHist=cl.history?.[pr]||[];
-            const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
+            const batasKoreksi=daftarKoreksiRiwayat(prevHist); // (Tahap 4.2) entri sebelum koreksi/buka kembali admin diabaikan
+            const existIdx=prevHist.findIndex((h:any)=>entriRiwayatAktif(h,batasKoreksi)&&h.tanggal===viewDate&&String(h.shift)===String(shift));
             if(existIdx>=0){
               if(prevHist[existIdx].pct!==pct){
                 const updatedHist=[...prevHist];
@@ -2518,7 +2557,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
             const pct=isBusbarKomp?(cl.progress?.[proses]||0):getProgressOnDate(cl,proses,viewDate);
             const wpDef=isBusbarKomp?null:panelCfg.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
             // Sudah disimpan (klik "Simpan Progress") hari ini dengan pct 100 - bukan cuma qty kebetulan penuh.
-            const sudahDisimpan100=(cl.history?.[proses]||[]).some((h:any)=>h.tanggal===viewDate&&h.pct===100);
+            const sudahDisimpan100=sudahDisimpan100Pada(cl,proses,viewDate); // (Tahap 4.2) abaikan entri sebelum koreksi admin
             // Timer pernah dimulai (walau udah di-stop lagi) - buat gating input qty di POTONG/BENDING/STEL/FINISHING.
             const idsKompRow=getFlatOperatorIds(task,kode);
             const sudahPernahMulai=idsKompRow.some((pid:number)=>!!timerPernahMulai[`${panelId}_${kode}_${proses}_${pid}`]);
@@ -3242,7 +3281,13 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
     // disembunyikan dari daftar HANYA setelah progress 100% DAN "Simpan Progress" sudah
     // diklik (sudahDisimpan100) - bukan cuma begitu progress kebetulan penuh. visibleRows
     // (header counter) & rows (chip panel) tetap gak ikut difilter, cuma tampilan kartu ini aja.
-    const cardListRows=["POTONG","BENDING","STEL","FINISHING","WIRING CONTROL","WIRING POWER","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR"].includes(proses)?visibleRows.filter((r:any)=>!(isDone(r)&&r.sudahDisimpan100)):visibleRows;
+    // (25 Nov 2026, insiden 598 FS.4) kartu yang selesai TETAP tampil selama masih ada timer berjalan (tanpa tahap) utk
+    // komponen+proses itu, milik siapa pun - dulu kartu hilang bersama tombol "Selesai" sementara timer terus jalan.
+    // Hanya tampilan (visibleRows/rumus tuntas tidak berubah). POTONG (tombol timer di toolbar) & BUSBAR (timer per
+    // tahap) tidak diubah.
+    type TimerKartu={selesai?:string|null;panel_id:number;kode_komponen:string;proses:string;tahap?:string|null};
+    const adaTimerJalanKartu=(r:{panelId:number;kode:string})=>proses!=="POTONG"&&proses!=="BUSBAR"&&(timerHariIni as TimerKartu[]).some(t=>!t.selesai&&t.panel_id===r.panelId&&t.kode_komponen===r.kode&&t.proses===proses&&!t.tahap);
+    const cardListRows=["POTONG","BENDING","STEL","FINISHING","WIRING CONTROL","WIRING POWER","RENDAM","PAINTING","RAKIT","PASANG KOMPONEN","BUSBAR"].includes(proses)?visibleRows.filter((r:any)=>!(isDone(r)&&r.sudahDisimpan100)||adaTimerJalanKartu(r)):visibleRows;
     const komponenGroups:Record<string,{namaKomponen:string,rows:any[]}> = {};
     cardListRows.forEach((r:any)=>{
       const key=r.item?.nama||r.kode;

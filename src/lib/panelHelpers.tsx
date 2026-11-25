@@ -180,6 +180,43 @@ export function selesaiSebelumTanggal(cl:any, proses:string, tanggal:string):boo
   if(hist.some((h:any)=>h?.tanggal===tanggal&&Number(h?.pct)>=100))return false;
   return hist.some((h:any)=>h?.tanggal&&h.tanggal<tanggal&&Number(h?.pct)>=100);
 }
+// RIWAYAT AKTIF (25 Nov 2026, Tahap 4.2, catatan A) - entri history yang DITULIS SEBELUM koreksi/buka kembali admin
+// (entri {koreksi:true}, RPC koreksi_progres_admin) DAN bertanggal SAMA/SESUDAH tanggal koreksi itu tidak lagi dihitung sbg
+// "sudah disimpan". Entri tanggal lebih lama dari koreksi tetap aktif (tampilan kartu tanggal lampau tidak berubah). Tanpa
+// entri koreksi -> semua entri aktif (perilaku lama persis). Contoh: operator simpan 100 pagi, admin buka kembali ke 75
+// siang (tanggal sama), operator klik 100 lagi -> kartu baru tersembunyi setelah Simpan Progress (entri 100 baru).
+// Dipakai: penyaring kartu (sudahDisimpan100), existIdx Simpan Progress/Kunci Progress Hari Ini, cek server Simpan ulang,
+// penjaga Mulai WIRING. Riwayat TIDAK diubah/dihapus - hanya cara membacanya.
+type EntriRiwayat={ts?:string;koreksi?:boolean;tanggal?:string;pct?:number|string;shift?:string|number}|null|undefined;
+export type KoreksiRiwayat={ts:number;tanggal:string};
+export function daftarKoreksiRiwayat(hist:EntriRiwayat[]|null|undefined):KoreksiRiwayat[]{
+  return (hist||[]).filter(h=>h?.koreksi&&h?.ts).map(h=>({ts:Date.parse(String(h?.ts)),tanggal:String(h?.tanggal||'')}));
+}
+export function entriRiwayatAktif(h:EntriRiwayat,koreksi:KoreksiRiwayat[]):boolean{
+  if(!koreksi.length||h?.koreksi)return true;
+  const t=h?.ts?Date.parse(h.ts):NaN;
+  return !koreksi.some(k=>(Number.isNaN(t)||t<k.ts)&&String(h?.tanggal||'')>=k.tanggal);
+}
+export function sudahDisimpan100Pada(cl:unknown, proses:string, tanggal:string):boolean{
+  const hist:EntriRiwayat[]=(cl as {history?:Record<string,EntriRiwayat[]>}|null|undefined)?.history?.[proses]||[];
+  const koreksi=daftarKoreksiRiwayat(hist);
+  return hist.some(h=>entriRiwayatAktif(h,koreksi)&&h?.tanggal===tanggal&&h?.pct===100);
+}
+// TUNTAS & TERSIMPAN (Tahap 4.2, penjaga Mulai WIRING) - ukuran penyembunyi kartu: selesai sebelum tanggal itu
+// (selesaiSebelumTanggal, baris tidak dibuat) ATAU kartu tanggal itu disaring (persen tanggal itu 100 & sudah disimpan 100),
+// DITAMBAH (tinjauan bug-detector M3) tanpa ikatan tanggal: progres terkini >=100 & ada Simpan 100 (bukan entri koreksi)
+// SESUDAH koreksi/buka kembali admin terakhir - menutup celah tanggal kartu (viewDate) != hari kerja (00.00-06.59, kartu
+// tanggal lain). Qty naik / buka kembali admin menurunkan progres terkini -> otomatis tidak tuntas.
+export function tersimpan100SetelahKoreksiTerakhir(cl:unknown, proses:string):boolean{
+  const hist:EntriRiwayat[]=(cl as {history?:Record<string,EntriRiwayat[]>}|null|undefined)?.history?.[proses]||[];
+  const kts=Math.max(-Infinity,...daftarKoreksiRiwayat(hist).map(k=>k.ts).filter(t=>!Number.isNaN(t)));
+  return hist.some(h=>!h?.koreksi&&Number(h?.pct)>=100&&(kts===-Infinity||(!!h?.ts&&Date.parse(h.ts)>kts)));
+}
+export function komponenTuntasTersimpan(cl:unknown, proses:string, tanggal:string):boolean{
+  const terkini=Number((cl as {progress?:Record<string,unknown>}|null|undefined)?.progress?.[proses])||0;
+  return selesaiSebelumTanggal(cl,proses,tanggal)||(getProgressOnDate(cl,proses,tanggal)===100&&sudahDisimpan100Pada(cl,proses,tanggal))
+    ||(terkini>=100&&tersimpan100SetelahKoreksiTerakhir(cl,proses));
+}
 export function getLatestProgress(cl:any, proses:string){
   const byDate=cl?.progressByDate?.[proses];
   if(byDate&&Object.keys(byDate).length>0){
