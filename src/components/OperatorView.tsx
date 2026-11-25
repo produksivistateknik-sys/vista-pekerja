@@ -1310,9 +1310,11 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     const selesaiSemuaTimer=async(panelId:number,kode:string,proses:string,tahap?:string|null)=>{
       const lokal=timerHariIni.filter((t:any)=>!t.selesai&&t.panel_id===panelId&&t.kode_komponen===kode&&t.proses===proses&&(t.tahap||null)===(tahap||null));
       for(const t of lokal){if(timerAktif[timerKey(panelId,kode,proses,t.pekerja_id,tahap)])await stopTimer(t.pekerja_id,panelId,kode,proses,tahap||undefined);}
-      const{n,error}=await hentikanTimerKomponenHari(panelId,kode,proses,null,tahap); // (23 Okt) semua yang berjalan, apa pun tanggal
+      const{error}=await hentikanTimerKomponenHari(panelId,kode,proses,null,tahap); // (23 Okt) semua yang berjalan, apa pun tanggal
       if(error)alertGagalSimpan(error,`Selesai-in semua timer ${proses} ${kode} panel ${panelId}`,{ref:{panelId,kode,proses,tahap:tahap||undefined},aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
-      if(n>0||error)await refreshTimerData();
+      // (25 Nov 2026, Tahap 3b M1) selalu muat ulang: n=0 bisa berarti timer sudah ditutup di tempat lain sementara state HP
+      // basi (realtime putus) - tanpa muat ulang kartu (Tahap 3) & tombol "Selesai" tertinggal tanpa efek.
+      await refreshTimerData();
     };
     // Simpan Edit Operator: orang yang DIKELUARKAN & timernya masih berjalan -> konfirmasi hentikan (dia sempat
     // mengerjakan, tetap tercatat) atau SALAH PILIH (timer hari ini dibatalkan lewat RPC batalkan_timer_salah_pilih,
@@ -1522,7 +1524,10 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
               // + progres TERKINI juga 100: kartu tanggal lampau yang 100% tidak boleh menutup timer sah hari ini
               // (mis. qty naik sesudah 100% -> progres terkini turun, timer baru memang sah).
               const srv100=Number(clSrv?.progress?.[proses])>=100&&getProgressOnDate(clSrv,proses,viewDate)>=100&&histSrv.some(h=>h.tanggal===viewDate&&Number(h.pct)>=100);
-              if(srv100)await autoStopTimerJikaSelesai(panelId,kode,proses,pct,idsKomp);
+              if(srv100){
+                await autoStopTimerJikaSelesai(panelId,kode,proses,pct,idsKomp);
+                await refreshTimerData(); // (Tahap 3b M1) timer yang ditutup lewat DB langsung terlihat, tidak menunggu realtime
+              }
             }
           }catch(e){console.error("[Simpan Progress ulang] tutup timer gagal (diabaikan):",e);}
         }
