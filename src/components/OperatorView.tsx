@@ -1141,7 +1141,10 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     setTimerLoading(key);
     let berhasil=false;
     try{
-      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id));
+      // (25 Nov 2026, Tahap 3b M2) .is("selesai",null): state timerAktif HP ini bisa basi (realtime putus) - timer yang sudah
+      // ditutup perangkat lain tidak boleh ditimpa waktu selesainya (durasi membengkak). Sama dgn penjaga Force Close/
+      // pengingat/tutupTimerKomponen. Timer yang masih berjalan tetap ditutup seperti biasa.
+      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id).is("selesai",null));
       if(error){
         alertGagalSimpan(error,`Selesai-in timer ${proses} ${kode} panel ${panelId}`,{ref:{panelId,kode,proses,tahap},aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});
         return;
