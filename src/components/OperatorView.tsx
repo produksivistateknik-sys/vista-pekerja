@@ -6,6 +6,7 @@ import { PANEL_TYPES, PCT_STEPS, QTY_DIVISI, PROSES_COLOR, PRIORITAS_COLOR, DIVI
 import { getLocalDateStr, TODAY, addDays, fmtDate, fmtShort } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan, klasifikasiErrorSimpan, ringkasAlasanGagal, type RefSimpan } from "../lib/koneksi";
 import { tutupTimerKomponenSelesai, hentikanTimerKomponenHari } from "../lib/tutupTimerKomponen";
+import { PROSES_KUNCI_MULAI, cekMulaiWiring, pesanMulaiDitolak } from "../lib/kunciMulaiWiring";
 import { hariKerjaWib } from "../lib/tanggalWib";
 import { insertTimerKerja, bacaShiftSesi, tanggalSesiKerja, simpanSesiShift, tahanTimerBaru, EVENT_SESI_SHIFT } from "../lib/timerShift";
 import { WARNA } from "../lib/warnaTema";
@@ -22,6 +23,7 @@ import { laporError } from "../lib/laporError";
 import {
   timerKey, BUSBAR_TAHAP_LABEL, BUSBAR_TAHAP_ICON, BUSBAR_URUTAN_TAHAP_LENGKAP,
   getUrutanTahapBusbar, hitungProgressBusbarGabungan, getFlatOperatorIds, getProgressOnDate, selesaiSebelumTanggal,
+  daftarKoreksiRiwayat, entriRiwayatAktif, sudahDisimpan100Pada,
   getLatestProgress, getFirstCompletionDate, pColor, pBg, renderNamaKomponen,
   computeProsesStatus, alasanNotYet, computeBusbarTahapStatus, getBusbarCapTahap, getRelevantProsesForKode, getBestProgressMap, type ProsesStatus,
   isKomponenTahapPasang, getUrutanCap, maxQtyUntukPct, getUrutanFloor, minQtyUntukPct, muatAturanUrutan,
@@ -1057,6 +1059,12 @@ export function OperatorView({user,viewMode,registerBackHandler}:any){
     // (12 Nov 2026, keputusan user) hari kerja berganti & shift belum dipilih ulang -> timer baru ditahan (banner di atas).
     if(tahanTimerBaru(wsKey))return;
     const tanggal=hariKerjaWib();
+    // (25 Nov 2026, Tahap 4.2) WIRING CONTROL/POWER yang sudah tuntas & tersimpan tidak bisa dimulai lagi - dicek ke server
+    // + antrean offline (lib/kunciMulaiWiring). Admin membuka kembali lewat Detail Progres. Proses lain tidak diperiksa.
+    if(!tahap&&PROSES_KUNCI_MULAI.includes(proses)){
+      const hasilCek=await cekMulaiWiring(panelId,kode,proses,tanggal);
+      if(hasilCek!=="boleh"){pesanMulaiDitolak(panelId,kode,proses,hasilCek);return;}
+    }
     const key=timerKey(panelId,kode,proses,pekerjaId,tahap);
     setTimerLoading(key);
     // Query builder Supabase sekali-pakai per .await() - dibungkus fungsi biar bisa dipanggil
@@ -1502,7 +1510,8 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
     if(pct===0){alert('Progress masih 0%, belum ada yang bisa dikunci.');return false;}
     const newChecklist={...panel.checklist};
     const prevHist=cl.history?.[proses]||[];
-    const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
+    const batasKoreksi=daftarKoreksiRiwayat(prevHist); // (Tahap 4.2) entri sebelum koreksi/buka kembali admin diabaikan
+    const existIdx=prevHist.findIndex((h:any)=>entriRiwayatAktif(h,batasKoreksi)&&h.tanggal===viewDate&&String(h.shift)===String(shift));
     const idsKomp=(task.pekerja_per_komponen||{})[kode]||[];
     const workerObjs=idsKomp.map((wid:number)=>pekerjaList.find((p:any)=>p.id===wid)).filter(Boolean);
     const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
@@ -1520,7 +1529,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
             else{
               type HistSrv={tanggal?:string;pct?:number|string};
               const clSrv=(srv as {checklist?:Record<string,{history?:Record<string,HistSrv[]>;progress?:Record<string,number|string>}>}|null)?.checklist?.[kode];
-              const histSrv:HistSrv[]=clSrv?.history?.[proses]||[];
+              const histSemua:HistSrv[]=clSrv?.history?.[proses]||[];const batasSrv=daftarKoreksiRiwayat(histSemua);const histSrv:HistSrv[]=histSemua.filter(h=>entriRiwayatAktif(h,batasSrv)); // (Tahap 4.2) abaikan entri sebelum koreksi admin
               // + progres TERKINI juga 100: kartu tanggal lampau yang 100% tidak boleh menutup timer sah hari ini
               // (mis. qty naik sesudah 100% -> progres terkini turun, timer baru memang sah).
               const srv100=Number(clSrv?.progress?.[proses])>=100&&getProgressOnDate(clSrv,proses,viewDate)>=100&&histSrv.some(h=>h.tanggal===viewDate&&Number(h.pct)>=100);
@@ -2060,7 +2069,8 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
               timerStopCandidates.push({kode,proses:pr,idsKomp:(task.pekerja_per_komponen||{})[kode]||[]});
             }
             const prevHist=cl.history?.[pr]||[];
-            const existIdx=prevHist.findIndex((h:any)=>h.tanggal===viewDate&&String(h.shift)===String(shift));
+            const batasKoreksi=daftarKoreksiRiwayat(prevHist); // (Tahap 4.2) entri sebelum koreksi/buka kembali admin diabaikan
+            const existIdx=prevHist.findIndex((h:any)=>entriRiwayatAktif(h,batasKoreksi)&&h.tanggal===viewDate&&String(h.shift)===String(shift));
             if(existIdx>=0){
               if(prevHist[existIdx].pct!==pct){
                 const updatedHist=[...prevHist];
@@ -2547,7 +2557,7 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
             const pct=isBusbarKomp?(cl.progress?.[proses]||0):getProgressOnDate(cl,proses,viewDate);
             const wpDef=isBusbarKomp?null:panelCfg.wps.find((w:any)=>w.items.some((it:any)=>it.kode===kode));
             // Sudah disimpan (klik "Simpan Progress") hari ini dengan pct 100 - bukan cuma qty kebetulan penuh.
-            const sudahDisimpan100=(cl.history?.[proses]||[]).some((h:any)=>h.tanggal===viewDate&&h.pct===100);
+            const sudahDisimpan100=sudahDisimpan100Pada(cl,proses,viewDate); // (Tahap 4.2) abaikan entri sebelum koreksi admin
             // Timer pernah dimulai (walau udah di-stop lagi) - buat gating input qty di POTONG/BENDING/STEL/FINISHING.
             const idsKompRow=getFlatOperatorIds(task,kode);
             const sudahPernahMulai=idsKompRow.some((pid:number)=>!!timerPernahMulai[`${panelId}_${kode}_${proses}_${pid}`]);
