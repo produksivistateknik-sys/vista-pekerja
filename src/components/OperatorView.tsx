@@ -1503,7 +1503,28 @@ Minta operator ${capUrut.prosesSebelum} menyimpan progresnya dulu, atau hubungi 
     const pekerjaNamaLog=workerObjs.length>0?workerObjs.map((w:any)=>w.nama).join(', '):user.nama;
     const checkpointEntry={panel_id:panelId,kode_komponen:kode,proses,checkpoint:pct,pekerja_nama:pekerjaNamaLog,tanggal:viewDate};
     if(existIdx>=0){
-      if(prevHist[existIdx].pct===pct)return true;
+      if(prevHist[existIdx].pct===pct){
+        // (25 Nov 2026, insiden 598 FS.4 FIRMAN/AINUL) Simpan ulang nilai yang SAMA dulu keluar di sini TANPA
+        // menghentikan timer - timer yang dimulai sesudah komponen 100% tersimpan jalan terus sampai 22.58.
+        // Tidak ada yang ditulis ke checklist; hanya timer yang ditutup, dan HANYA bila server juga mencatat
+        // komponen+proses ini 100% hari itu (data layar bisa basi, mis. qty naik setelah 100% -> timer sah).
+        if(pct>=100){
+          try{
+            const{data:srv,error:srvErr}=await supabase.from("panels").select("checklist").eq("id",panelId).single();
+            if(srvErr)console.error("[Simpan Progress ulang] cek progres server gagal, timer tidak ditutup:",srvErr);
+            else{
+              type HistSrv={tanggal?:string;pct?:number|string};
+              const clSrv=(srv as {checklist?:Record<string,{history?:Record<string,HistSrv[]>;progress?:Record<string,number|string>}>}|null)?.checklist?.[kode];
+              const histSrv:HistSrv[]=clSrv?.history?.[proses]||[];
+              // + progres TERKINI juga 100: kartu tanggal lampau yang 100% tidak boleh menutup timer sah hari ini
+              // (mis. qty naik sesudah 100% -> progres terkini turun, timer baru memang sah).
+              const srv100=Number(clSrv?.progress?.[proses])>=100&&getProgressOnDate(clSrv,proses,viewDate)>=100&&histSrv.some(h=>h.tanggal===viewDate&&Number(h.pct)>=100);
+              if(srv100)await autoStopTimerJikaSelesai(panelId,kode,proses,pct,idsKomp);
+            }
+          }catch(e){console.error("[Simpan Progress ulang] tutup timer gagal (diabaikan):",e);}
+        }
+        return true;
+      }
       const updatedHist=[...prevHist];
       updatedHist[existIdx]={...updatedHist[existIdx],pct,ts:new Date().toISOString()};
       newChecklist[kode]={...cl,history:{...(cl.history||{}),[proses]:updatedHist}};
