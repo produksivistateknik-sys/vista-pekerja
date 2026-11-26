@@ -3,6 +3,7 @@ import { WARNA } from "../lib/warnaTema";
 import { hariKerjaWib } from "../lib/tanggalWib";
 import { insertTimerKerja, bacaShiftSesi, kunciSesiKerja, tahanTimerBaru } from "../lib/timerShift";
 import { supabase } from "../lib/supabase";
+import { pasangPemulihRealtime } from "../lib/pemulihRealtime";
 import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan } from "../lib/koneksi";
@@ -200,20 +201,54 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
   const[timerAktif,setTimerAktif]=useState<Record<string,any>>({});
   const[timerLoading,setTimerLoading]=useState<string|null>(null);
   const[,forceTimerTick]=useState(0);
+  // (26 Nov 2026, butir a - insiden ADE 604 FS.4: timer #36400 berjalan 5 jam di server tapi tampak berhenti di HP) galat
+  // muat timer dulu hanya console.error -> kartu menampilkan "Mulai Kerja" padahal timer berjalan. Sekarang galat (balasan
+  // error ATAU lemparan jaringan) ditampilkan sebagai peringatan di atas layar; state timer lama dibiarkan, peringatan hilang
+  // begitu muat berikutnya berhasil.
+  const[galatTimer,setGalatTimer]=useState<string|null>(null);
+  const[memuatTimer,setMemuatTimer]=useState(false);
+  // (26 Nov 2026, tinjauan bug-detector/regresi-penguji) PENANDA URUTAN: muat bisa tumpang tindih (realtime, pemulih,
+  // tombol Muat ulang) & bersamaan dgn Mulai/Selesai. Hanya respons permintaan TERBARU yang dipakai; Mulai/Selesai menaikkan
+  // nomor sebelum mengubah state, sehingga respons yang diambil sebelum aksi tidak menimpa hasil aksi (kartu kembali
+  // "Mulai Kerja" padahal timer berjalan - gejala insiden ADE).
+  const urutanMuatTimer=useRef(0);
   const fetchTimerAktif=async()=>{
-    const{data,error}=await supabase.from("fcs_timer_kerja").select("*")
-      .eq("pekerja_id",user.id).eq("proses","PASANG KOMPONEN").eq("tahap",tugas.tahap).is("selesai",null);
-    if(error){console.error("gagal ambil timer aktif:",error);return;}
-    const map:Record<string,any>={};
-    (data||[]).forEach((t:any)=>{map[`${t.panel_id}_${t.kode_komponen}`]=t;});
-    setTimerAktif(map);
+    const nomor=++urutanMuatTimer.current;
+    setMemuatTimer(true);
+    try{
+      const{data,error}=await supabase.from("fcs_timer_kerja").select("*")
+        .eq("pekerja_id",user.id).eq("proses","PASANG KOMPONEN").eq("tahap",tugas.tahap).is("selesai",null);
+      if(nomor!==urutanMuatTimer.current)return; // respons basi - ada muat/aksi yang lebih baru
+      if(error){console.error("gagal ambil timer aktif:",error);setGalatTimer(error.message||"gagal memuat");return;}
+      const map:Record<string,any>={};
+      (data||[]).forEach((t:any)=>{map[`${t.panel_id}_${t.kode_komponen}`]=t;});
+      setTimerAktif(map);
+      setGalatTimer(null);
+    }catch(err){
+      console.error("gagal ambil timer aktif (jaringan):",err);
+      if(nomor===urutanMuatTimer.current)setGalatTimer(err instanceof Error?err.message:String(err));
+    }finally{
+      setMemuatTimer(false); // selalu (aksi Mulai bisa menaikkan nomor tanpa muat baru - jangan macet "Memuat...")
+    }
   };
+  const peringatanTimer=galatTimer?(
+    <div role="alert" style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",background:"#fffbeb",border:"1px solid #fcd34d",color:"#92400e",
+      borderRadius:12,padding:"10px 12px",marginBottom:12,fontSize:12.5,fontWeight:600,lineHeight:1.45}}>
+      <span style={{flex:1,minWidth:180}}>⚠ Status timer gagal dimuat (koneksi). Tombol Mulai/Selesai bisa tidak sesuai - cek "Proses Saya" atau muat ulang.</span>
+      <button disabled={memuatTimer} onClick={()=>{fetchTimerAktif();}} style={{minHeight:40,padding:"0 14px",borderRadius:10,border:"1px solid #f59e0b",background:"#fff",color:"#92400e",fontWeight:700,fontSize:12.5,cursor:memuatTimer?"default":"pointer"}}>{memuatTimer?"Memuat...":"Muat ulang"}</button>
+    </div>
+  ):null;
   useEffect(()=>{
     fetchTimerAktif();
     const ch=supabase.channel(`realtime-timer-komponen-pasang-${tugas.seksi}-${user.id}`)
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja",filter:`pekerja_id=eq.${user.id}`},fetchTimerAktif)
-      .subscribe();
-    return()=>{supabase.removeChannel(ch);};
+      .subscribe((status:string)=>{if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")console.warn("[realtime timer tab Komponen]",status);});
+    // (26 Nov 2026, butir b) PEMULIH - event realtime yang terlewat (HP dikunci/background, sinyal putus) dulu tidak pernah
+    // diambil ulang -> status timer di HP basi (insiden ADE 604 FS.4). Pola lib/pemulihRealtime (sama BannerBeranda): TANPA
+    // tabel (event tetap lewat kanal ber-filter pekerja_id di atas - tidak ikut semua timer pabrik) & TANPA polling; muat
+    // ulang hanya saat HP aktif kembali, sinyal pulih (online), atau realtime tersambung ulang. Satu query kecil per kejadian.
+    const lepasPemulih=pasangPemulihRealtime(supabase,{nama:`pemulih-timer-komponen-${tugas.seksi}-${user.id}`,tabel:[],muat:fetchTimerAktif,pollingMs:0,label:"Timer tab Komponen"});
+    return()=>{supabase.removeChannel(ch);lepasPemulih();};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tugas.seksi,user.id]);
   // Tick ringan tiap 5 detik SAAT ada timer aktif - biar durasi berjalan kelihatan nge-tick,
@@ -238,7 +273,7 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
       const{data:existing}=await withRetry(()=>supabase.from("fcs_timer_kerja").select("*")
         .eq("pekerja_id",user.id).eq("panel_id",panelId).eq("kode_komponen",kode).eq("proses","PASANG KOMPONEN")
         .eq("tahap",tugas.tahap).eq("tanggal",tanggal).is("selesai",null).order("mulai",{ascending:false}).limit(1).maybeSingle());
-      if(existing){setTimerAktif(prev=>({...prev,[tKey]:existing}));return;}
+      if(existing){urutanMuatTimer.current++;setTimerAktif(prev=>({...prev,[tKey]:existing}));return;}
       const{data,error}=await withRetry(async()=>{
         const hasil=await insertTimerKerja(supabase,{
           pekerja_id:user.id,panel_id:panelId,kode_komponen:kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap,tanggal,mulai:new Date().toISOString(),
@@ -257,6 +292,7 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
         return hasil;
       });
       if(error){alertGagalSimpan(error,`Mulai timer PASANG KOMPONEN ${kode} panel ${panelId}`,{ref:{panelId,kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap},aksi:"mulai timer",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
+      urutanMuatTimer.current++;
       setTimerAktif(prev=>({...prev,[tKey]:data}));
     }catch(err:any){
       // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama lib/koneksi.ts.
@@ -271,9 +307,15 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     if(!timer)return;
     setTimerLoading(tKey);
     try{
-      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id));
+      // (26 Nov 2026, butir c) .is("selesai",null): state HP ini bisa basi - timer yang sudah ditutup di tempat lain (Tutup
+      // Paksa "Proses Saya", Simpan/arsip 100% lewat tutupTimerKomponenSelesai, Force Close admin) TIDAK boleh ditimpa waktu
+      // selesainya (durasi membengkak). Sama dgn stopTimer/pengingat/Tutup Paksa/tutupTimerKomponen. Satu-satunya pemanggil:
+      // tombol "Selesai" kartu komponen. Timer yang masih berjalan tetap ditutup seperti biasa; sesudahnya daftar dimuat ulang.
+      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id).is("selesai",null));
       if(error){alertGagalSimpan(error,`Selesai-in timer PASANG KOMPONEN ${kode} panel ${panelId}`,{ref:{panelId,kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap},aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
+      urutanMuatTimer.current++;
       setTimerAktif(prev=>{const n={...prev};delete n[tKey];return n;});
+      fetchTimerAktif();
     }catch(err:any){
       // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama lib/koneksi.ts.
       alertGagalSimpan(err,`Selesai-in timer PASANG KOMPONEN ${kode} panel ${panelId}`,{ref:{panelId,kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap},aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
@@ -778,6 +820,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
     const selesaiSemua=projectGroups.reduce((s,g)=>s+g.selesai,0);
     return(
       <div style={{padding:"14px 14px 28px",background:"#f8fafc",minHeight:"100%"}}>
+        {peringatanTimer}
         <div style={{display:"flex",alignItems:"center",gap:12,marginBottom:16,padding:"14px 16px",borderRadius:16,
           background:`linear-gradient(135deg,${tugas.color},${tugas.color}cc)`,boxShadow:`0 6px 18px ${tugas.color}33`}}>
           <div style={{width:42,height:42,borderRadius:12,background:"rgba(255,255,255,0.2)",display:"flex",alignItems:"center",justifyContent:"center",fontSize:20,flexShrink:0}}>
@@ -852,6 +895,7 @@ Komponen kembali ke daftar aktif (progress & foto tetap), lalu turunkan persenny
 
   return(
     <div style={{padding:"14px 14px 28px",background:"#f8fafc",minHeight:"100%"}}>
+      {peringatanTimer}
       <button onClick={()=>setSelectedWoId(null)}
         style={{display:"flex",alignItems:"center",gap:6,background:"none",border:"none",color:WARNA.aksenTeks,fontWeight:700,fontSize:13,cursor:"pointer",marginBottom:12,padding:0}}>
         <i className="ti ti-arrow-left" style={{fontSize:16}}/> Kembali ke Daftar Proyek
