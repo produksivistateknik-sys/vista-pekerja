@@ -5,6 +5,7 @@ import { alertGagalSimpan } from "../lib/koneksi";
 import { SectionCard, SegmentedControl, EmptyState, DatePickerField } from "./gudang/GudangUI";
 import { fetchAllPaged, bacaSemuaPerPotongan } from "../lib/bacaSemua";
 import { getLocalDateStr, rentangHariLokal, rentangBulanLokal, tanggalLokalDari } from "../lib/dateHelpers";
+import { muatKoreksiDisetujui, rantaiKoreksi, koreksiOlehAdmin, type KoreksiPermintaan } from "../lib/koreksiPermintaan";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TAB PERMINTAAN (dalam GudangHome) - sisi Gudang buat proses masuk BBMB & BBMU.
@@ -59,10 +60,13 @@ const prosesSubmitDenganQty=async(item:any,qtyDipenuhi:number,adminName:string,t
   const lunasPenuh=qtyDipenuhi>=qtyLama;
   // SENGAJA tanpa withRetry: kalau jawaban server hilang padahal sudah diproses, ulang otomatis akan ditolak
   // "sudah diproses" & petugas melihat pesan gagal palsu. RPC menolak proses ulang, jadi aman dikonfirmasi lagi.
-  const{data:hasil,error}=await supabase.rpc("proses_pemenuhan_permintaan" as any,{p_item_id:item.id,p_qty_dipenuhi:qtyDipenuhi,p_oleh:adminName} as any) as any;
+  // (26 Nov 2026) p_qty_dilihat = qty yang TAMPIL di modal (item = salinan saat modal dibuka). Admin bisa mengoreksi qty item
+  // yang disetujui & belum disiapkan; server menolak (P0001) bila qty sudah berubah - dulu Konfirmasi angka lama setelah qty
+  // dinaikkan diam-diam jadi pemenuhan sebagian + hutang palsu. RPC 4 argumen: migration vista-teknik 20261126020000.
+  const{data:hasil,error}=await supabase.rpc("proses_pemenuhan_permintaan" as any,{p_item_id:item.id,p_qty_dipenuhi:qtyDipenuhi,p_oleh:adminName,p_qty_dilihat:qtyLama} as any) as any;
   if(error){
     alertGagalSimpan(error,`Proses permintaan ${item.nama_komponen} (item ${item.id})`,{aksi:"memproses permintaan",
-      catatanServer:"Item mungkin sudah diproses petugas lain - daftar dimuat ulang, periksa statusnya.",
+      catatanServer:"Baca pesan di atas. Daftar dimuat ulang - periksa status & angka qty-nya, lalu konfirmasi lagi bila masih perlu.",
       catatanKoneksi:"Status belum pasti (jawaban server tidak sampai) - daftar dimuat ulang. Kalau item masih di daftar, konfirmasi lagi; kalau sudah pindah, berarti sudah tersimpan."});
     return false;
   }
@@ -253,6 +257,10 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
   const[loading,setLoading]=useState(true);
   const[permMap,setPermMap]=useState<Record<number,any>>({});
   const[itemsByPerm,setItemsByPerm]=useState<Record<number,any[]>>({});
+  // (26 Nov 2026) PENANDA "qty dikoreksi Admin" - item menunggu disiapkan yang qty-nya dikoreksi Admin (sumber admin_*),
+  // supaya Gudang tidak menyiapkan angka lama. Dimuat ulang tiap fetchData (realtime permintaan_item ikut memicu).
+  const[koreksiAdminMap,setKoreksiAdminMap]=useState<Record<number,KoreksiPermintaan[]>>({});
+  const[galatPenanda,setGalatPenanda]=useState(false);
   const[rejectTarget,setRejectTarget]=useState<any|null>(null);
   const[rejectCatatan,setRejectCatatan]=useState("");
   const[submittingId,setSubmittingId]=useState<number|null>(null);
@@ -278,6 +286,12 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
     perms.forEach((p:any)=>{pMap[p.id]=p;});
     setPermMap(pMap);
     setItemsByPerm(groupItemsByPermintaan(allItems));
+    try{
+      const peta=await muatKoreksiDisetujui((allItems as {id:number;status?:string}[]).filter(it=>it.status==="pending").map(it=>it.id));
+      const hanyaAdmin:Record<number,KoreksiPermintaan[]>={};
+      for(const id of Object.keys(peta)){const r=rantaiKoreksi(peta[Number(id)]).filter(koreksiOlehAdmin);if(r.length)hanyaAdmin[Number(id)]=r;}
+      setKoreksiAdminMap(hanyaAdmin);setGalatPenanda(false);
+    }catch(e){console.error("[Permintaan Gudang] penanda koreksi admin gagal dimuat:",e);setGalatPenanda(true);}
     if(!silent)setLoading(false);
   };
 
@@ -340,12 +354,15 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
   const divisiKeys=Object.keys(grouped).sort();
 
   if(loading)return<div style={{textAlign:"center",padding:40,color:WARNA.redup,fontSize:13}}>Memuat...</div>;
+  // (26 Nov 2026) penanda koreksi Admin gagal dimuat -> beri tahu, daftar tetap tampil
+  const peringatanPenanda=galatPenanda?<div style={{fontSize:11.5,color:"#b45309",background:"#fffbeb",borderRadius:8,padding:"6px 10px",marginBottom:8}}>⚠ Penanda koreksi qty dari Admin gagal dimuat - periksa koneksi. Angka qty di daftar tetap yang terbaru.</div>:null;
   if(divisiKeys.length===0)return<EmptyState title={`Tidak ada permintaan ${jenis}`}
     description={`Semua permintaan ${jenis==="BBMB"?"bantu":"utama"} sudah diproses. Permintaan baru dari operator akan muncul di sini.`}
     tip="Pastikan stok tersedia sebelum memproses permintaan baru."/>;
 
   return(
     <div style={{display:"flex",flexDirection:"column",gap:18}}>
+      {peringatanPenanda}
       {divisiKeys.map(divisi=>(
         <div key={divisi}>
           <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:8}}>
@@ -376,6 +393,10 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
                       <div key={it.id} style={{display:"flex",alignItems:"center",gap:8,background:"#f8fafc",borderRadius:9,padding:"8px 10px"}}>
                         <span style={{flex:1,minWidth:0,fontSize:12.5,fontWeight:600,color:"#334155",overflow:"hidden",textOverflow:"ellipsis"}}>
                           {it.nama_komponen} <span style={{color:"#64748b",fontWeight:500}}>×{it.qty}{it.satuan?` ${it.satuan}`:""}</span>
+                          {koreksiAdminMap[it.id]&&(()=>{const r=koreksiAdminMap[it.id];const akhir=r[r.length-1];return(
+                            <span title={`Catatan: ${akhir.alasan||"-"}`} style={{display:"block",fontSize:11,color:"#b45309",fontWeight:700,whiteSpace:"normal"}}>
+                              ✎ Qty dikoreksi Admin dari {r[0].qty_lama} · {akhir.diajukan_oleh||"-"}: {akhir.alasan||"-"}
+                            </span>);})()}
                         </span>
                         <div style={{display:"flex",gap:6,flexShrink:0}}>
                           <button onClick={()=>setQtyTarget(it)} disabled={submittingId===it.id}
