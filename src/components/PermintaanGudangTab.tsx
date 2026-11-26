@@ -66,7 +66,7 @@ const prosesSubmitDenganQty=async(item:any,qtyDipenuhi:number,adminName:string,t
   const{data:hasil,error}=await supabase.rpc("proses_pemenuhan_permintaan" as any,{p_item_id:item.id,p_qty_dipenuhi:qtyDipenuhi,p_oleh:adminName,p_qty_dilihat:qtyLama} as any) as any;
   if(error){
     alertGagalSimpan(error,`Proses permintaan ${item.nama_komponen} (item ${item.id})`,{aksi:"memproses permintaan",
-      catatanServer:"Item mungkin sudah diproses petugas lain, atau qty-nya baru dikoreksi Admin - daftar dimuat ulang, periksa angkanya lalu konfirmasi lagi.",
+      catatanServer:"Baca pesan di atas. Daftar dimuat ulang - periksa status & angka qty-nya, lalu konfirmasi lagi bila masih perlu.",
       catatanKoneksi:"Status belum pasti (jawaban server tidak sampai) - daftar dimuat ulang. Kalau item masih di daftar, konfirmasi lagi; kalau sudah pindah, berarti sudah tersimpan."});
     return false;
   }
