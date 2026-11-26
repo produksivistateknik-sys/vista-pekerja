@@ -59,10 +59,13 @@ const prosesSubmitDenganQty=async(item:any,qtyDipenuhi:number,adminName:string,t
   const lunasPenuh=qtyDipenuhi>=qtyLama;
   // SENGAJA tanpa withRetry: kalau jawaban server hilang padahal sudah diproses, ulang otomatis akan ditolak
   // "sudah diproses" & petugas melihat pesan gagal palsu. RPC menolak proses ulang, jadi aman dikonfirmasi lagi.
-  const{data:hasil,error}=await supabase.rpc("proses_pemenuhan_permintaan" as any,{p_item_id:item.id,p_qty_dipenuhi:qtyDipenuhi,p_oleh:adminName} as any) as any;
+  // (26 Nov 2026) p_qty_dilihat = qty yang TAMPIL di modal (item = salinan saat modal dibuka). Admin bisa mengoreksi qty item
+  // yang disetujui & belum disiapkan; server menolak (P0001) bila qty sudah berubah - dulu Konfirmasi angka lama setelah qty
+  // dinaikkan diam-diam jadi pemenuhan sebagian + hutang palsu. RPC 4 argumen: migration vista-teknik 20261126020000.
+  const{data:hasil,error}=await supabase.rpc("proses_pemenuhan_permintaan" as any,{p_item_id:item.id,p_qty_dipenuhi:qtyDipenuhi,p_oleh:adminName,p_qty_dilihat:qtyLama} as any) as any;
   if(error){
     alertGagalSimpan(error,`Proses permintaan ${item.nama_komponen} (item ${item.id})`,{aksi:"memproses permintaan",
-      catatanServer:"Item mungkin sudah diproses petugas lain - daftar dimuat ulang, periksa statusnya.",
+      catatanServer:"Item mungkin sudah diproses petugas lain, atau qty-nya baru dikoreksi Admin - daftar dimuat ulang, periksa angkanya lalu konfirmasi lagi.",
       catatanKoneksi:"Status belum pasti (jawaban server tidak sampai) - daftar dimuat ulang. Kalau item masih di daftar, konfirmasi lagi; kalau sudah pindah, berarti sudah tersimpan."});
     return false;
   }

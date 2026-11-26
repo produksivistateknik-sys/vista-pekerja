@@ -241,6 +241,8 @@ export function RiwayatGudangTab({adminName}:{adminName:string}){
     fetchKoreksiDecided();
     const ch=supabase.channel("realtime-gudang-riwayat-koreksi-decided")
       .on("postgres_changes",{event:"UPDATE",schema:"public",table:"permintaan_item_koreksi"},fetchKoreksiDecided)
+      // (26 Nov 2026) koreksi langsung oleh Admin masuk sebagai INSERT berstatus 'disetujui' (tanpa UPDATE)
+      .on("postgres_changes",{event:"INSERT",schema:"public",table:"permintaan_item_koreksi"},fetchKoreksiDecided)
       .subscribe();
     return()=>{supabase.removeChannel(ch);};
     // eslint-disable-next-line react-hooks/exhaustive-deps
