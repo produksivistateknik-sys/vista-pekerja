@@ -295,9 +295,14 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     if(!timer)return;
     setTimerLoading(tKey);
     try{
-      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id));
+      // (26 Nov 2026, butir c) .is("selesai",null): state HP ini bisa basi - timer yang sudah ditutup di tempat lain (Tutup
+      // Paksa "Proses Saya", Simpan/arsip 100% lewat tutupTimerKomponenSelesai, Force Close admin) TIDAK boleh ditimpa waktu
+      // selesainya (durasi membengkak). Sama dgn stopTimer/pengingat/Tutup Paksa/tutupTimerKomponen. Satu-satunya pemanggil:
+      // tombol "Selesai" kartu komponen. Timer yang masih berjalan tetap ditutup seperti biasa; sesudahnya daftar dimuat ulang.
+      const{error}=await withRetry(()=>supabase.from("fcs_timer_kerja").update({selesai:new Date().toISOString()}).eq("id",timer.id).is("selesai",null));
       if(error){alertGagalSimpan(error,`Selesai-in timer PASANG KOMPONEN ${kode} panel ${panelId}`,{ref:{panelId,kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap},aksi:"selesai-in timer",catatanServer:"Laporkan ke admin beserta pesan ini."});return;}
       setTimerAktif(prev=>{const n={...prev};delete n[tKey];return n;});
+      fetchTimerAktif();
     }catch(err:any){
       // (29 Sep 2026) dulu selalu "koneksi bermasalah" - sekarang lewat helper bersama lib/koneksi.ts.
       alertGagalSimpan(err,`Selesai-in timer PASANG KOMPONEN ${kode} panel ${panelId}`,{ref:{panelId,kode,proses:"PASANG KOMPONEN",tahap:tugas.tahap},aksi:"selesai-in timer",ulangi:"Selesai",catatanServer:"Laporkan ke admin beserta pesan ini."});
