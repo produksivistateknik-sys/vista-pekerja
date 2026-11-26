@@ -287,7 +287,7 @@ function PermintaanList({jenis,adminName,tanggal}:{jenis:"BBMB"|"BBMU";adminName
     setPermMap(pMap);
     setItemsByPerm(groupItemsByPermintaan(allItems));
     try{
-      const peta=await muatKoreksiDisetujui(allItems.filter((it:any)=>it.status==="pending").map((it:any)=>it.id));
+      const peta=await muatKoreksiDisetujui((allItems as {id:number;status?:string}[]).filter(it=>it.status==="pending").map(it=>it.id));
       const hanyaAdmin:Record<number,KoreksiPermintaan[]>={};
       for(const id of Object.keys(peta)){const r=rantaiKoreksi(peta[Number(id)]).filter(koreksiOlehAdmin);if(r.length)hanyaAdmin[Number(id)]=r;}
       setKoreksiAdminMap(hanyaAdmin);setGalatPenanda(false);
