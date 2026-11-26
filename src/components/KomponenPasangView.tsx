@@ -3,6 +3,7 @@ import { WARNA } from "../lib/warnaTema";
 import { hariKerjaWib } from "../lib/tanggalWib";
 import { insertTimerKerja, bacaShiftSesi, kunciSesiKerja, tahanTimerBaru } from "../lib/timerShift";
 import { supabase } from "../lib/supabase";
+import { pasangPemulihRealtime } from "../lib/pemulihRealtime";
 import { PCT_STEPS } from "../lib/panelTypes";
 import { TODAY } from "../lib/dateHelpers";
 import { withRetry, alertGagalSimpan } from "../lib/koneksi";
@@ -231,7 +232,12 @@ export function KomponenPasangView({user,tugas,registerBackHandler}:{user:any,tu
     const ch=supabase.channel(`realtime-timer-komponen-pasang-${tugas.seksi}-${user.id}`)
       .on("postgres_changes",{event:"*",schema:"public",table:"fcs_timer_kerja",filter:`pekerja_id=eq.${user.id}`},fetchTimerAktif)
       .subscribe();
-    return()=>{supabase.removeChannel(ch);};
+    // (26 Nov 2026, butir b) PEMULIH - event realtime yang terlewat (HP dikunci/background, sinyal putus) dulu tidak pernah
+    // diambil ulang -> status timer di HP basi (insiden ADE 604 FS.4). Pola lib/pemulihRealtime (sama BannerBeranda): TANPA
+    // tabel (event tetap lewat kanal ber-filter pekerja_id di atas - tidak ikut semua timer pabrik) & TANPA polling; muat
+    // ulang hanya saat HP aktif kembali, sinyal pulih (online), atau realtime tersambung ulang. Satu query kecil per kejadian.
+    const lepasPemulih=pasangPemulihRealtime(supabase,{nama:`pemulih-timer-komponen-${tugas.seksi}-${user.id}`,tabel:[],muat:fetchTimerAktif,pollingMs:0,label:"Timer tab Komponen"});
+    return()=>{supabase.removeChannel(ch);lepasPemulih();};
     // eslint-disable-next-line react-hooks/exhaustive-deps
   },[tugas.seksi,user.id]);
   // Tick ringan tiap 5 detik SAAT ada timer aktif - biar durasi berjalan kelihatan nge-tick,
